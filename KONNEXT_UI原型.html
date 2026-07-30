@@ -1,0 +1,1366 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KONNEXT 办公管理平台 · 原型</title>
+<style>
+:root{
+  --bg:#0f1419; --bg-panel:#161b22; --bg-elevated:#1c2430; --border:#2a3441;
+  --text:#e6edf3; --text-muted:#8b949e;
+  --healthy:#10b981; --warning:#f59e0b; --breach:#ef4444; --loss:#7f1d1d;
+  --accent:#22d3ee; --danger:#dc2626;
+  --font:-apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  --mono:ui-monospace,"Cascadia Code",Consolas,monospace;
+  --fs-xs:11px; --fs-sm:12px; --fs-md:13px; --fs-lg:15px; --fs-xl:22px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px;
+  --radius:6px; --row-h:44px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:var(--fs-md)/1.5 var(--font);
+  -webkit-font-smoothing:antialiased}
+.mono{font-family:var(--mono)}
+.muted{color:var(--text-muted)}
+button{font:inherit;cursor:pointer}
+
+/* ══ 登录 ══ */
+#login{min-height:100vh;display:grid;place-items:center;padding:var(--sp-4)}
+.login-card{width:100%;max-width:380px;background:var(--bg-panel);
+  border:1px solid var(--border);border-radius:10px;padding:var(--sp-5)}
+.logo{font-size:var(--fs-xl);font-weight:600;letter-spacing:.06em;margin-bottom:var(--sp-1)}
+.logo span{color:var(--accent)}
+.login-sub{color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:var(--sp-5)}
+label{display:block;font-size:var(--fs-xs);color:var(--text-muted);
+  margin-bottom:var(--sp-1);letter-spacing:.04em}
+input,select{width:100%;background:var(--bg);border:1px solid var(--border);
+  color:var(--text);padding:10px var(--sp-3);border-radius:var(--radius);
+  font:var(--fs-md) var(--font)}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+.btn{background:var(--bg-elevated);border:1px solid var(--border);color:var(--text);
+  padding:7px var(--sp-3);border-radius:var(--radius);font-size:var(--fs-sm)}
+.btn:hover{border-color:var(--accent)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#04252b;font-weight:600}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn-block{width:100%;padding:10px;margin-top:var(--sp-4)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.field{margin-bottom:var(--sp-4)}
+.note{background:var(--bg-elevated);border-left:2px solid var(--accent);
+  padding:var(--sp-2) var(--sp-3);font-size:var(--fs-xs);color:var(--text-muted);
+  margin-top:var(--sp-4);border-radius:0 var(--radius) var(--radius) 0}
+.demo-pick{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-2)}
+.demo-pick button{font-size:var(--fs-xs);padding:5px 9px}
+
+/* ══ 主框架 ══ */
+#app{display:none;min-height:100vh;flex-direction:column}
+.topbar{display:flex;align-items:center;gap:var(--sp-4);height:48px;padding:0 var(--sp-4);
+  background:var(--bg-panel);border-bottom:1px solid var(--border);flex-shrink:0}
+.brand{font-size:var(--fs-lg);font-weight:600;letter-spacing:.04em;white-space:nowrap}
+.brand span{color:var(--accent)}
+.tabs{display:flex;gap:2px;flex:1;overflow-x:auto}
+.tab{background:none;border:none;color:var(--text-muted);padding:6px var(--sp-3);
+  border-radius:var(--radius);font-size:var(--fs-md);white-space:nowrap;position:relative}
+.tab:hover{color:var(--text);background:var(--bg-elevated)}
+.tab.on{color:var(--accent);background:var(--bg-elevated)}
+.tab.decision{margin-left:auto;border:1px dashed var(--border)}
+.badge{background:var(--breach);color:#fff;font-size:9px;padding:1px 5px;border-radius:9px;
+  margin-left:5px;vertical-align:1px;font-family:var(--mono)}
+.who{display:flex;align-items:center;gap:var(--sp-2);flex-shrink:0}
+.who select{width:auto;padding:5px var(--sp-2);font-size:var(--fs-sm)}
+.bell{background:none;border:1px solid var(--border);border-radius:var(--radius);
+  padding:5px 9px;color:var(--text);font-size:var(--fs-sm)}
+.bell:hover{border-color:var(--accent)}
+
+.body{display:flex;flex:1;min-height:0}
+.side{width:190px;background:var(--bg-panel);border-right:1px solid var(--border);
+  padding:var(--sp-3) 0;flex-shrink:0;overflow-y:auto}
+.side-item{display:block;width:100%;text-align:left;background:none;border:none;
+  color:var(--text-muted);padding:8px var(--sp-4);font-size:var(--fs-md);
+  border-left:2px solid transparent}
+.side-item:hover{color:var(--text);background:var(--bg-elevated)}
+.side-item.on{color:var(--accent);border-left-color:var(--accent);background:var(--bg-elevated)}
+.side-sep{height:1px;background:var(--border);margin:var(--sp-3) var(--sp-4)}
+.main{flex:1;overflow-y:auto;min-width:0;display:flex;flex-direction:column}
+.main-inner{padding:var(--sp-4) var(--sp-5);flex:1}
+/* ★项目上下文条：所有流程都跟项目走，随时看得见是哪个项目、在哪儿 */
+.pjbar{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-5);
+  background:var(--bg-elevated);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.pjbar select{width:auto;max-width:340px;font-size:var(--fs-md);padding:5px var(--sp-2)}
+.pjbar .addr{color:var(--text-muted);font-size:var(--fs-sm);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.pjbar .sep{width:1px;height:20px;background:var(--border)}
+.pjbar .grow{flex:1}
+.coybar{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-5);
+  background:rgba(139,148,158,.07);border-bottom:1px solid var(--border);
+  font-size:var(--fs-xs);color:var(--text-muted);position:sticky;top:0;z-index:10}
+
+/* ══ 通用件 ══ */
+h2{font-size:var(--fs-lg);font-weight:600;margin-bottom:var(--sp-1)}
+.page-sub{color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:var(--sp-4)}
+.panel{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);
+  margin-bottom:var(--sp-4);overflow:hidden}
+.panel-head{padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);
+  font-size:var(--fs-sm);font-weight:600;display:flex;align-items:center;gap:var(--sp-2)}
+.panel-body{padding:var(--sp-4)}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+th{text-align:left;color:var(--text-muted);font-weight:500;font-size:var(--fs-xs);
+  letter-spacing:.04em;padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--border);
+  white-space:nowrap}
+td{padding:var(--sp-3);border-bottom:1px solid var(--border);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--bg-elevated)}
+.num{font-family:var(--mono);text-align:right;white-space:nowrap}
+.masked{color:var(--text-muted);font-family:var(--mono)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:var(--sp-3);margin-bottom:var(--sp-4)}
+.card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);
+  padding:var(--sp-4)}
+.card-label{font-size:var(--fs-xs);color:var(--text-muted);letter-spacing:.04em;
+  margin-bottom:var(--sp-2)}
+.card-value{font-size:var(--fs-xl);font-family:var(--mono);font-weight:600}
+.card-foot{font-size:var(--fs-xs);color:var(--text-muted);margin-top:var(--sp-1)}
+.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:var(--fs-xs);
+  font-weight:500;white-space:nowrap}
+.p-green{background:rgba(16,185,129,.16);color:var(--healthy)}
+.p-amber{background:rgba(245,158,11,.16);color:var(--warning)}
+.p-red{background:rgba(239,68,68,.16);color:var(--breach)}
+.p-grey{background:rgba(139,148,158,.16);color:var(--text-muted)}
+.p-loss{background:rgba(127,29,29,.35);color:#fca5a5}
+.p-cyan{background:rgba(34,211,238,.14);color:var(--accent)}
+.warn-bar{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);
+  border-radius:var(--radius);padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-4);
+  display:flex;align-items:center;gap:var(--sp-3);font-size:var(--fs-sm)}
+.warn-bar.err{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.35)}
+.warn-bar.ok{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.3)}
+.warn-bar .grow{flex:1}
+.gate{background:rgba(239,68,68,.08);border-left:2px solid var(--breach);
+  padding:var(--sp-2) var(--sp-3);font-size:var(--fs-xs);color:#fca5a5;
+  border-radius:0 var(--radius) var(--radius) 0;margin-top:var(--sp-2)}
+.strike{text-decoration:line-through;color:var(--text-muted)}
+.hint{font-size:var(--fs-xs);color:var(--text-muted);margin-top:var(--sp-1)}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4)}
+@media(max-width:900px){.split{grid-template-columns:1fr}.side{width:150px}}
+
+/* 排班 */
+.sched{overflow-x:auto}
+.sched table{min-width:640px}
+.blk{border-radius:4px;padding:5px 7px;font-size:var(--fs-xs);margin-bottom:3px;
+  border-left:3px solid}
+.b-sm{background:rgba(34,211,238,.12);border-color:var(--accent)}
+.b-in{background:rgba(16,185,129,.12);border-color:var(--healthy)}
+.b-ho{background:rgba(245,158,11,.12);border-color:var(--warning)}
+.b-mt{background:rgba(167,139,250,.14);border-color:#a78bfa}
+
+/* 待办抽屉 */
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(460px,92vw);
+  background:var(--bg-panel);border-left:1px solid var(--border);z-index:50;
+  transform:translateX(100%);transition:transform .22s;display:flex;flex-direction:column}
+.drawer.open{transform:none}
+.drawer-head{padding:var(--sp-4);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:var(--sp-3)}
+.drawer-body{flex:1;overflow-y:auto;padding:var(--sp-3)}
+.todo{background:var(--bg-elevated);border:1px solid var(--border);
+  border-radius:var(--radius);padding:var(--sp-3);margin-bottom:var(--sp-2)}
+.todo.over{border-color:rgba(239,68,68,.5)}
+.todo-top{display:flex;justify-content:space-between;gap:var(--sp-2);margin-bottom:var(--sp-1)}
+.todo-act{font-size:var(--fs-sm);color:var(--text)}
+.todo-meta{font-size:var(--fs-xs);color:var(--text-muted);margin-top:var(--sp-2);
+  display:flex;justify-content:space-between;align-items:center;gap:var(--sp-2)}
+.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;display:none}
+.backdrop.open{display:block}
+
+/* 进度条 */
+.steps{display:flex;gap:2px;margin:var(--sp-3) 0}
+.step{flex:1;text-align:center;font-size:var(--fs-xs);padding:var(--sp-2) 2px;
+  background:var(--bg-elevated);color:var(--text-muted);border-top:2px solid var(--border)}
+.step.done{color:var(--healthy);border-top-color:var(--healthy)}
+.step.now{color:var(--accent);border-top-color:var(--accent);background:rgba(34,211,238,.08)}
+.step.bad{color:var(--breach);border-top-color:var(--breach)}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ 登录 ═══════════════ -->
+<div id="login">
+  <div class="login-card">
+    <div class="logo">KON<span>NEXT</span></div>
+    <div class="login-sub">办公管理平台 · 原型演示</div>
+
+    <div id="step-phone">
+      <div class="field">
+        <label>手机号</label>
+        <input id="phone" placeholder="+61 4xx xxx xxx" value="+61 411 000 004">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="sendCode()">获取验证码</button>
+      <div class="note">
+        全系统<b>无密码</b>——只用短信验证码登录。管理员另需邮箱二次验证。<br>
+        账号找回：仅管理员可自助，其余一律由管理员重置。
+      </div>
+    </div>
+
+    <div id="step-code" style="display:none">
+      <div class="field">
+        <label>验证码（已发送至 <span id="sent-to" class="mono"></span>）</label>
+        <input id="code" placeholder="6 位数字" value="284917" class="mono">
+        <div class="hint">10 分钟内有效，用过即失效</div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="doLogin()">登录</button>
+      <div class="note">
+        <b>原型演示：直接选一个身份进入</b>，看同一套界面在不同权限下的差别
+        <div class="demo-pick">
+          <button class="btn" onclick="loginAs('admin')">陈总 · 核心管理员</button>
+          <button class="btn" onclick="loginAs('presales')">小林 · 售前</button>
+          <button class="btn" onclick="loginAs('finance')">王姐 · 财务</button>
+          <button class="btn" onclick="loginAs('warehouse')">老张 · 采购＋库管</button>
+          <button class="btn" onclick="loginAs('maintenance')">小周 · 运维</button>
+          <button class="btn" onclick="loginAs('eng')">陈工 · 工程管理</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ 主界面 ═══════════════ -->
+<div id="app">
+  <header class="topbar">
+    <div class="brand">KON<span>NEXT</span></div>
+    <nav class="tabs" id="tabs"></nav>
+    <div class="who">
+      <button class="bell" onclick="toggleDrawer()">🔔 待办 <span id="todo-n" class="mono"></span></button>
+      <select id="who-sel" onchange="switchWho(this.value)"></select>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside class="side" id="side"></aside>
+    <main class="main" id="main"></main>
+  </div>
+</div>
+
+<div class="backdrop" id="backdrop" onclick="toggleDrawer()"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head">
+    <b style="flex:1">待办中心</b>
+    <span class="muted" style="font-size:var(--fs-xs)">超期置顶</span>
+    <button class="btn" onclick="toggleDrawer()">✕</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+
+<script>
+/* ════════ 身份与权限（对应契约 fn_can_see_* 与 account_department） ════════ */
+const WHO = {
+  admin:      {name:'陈总', role:'核心管理员', tier:1, depts:['presales','eng','proc','wh','fin','mt'],
+               see:['salary','margin','purchase','customer','stock']},
+  presales:   {name:'小林', role:'售前',       tier:2, depts:['presales'],
+               see:['customer']},
+  finance:    {name:'王姐', role:'财务',       tier:2, depts:['fin'],
+               see:['salary','margin','customer']},
+  warehouse:  {name:'老张', role:'采购＋库管', tier:2, depts:['proc','wh'],
+               see:['purchase','stock']},
+  maintenance:{name:'小周', role:'运维',       tier:2, depts:['mt'],  see:[]},
+  eng:        {name:'陈工', role:'工程管理',   tier:2, depts:['eng'], see:[]},
+};
+const DEPT = {
+  presales:{label:'售前', pages:['总览','项目列表','项目立项','客户与现场','报价录入','签约']},
+  eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','Site Meeting','安装调试','交付','工程流水账','每日上报','人员与外包','文档库','设置']},
+  proc:    {label:'采购', pages:['总览','项目列表','物料主表','汇率','采购单','补货建议','调价历史','RMA索赔']},
+  wh:      {label:'库管', pages:['总览','项目列表','入库','出库','退库与拒收','RMA登记','盘点','物料在谁手里','库存流水','期初移库']},
+  fin:     {label:'财务', pages:['总览','项目列表','付款节点','收款明细','变更估价','S4结算','维护开票','催账与停服','工资','成本与利润率']},
+  mt:      {label:'运维', pages:['总览','项目列表','报修受理','派工与上门','维护单跟踪','业主订阅','维保状态']},
+  decision:{label:'决策页', pages:['决策看板','风险看板','悬而未决','账号与权限','系统健康','审计日志','全局参数']},
+};
+/* ★ 公司级页面（不属于任何项目）—— 其余一律是项目内页面
+   混在一起做全局项目选择器，会让人误以为库存也是分项目的 */
+const COMPANY_PAGES=new Set([
+  'proc/总览','proc/物料主表','proc/汇率','proc/采购单','proc/补货建议','proc/调价历史','proc/RMA索赔',
+  'wh/总览','wh/入库','wh/盘点','wh/库存流水','wh/期初移库','wh/RMA登记',
+  'eng/总览','eng/派工排班','eng/每日上报','eng/人员与外包','eng/文档库','eng/设置',
+  'fin/总览','fin/工资','presales/总览','mt/总览',
+  'presales/项目列表','eng/项目列表','proc/项目列表','wh/项目列表','fin/项目列表','mt/项目列表',
+  'decision/决策看板','decision/风险看板','decision/悬而未决','decision/账号与权限',
+  'decision/系统健康','decision/审计日志','decision/全局参数',
+]);
+/* 项目清单（对应 v_project_label：编号 · 名称 + Suburb + 业主） */
+const PROJECTS=[
+ {code:'KX-2026-0142',name:'Cherrybrook 王宅',suburb:'Cherrybrook',street:'8 Franklin Rd',
+  state:'NSW',owner:'王先生',builder:'Mike · BuildCo',elec:'Tony · Spark电气',
+  status:'项目维护中',band:'p-green'},
+ {code:'KX-2026-0180',name:'Hornsby 陈宅',suburb:'Hornsby',street:'22 Rosamond St',
+  state:'NSW',owner:'陈女士',builder:'Sam · NorthBuild',elec:'Leo · VoltPro',
+  status:'项目交付',band:'p-green'},
+ {code:'KX-2026-0121',name:'Castle Hill 刘宅',suburb:'Castle Hill',street:'5 Gilbert Rd',
+  state:'NSW',owner:'刘先生',builder:'—',elec:'Tony · Spark电气',
+  status:'项目维护中',band:'p-green'},
+ {code:'KX-2026-0160',name:'Ryde 张宅',suburb:'Ryde',street:'31 Blaxland Rd',
+  state:'NSW',owner:'张先生',builder:'Ken · MetroCon',elec:'—',
+  status:'已烂尾',band:'p-loss'},
+ {code:'KX-2026-0155',name:'Epping 李宅',suburb:'Epping',street:'7 Beecroft Rd',
+  state:'NSW',owner:'李先生',builder:'—',elec:'—',status:'留标',band:'p-grey'},
+ {code:'KX-2026-0201',name:'Chatswood 黄宅',suburb:'Chatswood',street:'12 Orchard Rd',
+  state:'NSW',owner:'黄先生',builder:'—',elec:'—',status:'接洽当中',band:'p-grey'},
+];
+let pj=0;   // 当前项目
+let me='finance', tab='fin', page='总览';
+const can = k => WHO[me].see.includes(k);
+/* 金额遮罩：看不到就是 — —，绝不显示 0 */
+const money = (v,k) => can(k) ? `<span class="num">${v}</span>` : `<span class="masked">— —</span>`;
+
+/* ════════ 待办（对应 v_pending_handoff） ════════ */
+const TODOS=[
+ {dept:'presales',ev:'新客户来电',      from:'市场',     act:'安排第一次见面讲解功能',   h:8,  sla:48, pj:'KX-2026-0201'},
+ {dept:'presales',ev:'客户已看过 Draft 报价', from:'报价',  act:'讲解 Draft 并修改后定版',  h:52, sla:48, pj:'KX-2026-0190'},
+ {dept:'fin', ev:'SM3 检查布线完成',   from:'工程管理', act:'开 S2 物料款 Invoice',    h:31, sla:24, pj:'KX-2026-0142'},
+ {dept:'fin', ev:'SM3 登记了变更',     from:'工程管理', act:'安排变更估价',            h:31, sla:48, pj:'KX-2026-0142'},
+ {dept:'fin', ev:'维护上门服务完成',   from:'运维',     act:'按现场归因与工时定价开票', h:6,  sla:24, pj:'KX-2026-0180'},
+ {dept:'proc',ev:'S2 物料款已结清',    from:'财务',     act:'可以下单采购',            h:30, sla:24, pj:'KX-2026-0142'},
+ {dept:'proc',ev:'库存低于红线',       from:'库管',     act:'纳入下次集中采购',        h:12, sla:72, pj:''},
+ {dept:'wh',  ev:'S2 物料款已结清',    from:'财务',     act:'准备收货与出库',          h:30, sla:48, pj:'KX-2026-0142'},
+ {dept:'wh',  ev:'有未退料待结算',     from:'库管',     act:'结算未退料并计入 S4 变更', h:52, sla:48, pj:'KX-2026-0142'},
+ {dept:'eng', ev:'S1 定金已结清',      from:'财务',     act:'安排 SM1 进场',           h:9,  sla:24, pj:'KX-2026-0155'},
+ {dept:'eng', ev:'盘点待审批',         from:'库管',     act:'复核并审批盘亏 A$255.60', h:26, sla:24, pj:''},
+ {dept:'mt',  ev:'项目交付完成',       from:'工程管理', act:'接管运维，启动免责维保',   h:14, sla:24, pj:'KX-2026-0180'},
+];
+const pjLabel = code => { const x=PROJECTS.find(p=>p.code===code);
+  return x? `${x.code.slice(-4)} ${x.suburb}` : code; };
+const pjAddr = code => { const x=PROJECTS.find(p=>p.code===code);
+  return x? `${x.street}, ${x.suburb} ${x.state}` : '—'; };
+const myTodos = () => TODOS.filter(t=>WHO[me].depts.includes(t.dept))
+  .sort((a,b)=>((b.h>b.sla)-(a.h>a.sla))||b.h-a.h);
+
+/* ════════ 登录 ════════ */
+function sendCode(){
+  document.getElementById('sent-to').textContent=document.getElementById('phone').value;
+  document.getElementById('step-phone').style.display='none';
+  document.getElementById('step-code').style.display='';
+}
+function doLogin(){ loginAs('finance'); }
+function loginAs(w){
+  me=w; tab=WHO[w].depts[0]; if(w==='admin') tab='decision';
+  page=DEPT[tab].pages[0];
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').style.display='flex';
+  renderAll();
+}
+function switchWho(w){ me=w; tab=WHO[w].depts.includes(tab)?tab:(w==='admin'?'decision':WHO[w].depts[0]);
+  if(tab==='decision'&&WHO[w].tier!==1) tab=WHO[w].depts[0];
+  page=DEPT[tab].pages[0]; renderAll(); }
+function pickPj(i){ pj=+i; renderAll(); }
+function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; renderAll(); }
+function toggleDrawer(){
+  document.getElementById('drawer').classList.toggle('open');
+  document.getElementById('backdrop').classList.toggle('open');
+}
+
+/* ════════ 渲染骨架 ════════ */
+function renderAll(){
+  const u=WHO[me];
+  document.getElementById('who-sel').innerHTML=Object.keys(WHO)
+    .map(k=>`<option value="${k}"${k===me?' selected':''}>${WHO[k].name} · ${WHO[k].role}</option>`).join('');
+
+  /* 顶部页标：只显示有权限的部门；决策页仅 tier1 */
+  let tabs=u.depts.map(d=>{
+    const n=TODOS.filter(t=>t.dept===d).length;
+    return `<button class="tab${tab===d?' on':''}" onclick="go('${d}')">${DEPT[d].label}${n?`<span class="badge">${n}</span>`:''}</button>`;
+  }).join('');
+  if(u.tier===1) tabs+=`<button class="tab decision${tab==='decision'?' on':''}" onclick="go('decision')">决策页</button>`;
+  document.getElementById('tabs').innerHTML=tabs;
+
+  document.getElementById('side').innerHTML=DEPT[tab].pages
+    .map(p=>`<button class="side-item${page===p?' on':''}" onclick="go('${tab}','${p}')">${p}</button>`).join('')
+    +`<div class="side-sep"></div><button class="side-item muted">帮助</button>`;
+
+  const ts=myTodos();
+  document.getElementById('todo-n').textContent=ts.length;
+  document.getElementById('drawer-body').innerHTML= ts.length? ts.map(t=>`
+    <div class="todo${t.h>t.sla?' over':''}">
+      <div class="todo-top">
+        ${t.pj
+          ? `<div><b class="mono" style="color:var(--accent)">${t.pj}</b>
+               <div class="hint">📍 ${pjAddr(t.pj)}</div></div>`
+          : `<div><span class="pill p-grey">公司级</span>
+               <div class="hint">不属于单个项目</div></div>`}
+        ${t.h>t.sla?`<span class="pill p-red">超期 ${t.h-t.sla}h</span>`:`<span class="pill p-grey">${t.h}h</span>`}
+      </div>
+      <div style="font-size:var(--fs-sm);margin:var(--sp-2) 0 0"><b>${t.ev}</b></div>
+      <div class="todo-act">→ ${t.act}</div>
+      <div class="todo-meta">
+        <span>${t.from} 交来 · SLA ${t.sla}h</span>
+        <button class="btn">已知悉</button>
+      </div>
+    </div>`).join('') : `<div class="muted" style="padding:var(--sp-4)">暂无待办</div>`;
+
+  const isCompany=COMPANY_PAGES.has(tab+'/'+page);
+  const p=PROJECTS[pj];
+  const bar = isCompany
+    ? `<div class="coybar">🏢 <b>公司级页面</b> · 不属于任何单个项目
+         <span class="grow"></span>
+         <span>库存、物料、人员、账号、每日上报都是全公司共用的</span></div>`
+    : `<div class="pjbar">
+         <span class="muted" style="font-size:var(--fs-xs)">当前项目</span>
+         <select onchange="pickPj(this.value)">
+           ${PROJECTS.map((x,i)=>`<option value="${i}"${i===pj?' selected':''}>${x.code} · ${x.name}</option>`).join('')}
+         </select>
+         <span class="pill ${p.band}">${p.status}</span>
+         <span class="sep"></span>
+         <span class="addr">📍 ${p.street}, ${p.suburb} ${p.state}</span>
+         <span class="sep"></span>
+         <span class="addr">业主 ${p.owner}</span>
+         <span class="addr">Builder ${p.builder}</span>
+         <span class="addr">电工 ${p.elec}</span>
+         <span class="grow"></span>
+         <button class="btn" onclick="alert('跳转到该项目全景：七步进度 / SM / 安装 / 交付 / 收款 / 维护 / 订阅')">项目全景 →</button>
+       </div>`;
+  document.getElementById('main').innerHTML=bar+`<div class="main-inner">${view()}</div>`;
+}
+
+/* ════════ 各页内容 ════════ */
+function view(){
+  const key=tab+'/'+page;
+  return (PAGES[key]||PAGES[tab+'/总览']||placeholder)();
+}
+function placeholder(){
+  return `<h2>${DEPT[tab].label} · ${page}</h2>
+  <div class="page-sub">原型未展开此页</div>
+  <div class="panel"><div class="panel-body muted">
+    这一页在《UI 界面清单与字段布局》里有字段定义，原型只做了关键几屏。
+  </div></div>`;
+}
+
+const PAGES={
+
+/* ───────── 财务 · S4 结算 ───────── */
+'fin/S4结算':()=>`
+<h2>S4 结算明细</h2>
+<div class="page-sub">每一条都能追到来源 · 项目见上方上下文条</div>
+${can('customer')?`
+<div class="warn-bar">
+  <span>⚠</span>
+  <span class="grow">尚有<b> 未退料 A$2,013.83 </b>未结算 —— 直接开票会少收这笔钱</span>
+  <button class="btn btn-primary">结算未退料</button>
+</div>`:''}
+<div class="panel">
+  <div class="panel-head">结算明细<span class="muted" style="font-weight:400">
+    不计费的行也列出来，客户问起来有交代</span></div>
+  <table>
+    <thead><tr><th>序</th><th>计费</th><th>类型</th><th>说明</th>
+      <th style="text-align:right">金额 (AUD)</th><th>依据</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">1</td><td><span class="pill p-green">✓</span></td><td>合同尾款</td>
+        <td>S4 尾款（签约价 ${can('customer')?'500,000':'***'} × 10%）</td>
+        <td>${money('50,000.00','customer')}</td><td class="muted">签约合同</td></tr>
+      <tr><td class="mono">2</td><td><span class="pill p-green">✓</span></td><td>变更·增加</td>
+        <td>客厅加两个开关点位（业主现场提出）</td>
+        <td>${money('+4,800.00','customer')}</td><td><a class="muted" href="#" style="color:var(--accent)">SM3 ▸</a></td></tr>
+      <tr><td class="mono">2</td><td><span class="pill p-green">✓</span></td><td>未退料</td>
+        <td>KNX四联面板(白) ×13（Tony 领用未退）</td>
+        <td>${money('+2,013.83','customer')}</td><td><a class="muted" href="#" style="color:var(--accent)">出库单 ▸</a></td></tr>
+      <tr><td class="mono">2</td><td><span class="pill p-green">✓</span></td><td>变更·减少</td>
+        <td>取消车库两个感应器（业主删减）</td>
+        <td>${money('−1,500.00','customer')}</td><td><a class="muted" href="#" style="color:var(--accent)">SM3 ▸</a></td></tr>
+      <tr style="opacity:.6"><td class="mono">2</td><td><span class="pill p-grey">✗</span></td>
+        <td>移位（电工整改）</td><td class="strike">主卧面板从床头移到门口</td>
+        <td class="masked">不计费</td><td class="muted">SM3 ▸</td></tr>
+    </tbody>
+  </table>
+  <div class="panel-body" style="border-top:1px solid var(--border);display:flex;
+    justify-content:flex-end;align-items:center;gap:var(--sp-4)">
+    <span class="muted">S4 应收合计</span>
+    <b style="font-size:var(--fs-lg)">${money('A$ 55,313.83','customer')}</b>
+    <button class="btn btn-primary" ${can('customer')?'':'disabled'}>开 S4 Invoice</button>
+  </div>
+  ${can('customer')?`<div class="gate">门禁：尚有未退料未结算时按钮禁用 —— 系统开票会自动算成 A$53,300.00，比明细少 2,013.83</div>`:''}
+</div>
+<div class="panel">
+  <div class="panel-head">追溯 · 点开「客厅加两个开关点位」</div>
+  <div class="panel-body" style="font-size:var(--fs-sm);line-height:2">
+    来源环节 <b>SM3 检查布线</b> ｜ 登记人 <b>小陈(工程师)</b> ｜ 登记日期 2026-01-10<br>
+    已知会 <span class="pill p-green">设计</span> <span class="pill p-green">采购</span> <span class="pill p-green">财务</span><br>
+    估价来源 <b>外部系统</b> ｜ 外部单号 <span class="mono">VAR-0142-计算表.xlsx</span><br>
+    填写人 <b>财务-王姐</b> ｜ 填写时间 2026-07-29 13:42<br>
+    <span class="muted">计算依据：</span>依据 SM3 照片 + 库管出库单，2 点位含面板 2 块与布线
+  </div>
+</div>`,
+
+/* ───────── 库管 · 出库 ───────── */
+'wh/出库':()=>`
+<h2>物料出库</h2>
+<div class="page-sub">★ 物料在这一刻才落到具体项目</div>
+<div class="split">
+  <div class="panel">
+    <div class="panel-head">新建出库单</div>
+    <div class="panel-body">
+      <div class="field"><label>项目</label>
+        <select><option>KX-2026-0142 · Cherrybrook 王宅</option>
+          <option disabled>KX-2026-0143 · S2 未结清，不能出库放货</option></select>
+        <div class="hint">S2 物料款未结清的项目不出现在可选列表里</div></div>
+      <div class="field"><label>提货人</label>
+        <select><option>Tony · Spark电气 · 电工（本项目参建方）</option>
+          <option>小陈 · 我方工程人员</option></select>
+        <div class="hint">只能选我方人员或<b>本项目立项时录入的参建方</b>；手机号自动带出并定格在本单</div></div>
+      <div class="field"><label>物料明细</label>
+        <table style="margin-top:var(--sp-2)">
+          <thead><tr><th>物料</th><th style="text-align:right">数量</th>
+            <th style="text-align:right">可用库存</th><th style="text-align:right">单价</th></tr></thead>
+          <tbody>
+            <tr><td>KNX四联面板 (白)</td><td class="num">12</td><td class="num">38</td>
+              <td>${money('85.20','stock')}</td></tr>
+            <tr><td>KNX四联面板 (黑)</td><td class="num">6</td><td class="num">24</td>
+              <td>${money('85.20','stock')}</td></tr>
+          </tbody></table>
+        <div class="hint">显示名 = 物料名 + 规格，自动拼接 —— 白/黑两行的物料名完全相同，只靠小字区分会看串</div></div>
+      <div class="gate">门禁：出库数超过可用库存直接拒绝 ——「KNX四联面板 (白) 当前库存 38，出库 80 不足」</div>
+      <button class="btn btn-primary btn-block">确认出库</button>
+    </div>
+  </div>
+  <div>
+    <div class="panel">
+      <div class="panel-head">① 提货清单短信 → 提货人</div>
+      <div class="panel-body mono" style="font-size:var(--fs-sm);white-space:pre-line;color:var(--text-muted)">【KONNEXT】项目 KX-2026-0142 提货清单：
+KNX四联面板 (白) ×12
+KNX四联面板 (黑) ×6
+收到请回复 yes 确认。
+Please reply YES to confirm receipt.</div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">② 物料发放告知 → Builder <span class="pill p-cyan">责任凭证</span></div>
+      <div class="panel-body mono" style="font-size:var(--fs-sm);white-space:pre-line;color:var(--text-muted)">致 Mike：
+项目 KX-2026-0142，我司已于 2026-07-30 16:40
+将以下物料交付给 Tony（+61422000222）：
+KNX四联面板 (白) ×12
+KNX四联面板 (黑) ×6
+未使用物料请于工程结束前办理退库。
+★ 逾期未退回的物料将计入本项目变更(Variation)结算。</div>
+      <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)" >
+        <span class="muted">没有这份告知，业主凭什么认未退料那笔账。这不是通知，是凭证。</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">③ 提货确认</div>
+      <div class="panel-body">
+        <table><tbody>
+          <tr><td>OUT-2026-0142-01</td><td>Tony</td>
+            <td><span class="pill p-amber">已出库 · 待确认</span></td></tr>
+          <tr><td>OUT-2026-0142-02</td><td>小陈</td>
+            <td><span class="pill p-green">已接收 · 短信回 YES</span></td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+</div>`,
+
+/* ───────── 运维 · 业主订阅 ───────── */
+'mt/业主订阅':()=>`
+<h2>业主订阅</h2>
+<div class="page-sub">交付过程中签署 · 五档（第 5 档 = 不订阅）· <b>订阅收支不计入利润率</b></div>
+<div class="cards">
+  <div class="card"><div class="card-label">生效中</div>
+    <div class="card-value" style="color:var(--healthy)">12</div>
+    <div class="card-foot">另有 2 即将到期 · 1 已逾期</div></div>
+  <div class="card"><div class="card-label">年化订阅费</div>
+    <div class="card-value">${can('customer')?'A$ 21,480':'— —'}</div>
+    <div class="card-foot">月均 ${can('customer')?'A$ 1,790':'— —'}</div></div>
+  <div class="card"><div class="card-label">累计已收</div>
+    <div class="card-value">${can('customer')?'A$ 48,260':'— —'}</div>
+    <div class="card-foot">含已退订项目的历史已收</div></div>
+  <div class="card"><div class="card-label">未订阅（第5档）</div>
+    <div class="card-value muted">7</div>
+    <div class="card-foot">交付后未签订阅协议</div></div>
+</div>
+<div class="panel">
+  <div class="panel-head">订阅明细 <span class="muted" style="font-weight:400">四色状态</span></div>
+  <table>
+    <thead><tr><th>项目</th><th>业主</th><th>档位</th><th style="text-align:right">年费</th>
+      <th>本期</th><th style="text-align:right">剩余</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td>KX-2026-0142<div class="hint">Cherrybrook NSW</div></td><td>王先生</td><td>第2档</td><td>${money('1,200.00','customer')}</td>
+        <td class="muted mono">2026-05-31 → 2027-05-31</td><td class="num">305 天</td>
+        <td><span class="pill p-green">生效中</span></td></tr>
+      <tr><td>KX-2026-0180<div class="hint">Hornsby NSW</div></td><td>陈女士</td><td>第1档</td><td>${money('2,400.00','customer')}</td>
+        <td class="muted mono">2025-08-19 → 2026-08-19</td><td class="num">20 天</td>
+        <td><span class="pill p-amber">即将到期</span></td></tr>
+      <tr><td>KX-2026-0121<div class="hint">Castle Hill NSW</div></td><td>刘先生</td><td>第3档</td><td>${money('800.00','customer')}</td>
+        <td class="muted mono">2025-06-01 → 2026-06-01</td><td class="num">−59 天</td>
+        <td><span class="pill p-red">已逾期</span></td></tr>
+      <tr><td>KX-2026-0098<div class="hint">Pymble NSW</div></td><td>周女士</td><td>第2档</td><td>${money('1,200.00','customer')}</td>
+        <td class="muted mono">已退订 2026-04-12</td><td class="num">—</td>
+        <td><span class="pill p-grey">已退订</span></td></tr>
+      <tr><td>KX-2026-0155<div class="hint">Epping NSW</div></td><td>李先生</td><td class="muted">第5档·不订阅</td>
+        <td class="masked">—</td><td class="muted">—</td><td class="num">—</td>
+        <td><span class="pill p-grey">未订阅</span></td></tr>
+    </tbody>
+  </table>
+  <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
+    <span class="muted">门禁：订阅只能建在<b>已交付</b>项目上；第 5 档不得填年费；1~4 档必须填年费。
+    已退订的历史已收仍计入累计，但不计年化与活跃数。</span>
+  </div>
+</div>`,
+
+/* ───────── 工程管理 · 派工排班 ───────── */
+'eng/派工排班':()=>`
+<h2>派工排班</h2>
+<div class="page-sub">四类任务：Site Meeting · 安装调试 · 交付 · 技术维护（块上数字 = 计划时长，"计划超时"那条线的分母）</div>
+<div class="panel sched">
+  <div class="panel-head">本周
+    <span class="pill p-cyan">SM</span><span class="pill p-green">安装</span>
+    <span class="pill p-amber">交付</span>
+    <span class="pill" style="background:rgba(167,139,250,.14);color:#a78bfa">维护</span></div>
+  <table>
+    <thead><tr><th style="width:110px"></th><th>7/27 一</th><th>7/28 二</th><th>7/29 三</th><th>7/30 四</th><th>7/31 五</th></tr></thead>
+    <tbody>
+      <tr><td><b>小陈</b><div class="hint">时薪制</div></td>
+        <td><div class="blk b-sm">SM3 · 0142<div class="muted">180 分</div></div></td>
+        <td><div class="blk b-in">安装 · 0142<div class="muted">480 分</div></div></td>
+        <td><div class="blk b-in">安装 · 0142<div class="muted">480 分</div></div></td>
+        <td><div class="blk b-in">安装 · 0142<div class="muted">480 分</div></div></td>
+        <td></td></tr>
+      <tr><td><b>李四</b><div class="hint">月薪制</div></td>
+        <td></td>
+        <td><div class="blk b-ho">交付 · 0180<div class="muted">120 分</div></div></td>
+        <td></td>
+        <td><div class="blk b-sm">SM4 · 0160<div class="muted">240 分</div></div></td>
+        <td></td></tr>
+      <tr><td><b>小周</b><div class="hint">时薪制</div></td>
+        <td><div class="blk b-mt">维护 · 0180<div class="muted">120 分</div></div></td>
+        <td></td>
+        <td><div class="blk b-mt">维护 · 0121<div class="muted">90 分</div></div></td>
+        <td></td>
+        <td></td></tr>
+      <tr><td><b>外包A</b><div class="hint">日薪 ${can('salary')?'A$510':'— —'}</div></td>
+        <td></td>
+        <td><div class="blk b-in">安装 · 0142<div class="muted">按日薪</div></div></td>
+        <td><div class="blk b-in">安装 · 0142<div class="muted">按日薪</div></div></td>
+        <td></td><td></td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="split">
+  <div class="panel">
+    <div class="panel-head">拖拽时的门禁</div>
+    <div class="panel-body">
+      <div class="gate">门禁：SM4 未完成（且未标不适用），不能派安装调试任务</div>
+      <div class="gate">门禁：S4 尾款未结清，不能安排交付</div>
+      <div class="gate">门禁：项目尚未交付，不能派技术维护任务（交付前的活属于安装调试）</div>
+      <div class="hint">报错原样透传，不包装成"操作失败" —— 用户要知道为什么不行</div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-head">路上时间参考 · 小陈 7/28</div>
+    <div class="panel-body">
+      <table><tbody>
+        <tr><td class="muted">计划预估</td><td class="num">30 分</td>
+          <td class="hint">按计划出发时间查，存死</td></tr>
+        <tr><td class="muted">实际预估</td><td class="num">55 分</td>
+          <td class="hint">按实际离场时间查，存死</td></tr>
+        <tr><td class="muted">真实耗时</td><td class="num">60 分</td>
+          <td class="hint">打卡现算</td></tr>
+      </tbody></table>
+      <div class="hint" style="margin-top:var(--sp-3)">
+        真实 vs 实际预估只差 5 分 → 路上正常；<br>
+        实际预估 vs 计划预估差 25 分 → <b>不是他慢，是出发晚撞高峰</b>。<br>
+        为什么出发晚，每日上报里有答案。
+      </div>
+    </div>
+  </div>
+</div>`,
+
+/* ───────── 决策页 · 决策看板 ───────── */
+'decision/决策看板':()=>`
+<h2>决策看板</h2>
+<div class="page-sub">全公司 · 截至 2026-07-30 ·
+  利润率 = 合同额 − 材料 − 人工 + 维护净额（<b>订阅不计入</b>）</div>
+<div class="cards">
+  <div class="card"><div class="card-label">在手合同额</div>
+    <div class="card-value">A$ 4.82M</div><div class="card-foot">已成交 11 个项目</div></div>
+  <div class="card"><div class="card-label">已收 / 应收</div>
+    <div class="card-value">A$ 3.16M</div>
+    <div class="card-foot">未收 A$ 1.66M · 其中<span style="color:var(--breach)">超期 A$ 214K</span></div></div>
+  <div class="card"><div class="card-label">加权利润率</div>
+    <div class="card-value" style="color:var(--healthy)">52.4%</div>
+    <div class="card-foot">红线 45% · 绿线 55%</div></div>
+  <div class="card"><div class="card-label">订阅年化<span class="pill p-cyan">独立</span></div>
+    <div class="card-value">A$ 21.5K</div><div class="card-foot">12 份生效 · 不计入利润率</div></div>
+</div>
+<div class="split">
+  <div class="panel">
+    <div class="panel-head">项目状态分布 <span class="muted" style="font-weight:400">12 态</span></div>
+    <div class="panel-body">
+      <table><tbody>
+        <tr><td>接洽当中 / 待联系</td><td class="num">6</td><td><span class="pill p-grey">在谈</span></td></tr>
+        <tr><td>已签署报价 / 定金已收</td><td class="num">3</td><td><span class="pill p-cyan">已中标</span></td></tr>
+        <tr><td>施工中</td><td class="num">4</td><td><span class="pill p-cyan">在建</span></td></tr>
+        <tr><td>项目交付</td><td class="num">2</td><td><span class="pill p-green">交付</span></td></tr>
+        <tr><td>项目维护中</td><td class="num">5</td><td><span class="pill p-green">维护</span></td></tr>
+        <tr><td><b>留标</b></td><td class="num">7</td><td><span class="pill p-grey">未中标</span></td></tr>
+        <tr><td><b>已烂尾</b></td><td class="num">1</td><td><span class="pill p-loss">风险</span></td></tr>
+      </tbody></table>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-head">利润率四档分布</div>
+    <div class="panel-body">
+      <table><tbody>
+        <tr><td><span class="pill p-green">healthy ≥55%</span></td><td class="num">5</td>
+          <td class="hint">健康</td></tr>
+        <tr><td><span class="pill p-amber">warning 45–55%</span></td><td class="num">3</td>
+          <td class="hint">留意</td></tr>
+        <tr><td><span class="pill p-red">breach 0–45%</span></td><td class="num">2</td>
+          <td class="hint">破红线</td></tr>
+        <tr><td><span class="pill p-loss">loss &lt;0</span></td><td class="num">1</td>
+          <td class="hint">亏损</td></tr>
+        <tr><td><span class="pill p-grey">not_started</span></td><td class="num">6</td>
+          <td class="hint">未开工·不显示利润率</td></tr>
+        <tr><td><span class="pill p-grey">bid_lost</span></td><td class="num">7</td>
+          <td class="hint">留标·不显示</td></tr>
+      </tbody></table>
+      <div class="hint" style="margin-top:var(--sp-3)">
+        ★ 未开工与留标项目<b>不显示</b>利润率 —— 没花钱算出 100% 会误导决策。<br>
+        已烂尾项目的收入基数换成<b>实收合同款</b>，不是合同额。
+      </div>
+    </div>
+  </div>
+</div>
+<div class="panel">
+  <div class="panel-head">项目明细</div>
+  <table>
+    <thead><tr><th>编号</th><th>项目 · 地址</th><th>状态</th><th>停留</th>
+      <th style="text-align:right">合同额</th><th style="text-align:right">材料</th>
+      <th style="text-align:right">人工</th><th style="text-align:right">维护净</th>
+      <th style="text-align:right">利润率</th><th>订阅</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">0142</td><td>Cherrybrook 王宅<div class="hint">8 Franklin Rd, Cherrybrook NSW</div></td>
+        <td><span class="pill p-green">维护中</span></td><td class="num muted">3 天</td>
+        <td>${money('500,000','margin')}</td><td>${money('149,952','margin')}</td>
+        <td>${money('57,600','margin')}</td><td>${money('+3,200','margin')}</td>
+        <td>${can('margin')?'<span class="pill p-green">59.1%</span>':'<span class="masked">— —</span>'}</td>
+        <td><span class="pill p-green">生效中</span></td></tr>
+      <tr><td class="mono">0180</td><td>Hornsby 陈宅<div class="hint">22 Rosamond St, Hornsby NSW</div></td>
+        <td><span class="pill p-green">交付</span></td><td class="num muted">30 天</td>
+        <td>${money('350,000','margin')}</td><td>${money('148,700','margin')}</td>
+        <td>${money('51,200','margin')}</td><td>${money('0','margin')}</td>
+        <td>${can('margin')?'<span class="pill p-amber">42.9%</span>':'<span class="masked">— —</span>'}</td>
+        <td><span class="pill p-amber">即将到期</span></td></tr>
+      <tr><td class="mono">0121</td><td>Castle Hill 刘宅<div class="hint">5 Gilbert Rd, Castle Hill NSW</div></td>
+        <td><span class="pill p-green">维护中</span></td><td class="num muted">210 天</td>
+        <td>${money('620,000','margin')}</td><td>${money('268,400','margin')}</td>
+        <td>${money('96,300','margin')}</td><td>${money('−1,850','margin')}</td>
+        <td>${can('margin')?'<span class="pill p-amber">40.9%</span>':'<span class="masked">— —</span>'}</td>
+        <td><span class="pill p-red">已逾期</span></td></tr>
+      <tr><td class="mono">0160</td><td>Ryde 张宅<div class="hint">31 Blaxland Rd, Ryde NSW</div></td>
+        <td><span class="pill p-loss">已烂尾</span></td><td class="num muted">10 天</td>
+        <td>${money('400,000','margin')}</td><td>${money('96,800','margin')}</td>
+        <td>${money('38,400','margin')}</td><td>${money('0','margin')}</td>
+        <td>${can('margin')?'<span class="pill p-loss">−237.6%</span>':'<span class="masked">— —</span>'}</td>
+        <td class="muted">—</td></tr>
+      <tr><td class="mono">0155</td><td>Epping 李宅<div class="hint">7 Beecroft Rd, Epping NSW</div></td>
+        <td><span class="pill p-grey">留标</span></td><td class="num muted">—</td>
+        <td>${money('300,000','margin')}</td><td class="masked">—</td><td class="masked">—</td>
+        <td class="masked">—</td>
+        <td class="masked">不显示</td><td><span class="pill p-grey">未订阅</span></td></tr>
+    </tbody>
+  </table>
+  <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
+    <span class="muted">0160 已烂尾：合同 400,000 但只收到 40,000，收入基数按<b>实收</b>算 →
+    (40,000 − 96,800 − 38,400) ÷ 40,000 = <b>−237.6%</b>。按合同额算会显示 +66%，那是自欺。</span>
+  </div>
+</div>`,
+
+/* ───────── 决策页 · 风险看板 ───────── */
+'decision/风险看板':()=>`
+<h2>风险看板</h2>
+<div class="page-sub">留标 · 已烂尾 · 状态停留超阈值 · 订阅逾期，一屏看全</div>
+<div class="panel">
+  <table>
+    <thead><tr><th>编号</th><th>项目</th><th>状态</th><th>风险类型</th>
+      <th style="text-align:right">停留天数</th><th style="text-align:right">阈值</th>
+      <th style="text-align:right">超出</th><th>订阅</th><th style="text-align:right">利润率</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">0160</td><td>Ryde 张宅<div class="hint">31 Blaxland Rd, Ryde NSW</div></td>
+        <td><span class="pill p-loss">已烂尾</span></td><td>已烂尾</td>
+        <td class="num">10</td><td class="num muted">—</td><td class="num muted">—</td>
+        <td class="muted">—</td>
+        <td>${can('margin')?'<span class="pill p-loss">−237.6%</span>':'<span class="masked">— —</span>'}</td></tr>
+      <tr><td class="mono">0180</td><td>Hornsby 陈宅<div class="hint">22 Rosamond St, Hornsby NSW</div></td>
+        <td><span class="pill p-green">交付</span></td><td>状态停留超阈值</td>
+        <td class="num">30</td><td class="num">30</td><td class="num" style="color:var(--warning)">0</td>
+        <td><span class="pill p-amber">即将到期</span></td>
+        <td>${can('margin')?'<span class="pill p-amber">42.9%</span>':'<span class="masked">— —</span>'}</td></tr>
+      <tr><td class="mono">0121</td><td>Castle Hill 刘宅<div class="hint">5 Gilbert Rd, Castle Hill NSW</div></td>
+        <td><span class="pill p-green">维护中</span></td><td>订阅逾期</td>
+        <td class="num">210</td><td class="num muted">—</td><td class="num muted">—</td>
+        <td><span class="pill p-red">已逾期 59 天</span></td>
+        <td>${can('margin')?'<span class="pill p-amber">40.9%</span>':'<span class="masked">— —</span>'}</td></tr>
+      <tr><td class="mono">0155</td><td>Epping 李宅<div class="hint">7 Beecroft Rd, Epping NSW</div></td>
+        <td><span class="pill p-grey">留标</span></td><td>留标</td>
+        <td class="num">0</td><td class="num muted">—</td><td class="num muted">—</td>
+        <td><span class="pill p-grey">未订阅</span></td><td class="masked">不显示</td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="panel">
+  <div class="panel-head">状态停留阈值（工程管理维护）</div>
+  <div class="panel-body">
+    <table><tbody>
+      <tr><td>接洽当中</td><td class="num">45 天</td><td>待联系</td><td class="num">30 天</td></tr>
+      <tr><td>已签署报价</td><td class="num">14 天</td><td>定金已收取</td><td class="num">21 天</td></tr>
+      <tr><td>施工中</td><td class="num">120 天</td><td>项目交付</td><td class="num">30 天</td></tr>
+      <tr><td>维护中 / 留标 / 已烂尾</td><td class="num muted">终态不设</td><td></td><td></td></tr>
+    </tbody></table>
+    <div class="hint" style="margin-top:var(--sp-3)">状态一变，停留天数自动归零</div>
+  </div>
+</div>`,
+
+/* ───────── 决策页 · 悬而未决（每行都说得清是哪个项目） ───────── */
+'decision/悬而未决':()=>{
+ const T=[
+  ['部门交接待响应','KX-2026-0142','Cherrybrook','SM3 检查布线完成','开 S2 物料款 Invoice','财务',31,24,true],
+  ['未退料待结算','KX-2026-0142','Cherrybrook','面板(白)×13（Tony 领用未退）','结算并计入 S4 变更','财务',52,48,true],
+  ['盘点待审批','公司级','','ST-2026-08-01（A区货架·面板类）','复核并审批盘亏 A$255.60','工程管理',26,24,true],
+  ['日结未记录·挂起不发','无从追溯','','小陈 · 2026-07-29','★当天既无打卡也无派工，需人工确认','工程管理',48,168,false],
+  ['日结未记录·挂起不发','KX-2026-0142 / 0180','Cherrybrook / Hornsby','李四 · 2026-07-25','待负责人补录 · 当天跨 2 个项目','工程管理',120,168,false],
+  ['变更待估价','KX-2026-0142','Cherrybrook','add｜客厅加两个开关点位','外部算完后填回结算金额','财务',60,48,true],
+  ['安装剩余待处理','KX-2026-0142','Cherrybrook','二楼地暖联动（二楼）','挂起 · 等空调队','工程管理',480,720,false],
+  ['出库待提货人确认','KX-2026-0142','Cherrybrook','OUT-2026-0142-01 · Tony','短信回 YES 或人工确认','库管',80,72,true],
+  ['维护单未结案','KX-2026-0121','Castle Hill','影音室没声音','★需补填故障归因才能结案','运维／财务',200,336,false],
+  ['RMA 在供应商处未返还','KX-2026-0142','Cherrybrook','RMA-20260601-001 · 四联面板(白)','催供应商换修返还','采购',960,720,true],
+  ['问题上报待处理','KX-2026-0142','Cherrybrook','产品问题｜同批面板第三次同样故障','按类型分派处理','工程管理',30,168,false],
+  ['问题上报待处理','公司级','','标准化问题｜出库单流程需标准化','按类型分派处理','工程管理',96,168,false],
+  ['报销待审批','KX-2026-0142','Cherrybrook','EXP-001 · 小陈 · parking A$18.50','审批（不能自己批自己）','财务',80,72,true],
+  ['报销待审批','公司级','','EXP-002 · 小陈 · tool A$260.00','公司通用工具·多项目共用','财务',20,72,false],
+ ].sort((a,b)=>(b[8]-a[8])||b[6]-a[6]);
+ return `<h2>悬而未决</h2>
+ <div class="page-sub">所有挂起／待处理的事一张表 ·
+   <b>每行都说得清是哪个项目</b>，或明确标「公司级」—— 绝不留空白
+   · 对应 <span class="mono">v_open_tasks</span></div>
+ <div class="warn-bar err">
+   <span>⛔</span><span class="grow">共 ${T.length} 项待处理，其中
+     <b>${T.filter(x=>x[8]).length} 项已超 SLA</b>；
+     <b style="color:var(--warning)">1 项无从追溯项目</b>，需人工确认</span></div>
+ <div class="panel">
+   <table>
+     <thead><tr><th>类型</th><th>项目 · 地址</th><th>事项</th><th>要做什么</th>
+       <th>归谁</th><th style="text-align:right">等了</th><th style="text-align:right">SLA</th><th></th></tr></thead>
+     <tbody>${T.map(t=>{
+       const isCoy = t[1]==='公司级', isLost = t[1]==='无从追溯';
+       return `<tr>
+        <td>${t[0]}</td>
+        <td>${isCoy?'<span class="pill p-grey">公司级</span>'
+                  :isLost?'<span class="pill p-red">★ 无从追溯</span>'
+                  :`<b class="mono">${t[1]}</b><div class="hint">📍 ${t[2]}</div>`}</td>
+        <td>${t[3]}</td>
+        <td class="hint">${t[4]}</td>
+        <td class="muted">${t[5]}</td>
+        <td class="num">${t[6]}h</td>
+        <td class="num muted">${t[7]}h</td>
+        <td>${t[8]?'<span class="pill p-red">超期</span>':'<span class="pill p-grey">正常</span>'}</td>
+       </tr>`;}).join('')}</tbody>
+   </table>
+   <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
+     <span class="muted">
+     <b>三类处理：</b>
+     ① 真公司级（盘点／采购单／汇率／假日／账号）→ 明确标「公司级」；
+     ② 跨项目（每日上报／日结／倒休）→ 带出<b>当天涉及哪些项目</b>；
+     ③ 本该有项目却可空（问题上报）→ 加约束，非公司级<b>必须填项目</b>。<br>
+     那条「无从追溯」是断言 <span class="mono">INV-UI-04</span> 抓出来的：
+     当天既无打卡也无派工，负责人补录时无从下手 —— 系统不猜，明确告诉你要人工确认。</span>
+   </div>
+ </div>`;
+},
+
+/* ───────── 决策页 · 系统健康 ───────── */
+'decision/系统健康':()=>`
+<h2>系统健康</h2>
+<div class="page-sub">57 条不变量断言 —— 门禁问"该拦的拦住了吗"，断言问"<b>没被拦住的，算对了吗</b>"</div>
+<div class="warn-bar err">
+  <span>⛔</span><span class="grow"><b>有严重违规，不可上线/发版</b> ·
+    57 条 / 通过 55 / 违规 2</span>
+  <button class="btn btn-primary">立即重跑</button>
+</div>
+<div class="panel">
+  <div class="panel-head">违规项</div>
+  <table>
+    <thead><tr><th>代码</th><th>严重度</th><th>检查项</th><th>结果</th><th></th></tr></thead>
+    <tbody>
+      <tr><td class="mono">INV-FIN-01</td><td><span class="pill p-red">critical</span></td>
+        <td>S4 首版发票金额 = 签约价×比例 + Σ可计费变更</td>
+        <td style="color:var(--breach)">✗ 违规 1 处</td>
+        <td><button class="btn">看明细</button></td></tr>
+      <tr><td class="mono">INV-SEC-01</td><td><span class="pill p-red">critical</span></td>
+        <td>所有视图必须 security_invoker=true</td>
+        <td style="color:var(--breach)">✗ 违规 2 处</td>
+        <td><button class="btn">看明细</button></td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="split">
+  <div class="panel">
+    <div class="panel-head">INV-FIN-01 明细</div>
+    <div class="panel-body mono" style="font-size:var(--fs-sm);white-space:pre-line;color:var(--text-muted)">{
+  "invoice_no": "INV-0142-S4-v1",
+  "发票金额": 54800.00,
+  "应为":     56813.83
+}</div>
+    <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
+      <span class="muted">变更漏估、未退料没结算，或发票金额被人工改过却没升版本</span></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head">INV-SEC-01 明细</div>
+    <div class="panel-body mono" style="font-size:var(--fs-sm);white-space:pre-line;color:var(--text-muted)">{ "relname": "v_s4_settlement" }
+{ "relname": "v_material_price" }</div>
+    <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
+      <span class="muted">否则视图按所有者权限执行，RLS 与金额遮罩<b>整个被绕过</b></span></div>
+  </div>
+</div>
+<div class="panel">
+  <div class="panel-head">通过的检查（按组）</div>
+  <div class="panel-body">
+    <table><tbody>
+      <tr><td>库存</td><td class="num">7</td><td><span class="pill p-green">全过</span></td>
+        <td class="hint">库存非负 · 到货不超下单 · 期初只做一次 · 划掉物料不得再出库…</td></tr>
+      <tr><td>财务</td><td class="num">9</td><td><span class="pill p-red">1 违规</span></td>
+        <td class="hint">S4 金额 · 结清差额 · 移位不计费 · 维护单只在已交付项目…</td></tr>
+      <tr><td>工资</td><td class="num">8</td><td><span class="pill p-green">全过</span></td>
+        <td class="hint">付薪=首尾−午餐 · 正常+加班=付薪 · 入职前离职后无日结…</td></tr>
+      <tr><td>权限安全</td><td class="num">8</td><td><span class="pill p-red">1 违规</span></td>
+        <td class="hint">视图 security_invoker · 三级不得进后台 · 核心管理员唯一…</td></tr>
+      <tr><td>流程与订阅</td><td class="num">25</td><td><span class="pill p-green">全过</span></td>
+        <td class="hint">SM 顺序 · 交付须签收 · 留标/烂尾边界 · 订阅只在已交付…</td></tr>
+    </tbody></table>
+  </div>
+</div>
+<div class="warn-bar ok">
+  <span>✓</span><span class="grow">汇率 1 天前更新 · 公共假日覆盖至 2026-12-28 · 交接超期 4 项（见待办中心）</span>
+</div>`,
+
+/* ───────── 决策页 · 账号与权限 ───────── */
+'decision/账号与权限':()=>`
+<h2>账号与权限</h2>
+<div class="page-sub">三级结构 · 全系统无密码（短信验证码）· 账号找回仅管理员可自助</div>
+<div class="warn-bar">
+  <span>⚠</span><span class="grow"><b>老张</b>同时负责采购与库管：可自己下单、自己确认到货。
+    建议到货确认与盘点审批交由他人复核。</span>
+  <span class="pill p-amber">兼任风险</span>
+</div>
+<div class="panel">
+  <div class="panel-head">账号列表 <button class="btn" style="margin-left:auto">＋ 新建账号</button></div>
+  <table>
+    <thead><tr><th>级别</th><th>登录名</th><th>姓名</th><th>部门</th>
+      <th>可进后台</th><th>手机</th><th>邮箱</th><th>操作</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill p-cyan">决策管理员</span></td><td class="mono">core</td>
+        <td>陈总 <span class="pill p-amber">核心</span></td><td class="muted">—（全局）</td>
+        <td><span class="pill p-green">✓</span></td><td class="mono">+61400000000</td>
+        <td class="mono">core@…</td><td><button class="btn">重置</button></td></tr>
+      <tr><td><span class="pill p-cyan">决策管理员</span></td><td class="mono">admin2</td>
+        <td>李副总</td><td class="muted">—（全局）</td>
+        <td><span class="pill p-green">✓</span></td><td class="mono">+61400000002</td>
+        <td class="mono">a2@…</td><td><button class="btn">重置</button> <button class="btn">停用</button></td></tr>
+      <tr><td>部门负责人</td><td class="mono">stock</td><td>老张</td>
+        <td><b>采购＋库管</b></td><td><span class="pill p-green">✓</span></td>
+        <td class="mono">+61411000003</td><td class="mono">s@…</td>
+        <td><button class="btn">重置</button> <button class="btn">改部门</button></td></tr>
+      <tr><td>部门负责人</td><td class="mono">finance</td><td>王姐</td><td>财务</td>
+        <td><span class="pill p-green">✓</span></td><td class="mono">+61411000004</td>
+        <td class="mono">f@…</td><td><button class="btn">重置</button></td></tr>
+      <tr><td>施工人员</td><td class="mono">w1</td><td>小陈</td><td class="muted">—（只上报）</td>
+        <td><span class="pill p-grey">✗ 仅 App</span></td><td class="mono">+61422000001</td>
+        <td class="muted">—</td><td><button class="btn">重置</button></td></tr>
+      <tr><td>施工人员</td><td class="mono">out_a</td><td>外包A <span class="pill p-grey">外包</span></td>
+        <td class="muted">—（只上报）</td><td><span class="pill p-grey">✗ 仅 App</span></td>
+        <td class="mono">+61422000002</td><td class="muted">—</td>
+        <td><button class="btn">重置</button></td></tr>
+    </tbody>
+  </table>
+  <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
+    <span class="muted">管理员 2 / 上限 3 ｜ 核心管理员 1 ｜ 未绑手机 0 ｜ 无邮箱 0<br>
+    门禁：只有核心管理员能建/停用管理员，且<b>不能停用自己</b>；
+    施工人员账号只能由「工程管理」建，且 <span class="mono">backend_access</span> 恒为 false</span>
+  </div>
+</div>
+<div class="panel">
+  <div class="panel-head">权限矩阵（节选）</div>
+  <table>
+    <thead><tr><th>表</th><th>售前</th><th>工程管理</th><th>采购</th><th>库管</th><th>财务</th><th>运维</th></tr></thead>
+    <tbody>
+      ${[['project','写','写','读','读','写','读'],
+         ['site_meeting','读','写','读','读','读','读'],
+         ['material','读','读','写','读','读','读'],
+         ['stock_out','读','读','读','写','读','读'],
+         ['payment_milestone','读','读','读','读','写','读'],
+         ['subscription','读','读','读','读','读','写'],
+         ['daily_payroll','读','读','读','读','写','读']]
+        .map(r=>`<tr><td class="mono">${r[0]}</td>`+r.slice(1).map(c=>
+          `<td><span class="pill ${c==='写'?'p-green':'p-grey'}">${c}</span></td>`).join('')+`</tr>`).join('')}
+    </tbody>
+  </table>
+  <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
+    <span class="muted"><b>读全部、写本部门</b> —— 下游能查上游的流水，卡在哪儿一目了然。
+    但<b>金额分五类单独管</b>，业务流水互相可见 ≠ 钱的数字互相可见。</span>
+  </div>
+</div>`,
+
+/* ───────── 决策页 · 全局参数 ───────── */
+'decision/全局参数':()=>`
+<h2>全局参数</h2>
+<div class="page-sub">改一处全公司生效 · 改动全部进审计日志</div>
+<div class="panel">
+  <div class="panel-head">★ 金额可见性（五类）</div>
+  <table>
+    <thead><tr><th>类别</th><th>谁能看</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>薪酬</td><td><span class="pill p-cyan">财务＋管理层</span></td>
+        <td class="hint">时薪/月薪/日薪/日结/月工资单/倒休/离职清算</td></tr>
+      <tr><td>成本与利润率</td><td><span class="pill p-cyan">财务＋管理层</span></td>
+        <td class="hint">人工成本/物料成本/工程利润率/长期利润率</td></tr>
+      <tr><td>采购价与毛利率</td><td><span class="pill p-cyan">采购＋管理层</span></td>
+        <td class="hint">三币种采购价/运费/毛利率/调价历史</td></tr>
+      <tr><td>客户合同金额</td><td><span class="pill p-cyan">财务＋售前＋管理层</span></td>
+        <td class="hint">签约价/S1~S4应收实收/变更结算/维护开票/订阅年费</td></tr>
+      <tr><td>库存成本单价</td><td><span class="pill p-cyan">库管＋采购＋财务＋管理层</span></td>
+        <td class="hint">出入库单价/盘点盈亏/RMA修理费运费</td></tr>
+    </tbody>
+  </table>
+  <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
+    <span class="muted">售前能看合同金额，因为签约价是他填的；库管能看库存成本，因为出库单价是他填的。
+    各自只看本职需要的那部分钱。</span></div>
+</div>
+<div class="split">
+  <div class="panel">
+    <div class="panel-head">工时与考勤</div>
+    <div class="panel-body"><table><tbody>
+      <tr><td>超时阈值</td><td class="num">30 分</td></tr>
+      <tr><td>标准工作日</td><td class="num">480 分</td></tr>
+      <tr><td>午餐（无薪·自动扣）</td><td class="num">30 分</td></tr>
+      <tr><td>午餐触发门槛 / 锚点</td><td class="num">300 分 / 12:00</td></tr>
+      <tr><td>考勤围栏半径</td><td class="num">100 米</td></tr>
+    </tbody></table></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head">加班倍数 <span class="pill p-amber">待劳资顾问确认</span></div>
+    <div class="panel-body"><table><tbody>
+      <tr><td>平日超时</td><td class="num">1.0</td></tr>
+      <tr><td>周六</td><td class="num">1.0</td></tr>
+      <tr><td>周日</td><td class="num">1.0</td></tr>
+      <tr><td>公共假日</td><td class="num">1.0</td></tr>
+    </tbody></table>
+    <div class="hint">现在全是 1.0（加班不加倍）。按你们实际走的 Award / EA 填；不许设成低于 1</div></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head">财务与库管</div>
+    <div class="panel-body"><table><tbody>
+      <tr><td>工资周期</td><td class="num">上月 21 → 本月 20</td></tr>
+      <tr><td>超期天数（只提示不作废）</td><td class="num">30 天</td></tr>
+      <tr><td>拒付停服后提醒停服务器</td><td class="num">90 天</td></tr>
+      <tr><td>盘亏审批线</td><td class="num">A$ 200</td></tr>
+      <tr><td>订阅「即将到期」提前</td><td class="num">30 天</td></tr>
+    </tbody></table></div>
+  </div>
+  <div class="panel">
+    <div class="panel-head">日历与汇率</div>
+    <div class="panel-body"><table><tbody>
+      <tr><td>NSW 公共假日</td><td class="num">2026 年 12 天</td>
+        <td><span class="pill p-green">覆盖至 12-28</span></td></tr>
+      <tr><td>CNY → AUD</td><td class="num">0.2100</td><td class="hint">1 天前 · Google</td></tr>
+      <tr><td>USD → AUD</td><td class="num">1.5200</td><td class="hint">1 天前 · Google</td></tr>
+    </tbody></table>
+    <div class="hint">日历剩不足 90 天会预警。<b>宁可空着（当普通日算）也不要凭记忆填错</b></div></div>
+  </div>
+</div>`,
+
+/* ───────── 售前 · 项目立项 ───────── */
+'presales/项目立项':()=>`
+<h2>项目立项</h2>
+<div class="page-sub">一切的地基 · 分组填写，别做成一长条</div>
+<div class="split">
+  <div>
+    <div class="panel">
+      <div class="panel-head">基本 · 地址</div>
+      <div class="panel-body">
+        <div class="field"><label>项目编号（自动）</label>
+          <input value="${PROJECTS[pj].code}" readonly class="mono"></div>
+        <div class="field"><label>项目名称</label><input value="${PROJECTS[pj].name}"></div>
+        <div class="field"><label>街道</label><input value="${PROJECTS[pj].street}"></div>
+        <div class="split" style="gap:var(--sp-3)">
+          <div class="field"><label>Suburb</label><input value="${PROJECTS[pj].suburb}"></div>
+          <div class="field"><label>州</label><select><option>NSW</option><option>VIC</option>
+            <option>QLD</option><option>SA</option><option>WA</option><option>TAS</option>
+            <option>ACT</option><option>NT</option></select></div>
+        </div>
+        <div class="hint">坐标自动生成 —— 既给地图，也当<b>考勤围栏圆心</b>（默认半径 100 米）</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">房屋与结构</div>
+      <div class="panel-body">
+        <div class="split" style="gap:var(--sp-3)">
+          <div class="field"><label>房屋用途</label><select><option>自住</option><option>出售</option>
+            <option>混合</option><option>商业</option></select></div>
+          <div class="field"><label>房屋类型</label><select><option>House</option><option>Duplex</option>
+            <option>Townhouse</option><option>Apartment</option><option>Villa</option></select></div>
+        </div>
+        <div class="field"><label>施工阶段 <span style="color:var(--breach)">必填</span></label>
+          <select><option>DA</option><option>CC</option><option>拆除</option><option>地基</option>
+            <option selected>结构</option><option>Rough-in</option><option>翻新</option><option>其他</option></select></div>
+        <div class="field"><label>楼层结构</label>
+          <table style="margin-top:var(--sp-2)"><tbody>
+            <tr><td class="muted">地下室</td><td><span class="pill p-grey">无</span></td>
+                <td class="muted">一层</td><td><span class="pill p-cyan">双砖</span></td></tr>
+            <tr><td class="muted">二层</td><td><span class="pill p-cyan">轻钢</span></td>
+                <td class="muted">三层</td><td><span class="pill p-grey">无</span></td></tr>
+          </tbody></table></div>
+        <div class="field"><label>★ 免责维保月数（0~12，默认 3）</label>
+          <input value="12" class="mono" style="width:90px">
+          <div class="hint">签约时定死。<b>从交付之日起算</b>，期内非人为故障人工＋物料全免</div></div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="panel">
+      <div class="panel-head">联系人 ×3（平铺·固定三个角色）</div>
+      <div class="panel-body">
+        <table><thead><tr><th></th><th>姓名</th><th>电话</th><th>角色</th></tr></thead>
+        <tbody>
+          <tr><td class="muted">业主一</td><td>黄先生</td><td class="mono">0433 111 222</td><td>决策人</td></tr>
+          <tr><td class="muted">业主二</td><td>黄太太</td><td class="mono">0433 111 333</td><td>共同决策</td></tr>
+          <tr><td class="muted">关系人</td><td>Kevin</td><td class="mono">0433 111 444</td><td>介绍人</td></tr>
+        </tbody></table>
+        <div class="hint">固定三个角色 → 平铺进主表；家庭成员数量不定 → 单独建表</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">佣金</div>
+      <div class="panel-body">
+        <div class="split" style="gap:var(--sp-3)">
+          <div class="field"><label>类型</label><select><option>百分比</option><option>固定金额</option></select></div>
+          <div class="field"><label>数值</label><input value="3.5" class="mono"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">售前七步进度</div>
+      <div class="panel-body">
+        <div class="steps">
+          <div class="step done">① 讲功能</div><div class="step done">② 全功能设计</div>
+          <div class="step done">③ 讲解修改</div><div class="step now">④ 出 Draft</div>
+          <div class="step">⑤ 讲 Draft</div><div class="step">⑥ 签字</div><div class="step">⑦ 收定金</div>
+        </div>
+        <div class="hint">前六步售前填，<b>第七步由财务自动写</b>（字段级所有权）</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-body">
+        <button class="btn btn-primary btn-block">保存</button>
+        <div class="gate">乐观锁：进表单时记住 version，提交带上。
+          冲突时提示「项目已被他人修改（期望 3，实际 5），请刷新重试」</div>
+      </div>
+    </div>
+  </div>
+</div>`,
+
+/* ───────── 售前 · 签约 ───────── */
+'presales/签约':()=>`
+<h2>签约</h2>
+<div class="page-sub">★第六步签字 = 方案定版，整条链从这里开始动</div>
+<div class="panel">
+  <div class="panel-head">售前七步</div>
+  <div class="panel-body">
+    <div class="steps">
+      <div class="step done">① 讲功能<div class="hint">03-12</div></div>
+      <div class="step done">② 全功能设计<div class="hint">04-02</div></div>
+      <div class="step done">③ 讲解修改<div class="hint">04-20</div></div>
+      <div class="step done">④ 出 Draft<div class="hint">05-08</div></div>
+      <div class="step done">⑤ 讲 Draft<div class="hint">06-15</div></div>
+      <div class="step now">⑥ 签字<div class="hint">待签</div></div>
+      <div class="step">⑦ 收定金<div class="hint">财务写</div></div>
+    </div>
+  </div>
+</div>
+<div class="split">
+  <div class="panel">
+    <div class="panel-head">签约信息</div>
+    <div class="panel-body">
+      <div class="field"><label>最终签约价（AUD）</label>
+        ${can('customer')?'<input value="620000" class="mono">':'<input value="— —" readonly class="masked">'}
+        <div class="hint">售前自己填。定金由财务写，此处只读</div></div>
+      <div class="field"><label>定金（财务写入 · 只读）</label>
+        <input value="${can('customer')?'尚未收取':'— —'}" readonly class="masked"></div>
+      <div class="field"><label>报价系统数据（手填占位）</label>
+        <table style="margin-top:var(--sp-2)"><tbody>
+          <tr><td class="muted">报价单号</td><td class="mono">Q-2026-0190-v3</td></tr>
+          <tr><td class="muted">报价金额</td><td>${money('620,000.00','customer')}</td></tr>
+          <tr><td class="muted">报价版本 / 状态</td><td>v3 · <span class="pill p-green">已定版</span></td></tr>
+          <tr><td class="muted">★ 预测人工工时</td><td class="num">480 h</td></tr>
+        </tbody></table>
+        <div class="gate">预测工时别漏 —— 它是人工消耗率的<b>分母</b>，不填的话消耗百分比永远算不出来</div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="panel">
+      <div class="panel-head">第六步 · 客户签字</div>
+      <div class="panel-body">
+        <div class="field"><label>签字文件</label>
+          <button class="btn btn-block">📎 上传签署页扫描件</button></div>
+        <button class="btn btn-primary btn-block">确认第六步已签字</button>
+        <div class="warn-bar" style="margin:var(--sp-4) 0 0">
+          <span>→</span><span class="grow">点下去会发生三件事</span></div>
+        <table style="margin-top:var(--sp-3)"><tbody>
+          <tr><td class="mono">1</td><td>项目状态可置「已签署报价」</td>
+            <td class="hint">没签字时置这个状态会被门禁拒</td></tr>
+          <tr><td class="mono">2</td><td>后续所有部门解锁</td>
+            <td class="hint">方案定版信号</td></tr>
+          <tr><td class="mono">3</td><td><b>自动短信通知财务</b></td>
+            <td class="hint">→ 开 S1 定金 Invoice · SLA 24h</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head">门禁提示</div>
+      <div class="panel-body">
+        <div class="gate">门禁：尚未完成第六步（最终定价·客户签字），不能置为「已签署报价」</div>
+        <div class="gate">门禁：方案尚未定版（第六步未完成），不能进入施工/交付/维护状态</div>
+        <div class="hint">报错原样透传，不包装成"操作失败" —— 用户要知道为什么不行</div>
+      </div>
+    </div>
+  </div>
+</div>`,
+
+/* ───────── 项目列表（六个部门共用 · 对应 v_project_directory） ───────── */
+'presales/项目列表':()=>projectList('presales'),
+'eng/项目列表':()=>projectList('eng'),
+'proc/项目列表':()=>projectList('proc'),
+'wh/项目列表':()=>projectList('wh'),
+'fin/项目列表':()=>projectList('fin'),
+'mt/项目列表':()=>projectList('mt'),
+
+/* ───────── 各部门总览 ───────── */
+'fin/总览':()=>overview('财务',[
+  ['应收未收','A$ 1.66M','customer','其中超期 A$ 214K'],
+  ['本月已收','A$ 428K','customer','走账 A$ 396K · 现金 A$ 32K'],
+  ['待估价变更','3 条','','S4 开票前必须估完'],
+  ['本月工资待封账','21 日','','2 天挂起待补录'],
+]),
+'wh/总览':()=>overview('库管',[
+  ['库存品项','86','','其中 5 项低于红线'],
+  ['在途','12 项','','最早预计 8/03 到货'],
+  ['待出库','4 单','','2 单等 S2 结清'],
+  ['已划掉但仍有存货','1 项','','旧款三联面板 ×12，请出清'],
+]),
+'proc/总览':()=>overview('采购',[
+  ['低于红线','5 项','','C1 定期备货，纳入下次集中采购'],
+  ['待到货','12 项','','PO-0087 等 3 张单'],
+  ['本月调价','7 次','purchase','全部留痕可追溯'],
+  ['RMA 待索赔','2 件','','在供应商处 40 天未返还'],
+]),
+'mt/总览':()=>overview('运维',[
+  ['未结案维护单','6','','2 单已上门待定价开票'],
+  ['免责维保期内项目','8','','最近一个 3 个月后到期'],
+  ['订阅生效中','12','','2 即将到期 · 1 已逾期'],
+  ['待派工','3','','最久等了 14 小时'],
+]),
+'eng/总览':()=>overview('工程管理',[
+  ['在建项目','4','','1 个状态停留超阈值'],
+  ['今日派工','7 人次','','含 2 名外包'],
+  ['未记录工时','2 天','','挂起待补录，需负责人填说明'],
+  ['超期交接','2 项','','盘点待审批已等 26 小时'],
+]),
+'presales/总览':()=>overview('售前',[
+  ['接洽当中','6','','2 个停留超 45 天（阈值 45）'],
+  ['待签约','3','customer','合同额合计 A$ 1.24M'],
+  ['本月留标','2','','参与但未中标，已归档'],
+  ['待录报价','1','','缺预测工时 → 人工消耗率算不出'],
+]),
+};
+
+/* 每个部门都管全公司项目；编号+地址人人可见，金额按权限遮 */
+const DEPT_COL={
+  presales:{h:'售前七步',      f:p=>p.pre  },
+  eng:     {h:'工程进度',      f:p=>p.eng  },
+  proc:    {h:'采购/在途',     f:p=>p.proc },
+  wh:      {h:'出库/未退',     f:p=>p.wh   },
+  fin:     {h:'收款进度',      f:p=>p.fin  },
+  mt:      {h:'维护/订阅',     f:p=>p.mt   },
+};
+const PJX={
+ 'KX-2026-0142':{pre:'七步已完成',eng:'SM4✓ 安装完工 已交付',proc:'12 项已到货',
+   wh:'出库 18 · <b style="color:var(--warning)">未退 13</b>',fin:'S1~S4 已结清',mt:'维护 1 单在跑 · 订阅生效中'},
+ 'KX-2026-0180':{pre:'七步已完成',eng:'已交付 · 停留 30 天',proc:'—',
+   wh:'出库 24 · 未退 0',fin:'S4 已结清',mt:'待接管 · <b style="color:var(--warning)">订阅即将到期</b>'},
+ 'KX-2026-0121':{pre:'七步已完成',eng:'维护中',proc:'—',wh:'出库 31 · 未退 2',
+   fin:'S1~S4 已结清',mt:'维护 2 单 · <b style="color:var(--breach)">订阅已逾期</b>'},
+ 'KX-2026-0160':{pre:'七步已完成',eng:'<b style="color:var(--breach)">施工中断</b>',proc:'8 项在途',
+   wh:'出库 11 · 未退 6',fin:'<b style="color:var(--breach)">仅收 S1 · 拒付</b>',mt:'—'},
+ 'KX-2026-0155':{pre:'③ 讲解修改后无反馈',eng:'—',proc:'—',wh:'—',fin:'未开票',mt:'—'},
+ 'KX-2026-0201':{pre:'④ 出 Draft 报价',eng:'—',proc:'—',wh:'—',fin:'未开票',mt:'—'},
+};
+const PJMONEY={
+ 'KX-2026-0142':{v:'500,000',r:'500,000',m:'59.1%',b:'p-green'},
+ 'KX-2026-0180':{v:'350,000',r:'350,000',m:'42.9%',b:'p-amber'},
+ 'KX-2026-0121':{v:'620,000',r:'620,000',m:'40.9%',b:'p-amber'},
+ 'KX-2026-0160':{v:'400,000',r:'40,000', m:'−237.6%',b:'p-loss'},
+ 'KX-2026-0155':{v:'300,000',r:'0',      m:null,b:'p-grey'},
+ 'KX-2026-0201':{v:'—',      r:'0',      m:null,b:'p-grey'},
+};
+function projectList(d){
+  const col=DEPT_COL[d];
+  return `<h2>项目列表</h2>
+  <div class="page-sub">★ 每个部门都管<b>全公司项目</b>。编号与地址人人可见；金额按各自权限显示
+    · 对应 <span class="mono">v_project_directory</span></div>
+  <div class="panel">
+    <div class="panel-head">全部项目 6 个
+      <input class="search" placeholder="搜地址或编号…"
+        style="width:200px;margin-left:auto;padding:5px var(--sp-2)"></div>
+    <table>
+      <thead><tr>
+        <th>编号</th><th>项目 · 地址</th><th>业主 / Builder / 电工</th><th>状态</th>
+        <th style="text-align:right">停留</th><th>${col.h}</th>
+        <th style="text-align:right">合同额</th><th style="text-align:right">已收</th>
+        <th style="text-align:right">利润率</th><th></th></tr></thead>
+      <tbody>${PROJECTS.map((p,i)=>{
+        const x=PJX[p.code]||{}, mo=PJMONEY[p.code]||{};
+        const stall=p.code==='KX-2026-0180'?30:(p.code==='KX-2026-0160'?10:(p.code==='KX-2026-0121'?210:0));
+        const over=(p.code==='KX-2026-0180');
+        return `<tr>
+          <td class="mono">${p.code}</td>
+          <td><b>${p.name}</b><div class="hint">📍 ${p.street}, ${p.suburb} ${p.state}</div></td>
+          <td class="hint">${p.owner}<br>B: ${p.builder}<br>E: ${p.elec}</td>
+          <td><span class="pill ${p.band}">${p.status}</span></td>
+          <td class="num${over?' ':''}" ${over?'style="color:var(--warning)"':''}>${stall} 天${over?' ⚠':''}</td>
+          <td class="hint">${col.f(x)||'—'}</td>
+          <td>${money(mo.v||'—','customer')}</td>
+          <td>${money(mo.r||'—','customer')}</td>
+          <td>${mo.m? (can('margin')?`<span class="pill ${mo.b}">${mo.m}</span>`:'<span class="masked">— —</span>')
+                    : '<span class="masked">不显示</span>'}</td>
+          <td><button class="btn" onclick="pickPj(${i});go('${d}','${DEPT[d].pages[2]}')">进入 →</button></td>
+        </tr>`;}).join('')}</tbody>
+    </table>
+    <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
+      <span class="muted">读全部、写本部门 —— 下游能查上游的流水，卡在哪儿一目了然。
+      <b>0155 留标</b>与<b>0201 未开工</b>不显示利润率（没花钱算出 100% 会误导）；
+      <b>0160 已烂尾</b>按<b>实收 40,000</b>算 → −237.6%，按合同额算会显示 +66%，那是自欺。</span>
+    </div>
+  </div>`;
+}
+function overview(name,cards){
+  return `<h2>${name} · 总览</h2>
+  <div class="page-sub">截至 2026-07-30 · 本部门待办 ${myTodos().length} 项</div>
+  <div class="cards">${cards.map(c=>`
+    <div class="card"><div class="card-label">${c[0]}</div>
+      <div class="card-value">${c[2]?(can(c[2])?c[1]:'— —'):c[1]}</div>
+      <div class="card-foot">${c[3]}</div></div>`).join('')}</div>
+  <div class="panel">
+    <div class="panel-head">我的待办 <span class="muted" style="font-weight:400">超期置顶</span>
+      <button class="btn" style="margin-left:auto" onclick="toggleDrawer()">全部 →</button></div>
+    <table><thead><tr><th>项目编号</th><th>项目地址</th><th>事件</th><th>谁交来</th><th>我要做什么</th>
+      <th style="text-align:right">等了</th><th style="text-align:right">SLA</th><th></th></tr></thead>
+    <tbody>${myTodos().slice(0,5).map(t=>`<tr>
+      <td>${t.pj?`<b class="mono">${t.pj}</b>`:'<span class="pill p-grey">公司级</span>'}</td>
+      <td class="hint">${t.pj?'📍 '+pjAddr(t.pj):'不属于单个项目'}</td>
+      <td>${t.ev}</td>
+      <td class="muted">${t.from}</td><td>${t.act}</td>
+      <td class="num">${t.h}h</td><td class="num muted">${t.sla}h</td>
+      <td>${t.h>t.sla?`<span class="pill p-red">超期</span>`:`<span class="pill p-grey">正常</span>`}</td>
+    </tr>`).join('')||`<tr><td colspan="8" class="muted">暂无待办</td></tr>`}</tbody></table>
+  </div>`;
+}
+</script>
+</body>
+</html>
