@@ -362,12 +362,15 @@ let pj=0;   // 当前项目
 let me='finance', tab='fin', page='总览';
 let pjFilter=null; // 项目列表状态筛选：null=用本部门默认（DEPT_FILTER）
 /* 售前大表：列组开关（默认只显示 项目/售前状态/预测报价/签约定价）+ city/state 过滤 */
-let bigCols={contact:false,comm:false,house:false,notes:false};
+let bigCols={contact:false,comm:false,house:false,family:false,notes:false};
 let bigCity='全部', bigState='全部';
 /* 售前提醒阈值（天）：前六步任一步停留达到此值 → 每天提醒；售前自己在「设置」改 */
 let preRemindDays=3;
 /* 实时搜索（逐字刷新）：大表与全公司项目列表各一份关键词 */
 let bigQ='', pjQ='';
+/* ★下拉选项不写死（用户定）：联系人/关系人角色 与 参建方工种，售前设置页自行维护 */
+let roleOpts=['决策人','共同决策','介绍人','设计师','项目管理','亲属代理','其他'];
+let tradeOpts=['设计师','Builder','电工','空调','地暖','泳池','影音室','转盘','电梯','其他'];
 const can = k => WHO[me].see.includes(k);
 /* 金额遮罩：看不到就是 — —，绝不显示 0 */
 const money = (v,k) => can(k) ? `<span class="num">${v}</span>` : `<span class="masked">— —</span>`;
@@ -424,6 +427,10 @@ function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全�
 /* 逐字刷新：重渲染后把光标还给搜索框（否则打一个字就失焦） */
 function keepFocus(id){ renderAll(); const e=document.getElementById(id);
   if(e){ e.focus(); const n=e.value.length; e.setSelectionRange(n,n); } }
+/* 设置页维护下拉选项（角色/工种） */
+function optAdd(list,inputId){ const e=document.getElementById(inputId); const v=e&&e.value.trim();
+  if(v&&!list.includes(v)) list.push(v); renderAll(); }
+function optDel(list,i){ list.splice(i,1); renderAll(); }
 function toggleDrawer(){
   document.getElementById('drawer').classList.toggle('open');
   document.getElementById('backdrop').classList.toggle('open');
@@ -1283,9 +1290,22 @@ ${ops([
    &&(!q||`${p.code} ${p.nick} ${p.street} ${p.city} ${p.state}`.toLowerCase().includes(q)));
  const inp=(v,w,ph)=>`<input class="${w||'w80'}" value="${v||''}" placeholder="${ph||'手填'}">`;
  const two=(a,b)=>`<div style="display:flex;flex-direction:column;gap:3px">${a}${b}</div>`;
+ /* 角色下拉：选项来自 roleOpts（售前设置页维护，不写死） */
  const roleSel=(cur)=>`<select style="font-size:11px;padding:3px 4px">
-    <option${cur==='决策人'?' selected':''}>决策人</option><option${cur==='共同决策'?' selected':''}>共同决策</option>
-    <option${cur==='介绍人'?' selected':''}>介绍人</option><option${cur?'':' selected'}>—</option><option>其他</option></select>`;
+    <option${cur&&roleOpts.includes(cur)?'':' selected'}>—</option>${
+    roleOpts.map(r=>`<option${r===cur?' selected':''}>${r}</option>`).join('')}</select>`;
+ /* 子表在大表里的直读文本（点「改」进补全抽屉编辑） */
+ const EXTRA={
+  'KX-2026-0201':{parties:'Builder Ken·NBuild',fam:'成人×2 · 老人×1(68)',floors:''},
+  'KX-2026-0198':{parties:'Builder Joe·CastleCo / 电工 Ken·Volt',fam:'成人×2',floors:'一层双砖 · 瓦顶'},
+  'KX-2026-0190':{parties:'电工 Leo·VoltPro',fam:'',floors:''},
+  'KX-2026-0186':{parties:'设计师 Lily / Builder Sam·MosBuild / 泳池 Aqua',fam:'成人×2 · 儿童×2(6,9)',floors:'一层双砖 · 二层混凝土 · 平顶'},
+  'KX-2026-0142':{parties:'Builder Mike·BuildCo / 电工 Tony·Spark',fam:'成人×2 · 儿童×1(8) · 老人×1(70)',floors:'一层双砖 · 二层轻钢 · 瓦顶'},
+ };
+ const EX=p=>EXTRA[p.code]||{};
+ const subCell=(p,v,emptyTxt)=>`${v?`<span style="font-size:11px">${v}</span>`
+    :`<span class="hint" style="color:var(--warning)">${emptyTxt}</span>`}
+    <a style="color:var(--accent);cursor:pointer;font-size:11px" onclick="detOpen('${p.code}','${p.nick}')">改</a>`;
  const colBtn=(k,label)=>`<button class="btn${bigCols[k]?' btn-primary':''}"
     onclick="bigCols['${k}']=!bigCols['${k}'];renderAll()">${label}</button>`;
  const noteCell=(v,r,who)=>{
@@ -1304,7 +1324,7 @@ ${ops([
       <i class="lb">${s}</i></div>`;
    }).join('')}</div>`;
  const gCount=10
-   +(bigCols.contact?6:0)+(bigCols.comm?5:0)+(bigCols.house?3:0)+(bigCols.notes?2:0);
+   +(bigCols.contact?7:0)+(bigCols.comm?5:0)+(bigCols.house?4:0)+(bigCols.family?1:0)+(bigCols.notes?2:0);
  return `<h2>售前大表 <span class="pill p-cyan">整个售前 · 就这一页</span></h2>
  <div class="page-sub">所有售前项目一页看全 · 更多列组用开关调出 · 说明看左下「？ 帮助」</div>
  ${ops([
@@ -1320,7 +1340,7 @@ ${ops([
      style="width:210px;padding:6px var(--sp-2)" oninput="bigQ=this.value;keepFocus('bigq')">
    <span class="sep" style="width:1px;height:20px;background:var(--border)"></span>
    <span class="muted" style="font-size:var(--fs-xs)">更多列组：</span>
-   ${colBtn('contact','联系人')}${colBtn('comm','关系人与佣金')}${colBtn('house','房屋')}${colBtn('notes','注释(财务·工程)')}
+   ${colBtn('contact','联系人+参建方')}${colBtn('comm','关系人与佣金')}${colBtn('house','房屋+楼层')}${colBtn('family','家庭成员')}${colBtn('notes','注释(财务·工程)')}
    <span class="sep" style="width:1px;height:20px;background:var(--border)"></span>
    <span class="muted" style="font-size:var(--fs-xs)">City</span>
    <select onchange="bigCity=this.value;renderAll()" style="width:auto">${cities.map(c=>`<option${c===bigCity?' selected':''}>${c}</option>`).join('')}</select>
@@ -1334,9 +1354,10 @@ ${ops([
     <th class="c1" colspan="2" style="text-align:left">项目</th>
     <th colspan="2" class="gs">售前状态 · 6+1 全部手填</th>
     <th class="gs">预测报价</th><th colspan="4" class="gs">签约 · 前三样待签约时一并填</th>
-    ${bigCols.contact?'<th colspan="6" class="gs">联系人 · 每人五项</th>':''}
+    ${bigCols.contact?'<th colspan="7" class="gs">联系人与参建方 · 每人五项</th>':''}
     ${bigCols.comm?'<th colspan="5" class="gs">关系人与佣金 · 同一组</th>':''}
-    ${bigCols.house?'<th colspan="3" class="gs">房屋</th>':''}
+    ${bigCols.house?'<th colspan="4" class="gs">房屋 · 含楼层结构</th>':''}
+    ${bigCols.family?'<th class="gs">家庭成员</th>':''}
     ${bigCols.notes?'<th colspan="2" class="gs">注释 · 填了对方必读</th>':''}
     <th class="gs"></th>
    </tr>
@@ -1345,9 +1366,10 @@ ${ops([
     <th class="gs">顺序勾 · 状态名在勾下</th><th style="text-align:right">停留</th>
     <th class="gs">范围（立项填）</th>
     <th class="gs">报价单号</th><th style="text-align:right">预测工时 h</th><th style="text-align:right">签约定价 AUD</th><th>定金（财务写）</th>
-    ${bigCols.contact?'<th class="gs">业主一 · 昵称</th><th>电话 · 邮箱</th><th>角色</th><th>业主二 · 昵称</th><th>电话 · 邮箱</th><th>角色</th>':''}
+    ${bigCols.contact?'<th class="gs">业主一 · 昵称</th><th>电话 · 邮箱</th><th>角色</th><th>业主二 · 昵称</th><th>电话 · 邮箱</th><th>角色</th><th>参建方（工种 · 联系人）</th>':''}
     ${bigCols.comm?'<th class="gs">关系人 · 昵称</th><th>电话 · 邮箱</th><th>角色</th><th>佣金类型</th><th>佣金数值</th>':''}
-    ${bigCols.house?'<th class="gs">用途</th><th>类型（9选）</th><th>施工阶段<span style="color:var(--breach)">★</span></th>':''}
+    ${bigCols.house?'<th class="gs">用途</th><th>类型（9选）</th><th>施工阶段<span style="color:var(--breach)">★</span></th><th>楼层 · 屋顶</th>':''}
+    ${bigCols.family?'<th class="gs">成员构成</th>':''}
     ${bigCols.notes?'<th class="gs">财务注释</th><th>工程注释</th>':''}
     <th class="gs">操作</th>
    </tr>
@@ -1378,7 +1400,8 @@ ${ops([
        <td>${ro?(p.o1r||'—'):roleSel(p.o1r)}</td>
        <td>${ro?two(`<b>${p.o2||'—'}</b>`,`<span class="hint">${p.o2n||''}</span>`):two(inp(p.o2,'w60','姓名'),inp(p.o2n,'w60','昵称'))}</td>
        <td>${ro?two(`<span class="mono">${p.o2p||'—'}</span>`,`<span class="hint">${p.o2e||''}</span>`):two(inp(p.o2p,'w80','电话'),inp(p.o2e,'w80','邮箱'))}</td>
-       <td>${ro?(p.o2r||'—'):roleSel(p.o2r)}</td>`:''}
+       <td>${ro?(p.o2r||'—'):roleSel(p.o2r)}</td>
+       <td>${subCell(p,EX(p).parties,'未录参建方')}</td>`:''}
      ${bigCols.comm?`
        <td class="gs">${ro?two(`<b>${p.rel||'—'}</b>`,`<span class="hint">${p.reln||''}</span>`):two(inp(p.rel,'w60','姓名'),inp(p.reln,'w60','昵称'))}</td>
        <td>${ro?two(`<span class="mono">${p.relp||'—'}</span>`,`<span class="hint">${p.rele||''}</span>`):two(inp(p.relp,'w80','电话'),inp(p.rele,'w80','邮箱'))}</td>
@@ -1387,7 +1410,9 @@ ${ops([
        <td>${ro?(p.cv?(p.ct==='固定'?'A$'+p.cv:p.cv+'%'):'—'):inp(p.cv,'w60',p.ct==='固定'?'金额':'%')}</td>`:''}
      ${bigCols.house?`<td class="gs">${ro?(p.use||'—'):`<select><option${p.use?'':' selected'}>—</option><option${p.use==='自住'?' selected':''}>自住</option><option${p.use==='出售'?' selected':''}>出售</option><option>混合</option><option>商业</option></select>`}</td>
        <td>${ro?(p.ht||'—'):`<select><option${p.ht?'':' selected'}>—</option><option${p.ht==='House'?' selected':''}>House</option><option${p.ht==='Duplex'?' selected':''}>Duplex</option><option${p.ht==='Townhouse'?' selected':''}>Townhouse</option><option>Apartment</option><option>商铺</option><option>Villa</option><option>Granny Flat</option><option>空地</option><option>仓库</option></select>`}</td>
-       <td>${ro?(p.stage||'—'):`<select><option${p.stage?'':' selected'}>—</option><option${p.stage==='DA'?' selected':''}>DA</option><option${p.stage==='CC'?' selected':''}>CC</option><option>拆除</option><option>地基</option><option>地下室</option><option${p.stage==='结构'?' selected':''}>结构</option><option${p.stage==='Rough-in'?' selected':''}>Rough-in</option><option>翻新</option><option>其他</option></select>`}</td>`:''}
+       <td>${ro?(p.stage||'—'):`<select><option${p.stage?'':' selected'}>—</option><option${p.stage==='DA'?' selected':''}>DA</option><option${p.stage==='CC'?' selected':''}>CC</option><option>拆除</option><option>地基</option><option>地下室</option><option${p.stage==='结构'?' selected':''}>结构</option><option${p.stage==='Rough-in'?' selected':''}>Rough-in</option><option>翻新</option><option>其他</option></select>`}</td>
+       <td>${subCell(p,EX(p).floors,'楼层未填')}</td>`:''}
+     ${bigCols.family?`<td class="gs">${subCell(p,EX(p).fam,'成员未录')}</td>`:''}
      ${bigCols.notes?`<td class="gs">${noteCell(p.noteF,p.noteFr,'财务')}</td><td>${noteCell(p.noteE,p.noteEr,'工程')}</td>`:''}
      <td class="gs">${ro?`<button class="btn" onclick="alert('${p.lost?'已流失（流标）项目 · 归档只读':'已签约项目转入工程线，售前侧只读'}')">查看</button>`
             :`<button class="btn" onclick="detOpen('${p.code}','${p.nick}')">补全</button>`}</td>
@@ -1399,8 +1424,9 @@ ${ops([
    勾「已签约」会自动通知财务开 S1 定金 Invoice —— 其余勾不惊动别的部门。`)}
  ${helpNote(`③ 预测报价（范围）立项时填；报价单号/预测工时/签约定价三样「待签约」阶段一并填；
    定金列只读（财务写入后亮绿）。预测工时是人工消耗率的分母，别漏。`)}
- ${helpNote(`④ 行内「补全 →」打开子表：联系人五项/家庭成员/参建方/方案倾向/楼层屋顶。
-   参建方与方案倾向是下游硬依赖 —— 出库提货人、Builder 告知、SM 电工签字、SM2 带线清单全靠它，没填的标黄。`)}
+ ${helpNote(`④ 子表内容在大表直读：<b>参建方</b>在「联系人+参建方」列组末列、<b>楼层屋顶</b>在「房屋+楼层」列组末列、
+   <b>家庭成员</b>单独列组 —— 点格子里的「改」进补全抽屉编辑；未填的标黄。
+   参建方与方案倾向是下游硬依赖 —— 出库提货人、Builder 告知、SM 电工签字、SM2 带线清单全靠它。`)}
  ${helpNote(`⑤ 财务注释/工程注释（列组开关里）：售前填完对方必读（角标显示 已读✓/未读）；佣金永远跟关系人同组。`)}
  ${helpNote(`⑥ 售前的提醒全部来自这六步本身（不来自外部交接）：前六步任一步停留达到阈值（默认 3 天，
    左栏「设置」里售前自己改）就开始<b>每天提醒一次</b>，直到推进到下一步或勾流失。「停留」列变橙 = 已在提醒中。`)}
@@ -1435,7 +1461,7 @@ ${ops([
       <div class="field"><label>邮箱</label><input placeholder="可空"></div>
     </div>
     <div class="split" style="gap:var(--sp-3)">
-      <div class="field"><label>角色</label><select><option>决策人</option><option>共同决策</option><option>其他</option></select></div>
+      <div class="field"><label>角色（选项在售前设置里维护）</label><select>${roleOpts.map(r=>`<option>${r}</option>`).join('')}</select></div>
       <div class="field"><label>业主二（同样五项，可空）</label><input placeholder="姓名 · 展开后同上"></div>
     </div>
     <div class="panel-head" style="padding:var(--sp-2) 0">关系人与佣金（同一组填）</div>
@@ -1458,8 +1484,7 @@ ${ops([
         <td><button class="btn">＋ 再加一位</button></td></tr></tbody></table>
     <div class="panel-head" style="padding:var(--sp-2) 0">参建方（★下游硬依赖：出库提货/Builder告知/SM签字）</div>
     <table><thead><tr><th>工种</th><th>公司</th><th>联系人</th><th>电话</th><th></th></tr></thead>
-      <tbody><tr><td><select><option>设计师</option><option>Builder</option><option>电工</option><option>空调</option>
-        <option>地暖</option><option>泳池</option><option>影音室</option><option>转盘</option><option>电梯</option><option>其他</option></select></td>
+      <tbody><tr><td><select>${tradeOpts.map(t=>`<option>${t}</option>`).join('')}</select></td>
         <td><input placeholder="公司名"></td><td><input placeholder="姓名"></td>
         <td><input placeholder="04xx…"></td><td><button class="btn">＋ 再加一方</button></td></tr></tbody></table>
     <div class="hint">现在不全没关系，SM1 现场见到分包商还会往里采集 —— 但 Builder 和电工越早录越好</div>
@@ -1581,6 +1606,7 @@ ${ops([
 <div class="page-sub">只管售前自己的提醒规则 · 改动全公司售前生效 · 全部进审计日志</div>
 ${ops([
  ['修改提醒阈值（天）','只有售前（和管理员）能改 —— 与加班倍数归财务同一套按键权限机制','改完即刻生效：大表「停留」列的橙色线、每天提醒的起点都跟着变'],
+ ['维护下拉选项（角色/工种）','只有售前能改 · 删除选项不影响已填过它的历史数据','大表与立项引导的下拉立即启用新列表'],
 ])}
 ${helpNote(`售前的所有提醒都不来自外部，只来自前六步流程本身：任何项目在某一步停留达到阈值天数，
   就开始<b>每天提醒一次</b>（右上角 🔔），直到推进到下一步或勾「已流失」。`)}
@@ -1600,6 +1626,28 @@ ${helpNote(`阈值默认 3 天。改成 5，就是停留满 5 天才开始每天
       <div class="hint">频率固定，不做成可调 —— 一天多次会被当骚扰，几天一次会被忘掉</div></div>
     <div class="field"><label>不提醒的状态</label>
       <input value="已签约 · 已流失（终态）" readonly></div>
+  </div>
+</div>
+<div class="panel" style="max-width:560px">
+  <div class="panel-head">下拉选项管理 <span class="muted" style="font-weight:400">不写死 · 售前自行维护</span></div>
+  <div class="panel-body">
+    <div class="field"><label>联系人 / 关系人 · 角色选项</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">
+        ${roleOpts.map((r,i)=>`<span class="pill p-grey">${r} <a style="cursor:pointer;color:var(--breach)" onclick="optDel(roleOpts,${i})">✕</a></span>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px">
+        <input id="newrole" placeholder="新增角色，如：物业经理" style="width:210px">
+        <button class="btn" onclick="optAdd(roleOpts,'newrole')">＋ 添加</button>
+      </div>
+      <div class="hint">改完，大表与立项引导里的角色下拉立即用新列表</div></div>
+    <div class="field"><label>参建方 · 工种选项</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">
+        ${tradeOpts.map((t,i)=>`<span class="pill p-grey">${t} <a style="cursor:pointer;color:var(--breach)" onclick="optDel(tradeOpts,${i})">✕</a></span>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px">
+        <input id="newtrade" placeholder="新增工种，如：安防" style="width:210px">
+        <button class="btn" onclick="optAdd(tradeOpts,'newtrade')">＋ 添加</button>
+      </div></div>
   </div>
 </div>
 <div class="panel" style="max-width:560px">
