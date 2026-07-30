@@ -6,10 +6,11 @@
 <title>KONNEXT 办公管理平台 · 原型</title>
 <style>
 :root{
-  --bg:#0f1419; --bg-panel:#161b22; --bg-elevated:#1c2430; --border:#2a3441;
-  --text:#e6edf3; --text-muted:#8b949e;
-  --healthy:#10b981; --warning:#f59e0b; --breach:#ef4444; --loss:#7f1d1d;
-  --accent:#22d3ee; --danger:#dc2626;
+  /* 浅色主题 · 经典办公蓝（用户 2026-07-30 定） */
+  --bg:#f5f7fa; --bg-panel:#ffffff; --bg-elevated:#eef2f6; --border:#d8e0e8;
+  --text:#1f2933; --text-muted:#5f6b76;
+  --healthy:#047857; --warning:#b45309; --breach:#dc2626; --loss:#991b1b;
+  --accent:#2563eb; --danger:#dc2626;
   --font:-apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
   --mono:ui-monospace,"Cascadia Code",Consolas,monospace;
   --fs-xs:11px; --fs-sm:12px; --fs-md:13px; --fs-lg:15px; --fs-xl:22px;
@@ -39,7 +40,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 .btn{background:var(--bg-elevated);border:1px solid var(--border);color:var(--text);
   padding:7px var(--sp-3);border-radius:var(--radius);font-size:var(--fs-sm)}
 .btn:hover{border-color:var(--accent)}
-.btn-primary{background:var(--accent);border-color:var(--accent);color:#04252b;font-weight:600}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#ffffff;font-weight:600}
 .btn-primary:hover{filter:brightness(1.1)}
 .btn-block{width:100%;padding:10px;margin-top:var(--sp-4)}
 .btn:disabled{opacity:.4;cursor:not-allowed}
@@ -97,7 +98,7 @@ input:focus,select:focus{outline:none;border-color:var(--accent)}
 h2{font-size:var(--fs-lg);font-weight:600;margin-bottom:var(--sp-1)}
 .page-sub{color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:var(--sp-4)}
 .panel{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);
-  margin-bottom:var(--sp-4);overflow:hidden}
+  margin-bottom:var(--sp-4);overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.05)}
 .panel-head{padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);
   font-size:var(--fs-sm);font-weight:600;display:flex;align-items:center;gap:var(--sp-2)}
 .panel-body{padding:var(--sp-4)}
@@ -124,8 +125,8 @@ tbody tr:hover{background:var(--bg-elevated)}
 .p-amber{background:rgba(245,158,11,.16);color:var(--warning)}
 .p-red{background:rgba(239,68,68,.16);color:var(--breach)}
 .p-grey{background:rgba(139,148,158,.16);color:var(--text-muted)}
-.p-loss{background:rgba(127,29,29,.35);color:#fca5a5}
-.p-cyan{background:rgba(34,211,238,.14);color:var(--accent)}
+.p-loss{background:rgba(153,27,27,.12);color:#991b1b}
+.p-cyan{background:rgba(37,99,235,.10);color:var(--accent)}
 .warn-bar{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);
   border-radius:var(--radius);padding:var(--sp-3) var(--sp-4);margin-bottom:var(--sp-4);
   display:flex;align-items:center;gap:var(--sp-3);font-size:var(--fs-sm)}
@@ -133,7 +134,7 @@ tbody tr:hover{background:var(--bg-elevated)}
 .warn-bar.ok{background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.3)}
 .warn-bar .grow{flex:1}
 .gate{background:rgba(239,68,68,.08);border-left:2px solid var(--breach);
-  padding:var(--sp-2) var(--sp-3);font-size:var(--fs-xs);color:#fca5a5;
+  padding:var(--sp-2) var(--sp-3);font-size:var(--fs-xs);color:#b91c1c;
   border-radius:0 var(--radius) var(--radius) 0;margin-top:var(--sp-2)}
 .strike{text-decoration:line-through;color:var(--text-muted)}
 .hint{font-size:var(--fs-xs);color:var(--text-muted);margin-top:var(--sp-1)}
@@ -145,10 +146,10 @@ tbody tr:hover{background:var(--bg-elevated)}
 .sched table{min-width:640px}
 .blk{border-radius:4px;padding:5px 7px;font-size:var(--fs-xs);margin-bottom:3px;
   border-left:3px solid}
-.b-sm{background:rgba(34,211,238,.12);border-color:var(--accent)}
+.b-sm{background:rgba(37,99,235,.10);border-color:var(--accent)}
 .b-in{background:rgba(16,185,129,.12);border-color:var(--healthy)}
 .b-ho{background:rgba(245,158,11,.12);border-color:var(--warning)}
-.b-mt{background:rgba(167,139,250,.14);border-color:#a78bfa}
+.b-mt{background:rgba(124,58,237,.10);border-color:#7c3aed}
 
 /* 待办抽屉 */
 .drawer{position:fixed;top:0;right:0;bottom:0;width:min(460px,92vw);
@@ -165,7 +166,7 @@ tbody tr:hover{background:var(--bg-elevated)}
 .todo-act{font-size:var(--fs-sm);color:var(--text)}
 .todo-meta{font-size:var(--fs-xs);color:var(--text-muted);margin-top:var(--sp-2);
   display:flex;justify-content:space-between;align-items:center;gap:var(--sp-2)}
-.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;display:none}
+.backdrop{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:40;display:none}
 .backdrop.open{display:block}
 
 /* 进度条 */
@@ -173,7 +174,7 @@ tbody tr:hover{background:var(--bg-elevated)}
 .step{flex:1;text-align:center;font-size:var(--fs-xs);padding:var(--sp-2) 2px;
   background:var(--bg-elevated);color:var(--text-muted);border-top:2px solid var(--border)}
 .step.done{color:var(--healthy);border-top-color:var(--healthy)}
-.step.now{color:var(--accent);border-top-color:var(--accent);background:rgba(34,211,238,.08)}
+.step.now{color:var(--accent);border-top-color:var(--accent);background:rgba(37,99,235,.08)}
 .step.bad{color:var(--breach);border-top-color:var(--breach)}
 </style>
 </head>
@@ -618,7 +619,7 @@ ${ops([
   <div class="panel-head">本周
     <span class="pill p-cyan">SM</span><span class="pill p-green">安装</span>
     <span class="pill p-amber">交付</span>
-    <span class="pill" style="background:rgba(167,139,250,.14);color:#a78bfa">维护</span></div>
+    <span class="pill" style="background:rgba(124,58,237,.10);color:#7c3aed">维护</span></div>
   <table>
     <thead><tr><th style="width:110px"></th><th>7/27 一</th><th>7/28 二</th><th>7/29 三</th><th>7/30 四</th><th>7/31 五</th></tr></thead>
     <tbody>
