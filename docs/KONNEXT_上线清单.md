@@ -1,6 +1,6 @@
 # KONNEXT 上线清单
 
-> 对应契约 `contract_v0_30.sql`（60 表 / 84 视图 / 132 条 RLS 策略 / 73 条断言）
+> 对应契约 `contract_v0_31.sql`（60 表 / 85 视图 / 140 条 RLS 策略 / 73 条断言）
 > 每一项都有**验收标准**——不是"做完了"，而是"怎么验证它真的通了"。
 
 ---
@@ -55,7 +55,7 @@ Supabase（PostgreSQL）
 
 | # | 步骤 | 验收标准 |
 |---|---|---|
-| 2.1 | 跑 `contract_v0_30.sql` | 零报错；`SELECT count(*) FROM pg_policies` = 132 |
+| 2.1 | 跑 `contract_v0_31.sql` | 零报错；`SELECT count(*) FROM pg_policies` = 140 |
 | 2.2 | 跑 `tests/run_all.sh` | 门禁拦截 130 次，与文档一致 |
 | 2.3 | **跑断言** `SELECT * FROM fn_assertion_summary()` | 只剩「核心管理员必须恰好一个」一条违规（还没建人，正常） |
 | 2.4 | 建**核心管理员**（第一个账号自举） | `v_admin_health`：核心管理员 1、未绑手机 0、无邮箱 0 |
@@ -64,7 +64,7 @@ Supabase（PostgreSQL）
 | 2.7 | **导物料主表** | 全部 C1 有红线、C2 无红线；断言 `INV-STOCK-06` 通过 |
 | 2.8 | 录汇率（CNY / USD） | `v_fx_current` 两条，`is_stale = false` |
 | 2.9 | 录 **NSW 2026 公共假日** | 12 条，与 Fair Work 名单逐条核对 |
-| 2.10 | 设**加班倍数**（问劳资顾问后填） | `v_ot_rate_config` 四个值符合你们的 Award / EA |
+| 2.10 | **加班倍数**已暂定全 1.0（财务可在系统改）；**订阅五档年费**由运维在系统填 | `v_ot_rate_config` 四值=1.0；`v_subscription_fee_standard` 1~4 档 `not_priced=false` |
 | 2.11 | ★**期初库存移库** | 见下 |
 | 2.12 | **再跑一遍断言** | `✓ 全部通过`，才准开门 |
 

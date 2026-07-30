@@ -10,7 +10,8 @@
 澳大利亚（悉尼/NSW）智能家居集成公司 KONNEXT 的多部门协作办公管理平台。
 六个部门：售前 · 工程管理 · 采购 · 库管 · 财务 · 工程运维。
 
-**数据库契约已完成并验证**：`db/contract_v0_30.sql` —— 60 表 / 84 视图 / 132 条 RLS 策略 / 73 条断言。
+**数据库契约已完成并验证**：`db/contract_v0_31.sql` —— 60 表 / 85 视图 / 140 条 RLS 策略 / 73 条断言。
+（v0_31 变更：eng_setting 按键写权限 write_depts；加班倍数开放财务；订阅五档年费键归运维；eng_setting/eng_staff 补上 RLS）
 **现在的任务是写前后端**，不是重新设计数据库。
 
 ---
@@ -64,7 +65,7 @@ Supabase / PostgreSQL 15+
 ```
 CLAUDE.md                       ← 本文件
 db/
-  contract_v0_30.sql            ← 契约本体，唯一权威
+  contract_v0_31.sql            ← 契约本体，唯一权威（v0_30 保留作历史）
   tests/                        ← 26 个回归测试 + run_all.sh
   tools/
     导入期初库存.py
@@ -89,10 +90,10 @@ app/                            ← 待建：Next.js
 ```bash
 # 1. 干净建库，必须零报错
 createdb konnext_test
-psql -d konnext_test -v ON_ERROR_STOP=1 -f db/contract_v0_30.sql
+psql -d konnext_test -v ON_ERROR_STOP=1 -f db/contract_v0_31.sql
 
 # 2. 回归套件：期望 130 次拦截
-cd db/tests && bash run_all.sh ../contract_v0_30.sql
+cd db/tests && bash run_all.sh ../contract_v0_31.sql
 
 # 3. 断言：期望「✓ 全部通过」
 psql -d konnext_test -c "SELECT * FROM fn_assertion_summary();"
@@ -205,8 +206,8 @@ psql -d konnext_test -c "SELECT * FROM fn_assertion_summary();"
 | # | 事项 | 阻塞 |
 |---|---|---|
 | 1 | **Twilio 账号 + 澳洲手机号** | 登录功能（第一阶段就要） |
-| 2 | 加班倍数（问劳资顾问） | 工资模块，现在全是 1.0 |
-| 3 | 订阅五档年费标准 | 运维模块 |
+| 2 | ~~加班倍数~~ **已解**（2026-07-30 定：暂全 1.0，财务在系统里可改，v0_31 已开权限） | — |
+| 3 | ~~订阅五档年费标准~~ **已解机制**（v0_31 建了 sub_tier1..4_fee 键，运维在系统里填数即可） | — |
 | 4 | 物料主表初始数据 + 仓库盘点结果 | 采购库管全线、期初移库 |
 | 5 | Supabase 连接串（生产+预发） | 部署 |
 
