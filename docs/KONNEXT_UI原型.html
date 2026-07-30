@@ -366,6 +366,8 @@ let bigCols={contact:false,comm:false,house:false,notes:false};
 let bigCity='全部', bigState='全部';
 /* 售前提醒阈值（天）：前六步任一步停留达到此值 → 每天提醒；售前自己在「设置」改 */
 let preRemindDays=3;
+/* 实时搜索（逐字刷新）：大表与全公司项目列表各一份关键词 */
+let bigQ='', pjQ='';
 const can = k => WHO[me].see.includes(k);
 /* 金额遮罩：看不到就是 — —，绝不显示 0 */
 const money = (v,k) => can(k) ? `<span class="num">${v}</span>` : `<span class="masked">— —</span>`;
@@ -418,7 +420,10 @@ function switchWho(w){ me=w; tab=WHO[w].depts.includes(tab)?tab:(w==='admin'?'de
   if(tab==='decision'&&WHO[w].tier!==1) tab=WHO[w].depts[0];
   page=DEPT[tab].pages[0]; pjFilter=null; renderAll(); }
 function pickPj(i){ pj=+i; renderAll(); }
-function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; renderAll(); }
+function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; renderAll(); }
+/* 逐字刷新：重渲染后把光标还给搜索框（否则打一个字就失焦） */
+function keepFocus(id){ renderAll(); const e=document.getElementById(id);
+  if(e){ e.focus(); const n=e.value.length; e.setSelectionRange(n,n); } }
 function toggleDrawer(){
   document.getElementById('drawer').classList.toggle('open');
   document.getElementById('backdrop').classList.toggle('open');
@@ -1273,7 +1278,9 @@ ${ops([
  ];
  const cities=['全部',...new Set(BIGP.map(p=>p.city))];
  const states=['全部',...new Set(BIGP.map(p=>p.state))];
- const rows=BIGP.filter(p=>(bigCity==='全部'||p.city===bigCity)&&(bigState==='全部'||p.state===bigState));
+ const q=bigQ.trim().toLowerCase();
+ const rows=BIGP.filter(p=>(bigCity==='全部'||p.city===bigCity)&&(bigState==='全部'||p.state===bigState)
+   &&(!q||`${p.code} ${p.nick} ${p.street} ${p.city} ${p.state}`.toLowerCase().includes(q)));
  const inp=(v,w,ph)=>`<input class="${w||'w80'}" value="${v||''}" placeholder="${ph||'手填'}">`;
  const two=(a,b)=>`<div style="display:flex;flex-direction:column;gap:3px">${a}${b}</div>`;
  const roleSel=(cur)=>`<select style="font-size:11px;padding:3px 4px">
@@ -1309,6 +1316,8 @@ ${ops([
  ])}
  <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);align-items:center;flex-wrap:wrap">
    <button class="btn btn-primary" onclick="wizOpen()">＋ 立项（引导式）</button>
+   <input id="bigq" class="search" placeholder="🔍 搜编号 / 昵称 / 地址…" value="${bigQ}"
+     style="width:210px;padding:6px var(--sp-2)" oninput="bigQ=this.value;keepFocus('bigq')">
    <span class="sep" style="width:1px;height:20px;background:var(--border)"></span>
    <span class="muted" style="font-size:var(--fs-xs)">更多列组：</span>
    ${colBtn('contact','联系人')}${colBtn('comm','关系人与佣金')}${colBtn('house','房屋')}${colBtn('notes','注释(财务·工程)')}
@@ -1850,7 +1859,9 @@ function projectList(d){
   const col=DEPT_COL[d];
   const dft=DEPT_FILTER[d]||'全部';
   const eff=pjFilter||dft;
-  const rows=PROJECTS.filter(p=>eff==='全部'||p.status===eff);
+  const q=pjQ.trim().toLowerCase();
+  const rows=PROJECTS.filter(p=>(eff==='全部'||p.status===eff)
+    &&(!q||`${p.code} ${p.name} ${p.street} ${p.suburb} ${p.state}`.toLowerCase().includes(q)));
   const canNew=WHO[me].tier===1||WHO[me].depts.includes('presales');
   return `<h2>项目列表 <span class="pill p-cyan">全公司一份</span></h2>
   <div class="page-sub">六个部门共用同一张列表 · 说明看左下「？ 帮助」</div>
@@ -1864,8 +1875,9 @@ function projectList(d){
     <div class="panel-head" style="gap:var(--sp-2);flex-wrap:wrap">
       ${PJ_STATUSES.map(s=>`<button class="btn${eff===s?' btn-primary':''}" onclick="pjFilter='${s}';renderAll()">${s}</button>`).join('')}
       <span class="muted" style="font-weight:400">显示 ${rows.length} / ${PROJECTS.length} · 本部门默认「${dft}」</span>
-      <input class="search" placeholder="搜地址或编号…"
-        style="width:160px;margin-left:auto;padding:5px var(--sp-2)"></div>
+      <input id="pjq" class="search" placeholder="🔍 搜编号 / 名称 / 地址…" value="${pjQ}"
+        style="width:190px;margin-left:auto;padding:5px var(--sp-2)"
+        oninput="pjQ=this.value;keepFocus('pjq')"></div>
     <table>
       <thead><tr>
         <th>编号</th><th>项目 · 地址</th><th>业主 / Builder / 电工</th><th>状态</th>
