@@ -1,6 +1,6 @@
 # KONNEXT 上线清单
 
-> 对应契约 `contract_v0_27.sql`（58 表 / 72 视图 / 130 条 RLS 策略 / 57 条断言）
+> 对应契约 `contract_v0_30.sql`（60 表 / 84 视图 / 132 条 RLS 策略 / 73 条断言）
 > 每一项都有**验收标准**——不是"做完了"，而是"怎么验证它真的通了"。
 
 ---
@@ -55,8 +55,8 @@ Supabase（PostgreSQL）
 
 | # | 步骤 | 验收标准 |
 |---|---|---|
-| 2.1 | 跑 `contract_v0_27.sql` | 零报错；`SELECT count(*) FROM pg_policies` = 130 |
-| 2.2 | 跑 `tests/run_all.sh` | 门禁拦截 104 次，与文档一致 |
+| 2.1 | 跑 `contract_v0_30.sql` | 零报错；`SELECT count(*) FROM pg_policies` = 132 |
+| 2.2 | 跑 `tests/run_all.sh` | 门禁拦截 130 次，与文档一致 |
 | 2.3 | **跑断言** `SELECT * FROM fn_assertion_summary()` | 只剩「核心管理员必须恰好一个」一条违规（还没建人，正常） |
 | 2.4 | 建**核心管理员**（第一个账号自举） | `v_admin_health`：核心管理员 1、未绑手机 0、无邮箱 0 |
 | 2.5 | 建六个部门账号 + 分配部门 | `v_account_overview` 六个部门都有人；`v_dual_role_alert` 若有兼任，确认知晓风险 |
