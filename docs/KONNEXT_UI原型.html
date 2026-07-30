@@ -184,21 +184,31 @@ tbody tr:hover{background:var(--bg-elevated)}
 .bigtable th,.bigtable td{border-bottom:1px solid var(--border);border-right:1px solid #eef2f6;
   padding:var(--sp-2);vertical-align:middle;background:var(--bg-panel);white-space:nowrap}
 .bigtable thead .grp th{background:#e8eef7;color:#33507a;font-weight:600;font-size:var(--fs-xs);
-  letter-spacing:.05em;text-align:center}
-.bigtable thead .leaf th{background:#f3f6fa;color:var(--text-muted);font-weight:500;font-size:var(--fs-xs)}
+  letter-spacing:.05em;text-align:center;padding:9px 12px;border-bottom:2px solid #c3d2e4}
+.bigtable thead .leaf th{background:#f3f6fa;color:var(--text-muted);font-weight:500;
+  font-size:var(--fs-xs);padding:8px 12px;letter-spacing:.03em}
 .bigtable tbody tr:hover td{background:var(--bg-elevated)}
 .bigtable .c1{position:sticky;left:0;z-index:3;min-width:110px}
 .bigtable .c2{position:sticky;left:110px;z-index:3;min-width:170px;border-right:2px solid var(--border)}
 .bigtable thead .c1,.bigtable thead .c2{z-index:4}
 .bigtable input,.bigtable select{width:auto;padding:4px 6px;font-size:var(--fs-sm)}
 .bigtable input.w80{width:84px}.bigtable input.w60{width:60px}
-.mini7{display:flex;gap:2px}
-.mini7 span{width:17px;height:17px;border-radius:3px;display:grid;place-items:center;
-  font-size:10px;background:var(--bg-elevated);color:var(--text-muted);cursor:pointer}
-.mini7 span.on{background:rgba(4,120,87,.14);color:var(--healthy)}
-.mini7 span.now{background:rgba(37,99,235,.16);color:var(--accent);font-weight:700}
-.mini7 span:last-child{border:1px dashed rgba(220,38,38,.45)}   /* 第⑦格常显红框：流失/流标 */
-.mini7 span.lost{background:rgba(220,38,38,.16);color:var(--breach);font-weight:700;border-style:solid}
+.mini7{display:flex;gap:5px;align-items:flex-start;height:58px}
+.m7{display:flex;flex-direction:column;align-items:center;width:21px}
+.m7 .bx{width:18px;height:18px;border-radius:3px;display:grid;place-items:center;
+  font-size:10px;background:var(--bg-elevated);color:var(--text-muted);cursor:pointer;flex-shrink:0}
+.m7.on .bx{background:rgba(4,120,87,.14);color:var(--healthy)}
+.m7.now .bx{background:rgba(37,99,235,.16);color:var(--accent);font-weight:700}
+.m7:last-child .bx{border:1px dashed rgba(220,38,38,.45)}   /* 第⑦格常显红框：流失/流标 */
+.m7.lost .bx{background:rgba(220,38,38,.16);color:var(--breach);font-weight:700;border-style:solid}
+/* 勾下 45° 斜排状态文字（用户定） */
+.m7 .lb{margin-top:3px;font-size:9px;color:var(--text-muted);font-style:normal;
+  transform:rotate(45deg);transform-origin:top left;white-space:nowrap;
+  width:10px;letter-spacing:.02em}
+.m7.now .lb{color:var(--accent);font-weight:600}
+.m7.lost .lb{color:var(--breach);font-weight:600}
+/* 列组分隔线（用户定：分组线清晰） */
+.bigtable .gs{border-left:2px solid #c3d2e4}
 
 /* 立项引导弹层 */
 .wizback{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:60;display:none}
@@ -1208,10 +1218,14 @@ ${ops([
  };
  const ticks=(p)=>`<div class="mini7">${STAGES.map((s,i)=>{
     const date=p.d&&p.d[i]&&p.d[i]!=='··'?` · ${p.d[i]}`:'';
-    if(i===6) return `<span class="${p.lost?'lost':''}" title="已流失（=流标，一回事）· 勾上即终态归档${p.lost?date:''}">${p.lost?'✗':'7'}</span>`;
+    if(i===6) return `<div class="m7${p.lost?' lost':''}">
+      <span class="bx" title="已流失（=流标，一回事）· 勾上即终态归档${p.lost?date:''}">${p.lost?'✗':'7'}</span>
+      <i class="lb">${s}</i></div>`;
     /* 勾到哪 = 处于哪：最后一个勾就是当前状态（蓝色高亮），之前的绿✓ */
     const done=i<p.step, cur=(i===p.step-1)&&!p.lost&&p.step<6;
-    return `<span class="${done?(cur?'on now':'on'):''}" title="${s}${cur?'（当前状态）':''} · 手填勾选${done?date:''}">${done?'✓':i+1}</span>`;
+    return `<div class="m7${done?(cur?' on now':' on'):''}">
+      <span class="bx" title="${s}${cur?'（当前状态）':''} · 手填勾选${done?date:''}">${done?'✓':i+1}</span>
+      <i class="lb">${s}</i></div>`;
    }).join('')}</div>`;
  const gCount=9
    +(bigCols.contact?4:0)+(bigCols.comm?4:0)+(bigCols.house?3:0)+(bigCols.notes?2:0);
@@ -1240,23 +1254,23 @@ ${ops([
   <thead>
    <tr class="grp">
     <th class="c1" colspan="2" style="text-align:left">项目</th>
-    <th colspan="2">售前状态 · 6+1 全部手填</th>
-    <th>预测报价</th><th colspan="3">签约 · 待签约时一并填</th>
-    ${bigCols.contact?'<th colspan="4">联系人 · 手填</th>':''}
-    ${bigCols.comm?'<th colspan="4">关系人与佣金 · 同一组</th>':''}
-    ${bigCols.house?'<th colspan="3">房屋</th>':''}
-    ${bigCols.notes?'<th colspan="2">注释 · 填了对方必读</th>':''}
-    <th></th>
+    <th colspan="2" class="gs">售前状态 · 6+1 全部手填</th>
+    <th class="gs">预测报价</th><th colspan="3" class="gs">签约 · 待签约时一并填</th>
+    ${bigCols.contact?'<th colspan="4" class="gs">联系人 · 手填</th>':''}
+    ${bigCols.comm?'<th colspan="4" class="gs">关系人与佣金 · 同一组</th>':''}
+    ${bigCols.house?'<th colspan="3" class="gs">房屋</th>':''}
+    ${bigCols.notes?'<th colspan="2" class="gs">注释 · 填了对方必读</th>':''}
+    <th class="gs"></th>
    </tr>
    <tr class="leaf">
     <th class="c1">编号</th><th class="c2">昵称 · 地址</th>
-    <th>接洽中→已签约 ＋ ⑦流失</th><th style="text-align:right">停留</th>
-    <th>范围（立项填）</th><th>报价单号</th><th style="text-align:right">预测工时 h</th><th style="text-align:right">签约定价 AUD</th>
-    ${bigCols.contact?'<th>业主一</th><th>电话</th><th>业主二</th><th>电话</th>':''}
-    ${bigCols.comm?'<th>关系人</th><th>电话</th><th>佣金类型</th><th>佣金数值</th>':''}
-    ${bigCols.house?'<th>用途</th><th>类型</th><th>施工阶段<span style="color:var(--breach)">★</span></th>':''}
-    ${bigCols.notes?'<th>财务注释</th><th>工程注释</th>':''}
-    <th>操作</th>
+    <th class="gs">顺序勾 · 状态名在勾下</th><th style="text-align:right">停留</th>
+    <th class="gs">范围（立项填）</th><th class="gs">报价单号</th><th style="text-align:right">预测工时 h</th><th style="text-align:right">签约定价 AUD</th>
+    ${bigCols.contact?'<th class="gs">业主一</th><th>电话</th><th>业主二</th><th>电话</th>':''}
+    ${bigCols.comm?'<th class="gs">关系人</th><th>电话</th><th>佣金类型</th><th>佣金数值</th>':''}
+    ${bigCols.house?'<th class="gs">用途</th><th>类型</th><th>施工阶段<span style="color:var(--breach)">★</span></th>':''}
+    ${bigCols.notes?'<th class="gs">财务注释</th><th>工程注释</th>':''}
+    <th class="gs">操作</th>
    </tr>
   </thead>
   <tbody>${rows.map(p=>{
@@ -1265,25 +1279,25 @@ ${ops([
      <td class="c1"><b class="mono">${p.code}</b></td>
      <td class="c2"><b>${p.nick}</b>${p.lost?' <span class="pill p-red">已流失</span>':signed?' <span class="pill p-green">已签约</span>':''}
        <div class="hint">📍 ${p.street}, ${p.city} <b>${p.state}</b></div></td>
-     <td>${ticks(p)}</td>
+     <td class="gs">${ticks(p)}</td>
      <td class="num">${p.stay!==''?`<span${p.stay>10?' style="color:var(--warning);font-weight:600"':''}>${p.stay} 天</span>`:'—'}</td>
-     <td>${ro?`<span class="muted">${p.est}</span>`:inp(p.est,'w80','如 300k–350k')}</td>
-     <td>${signed?`<span class="mono">${p.qno||'—'}</span>`:p.lost?'<span class="muted">—</span>'
+     <td class="gs">${ro?`<span class="muted">${p.est}</span>`:inp(p.est,'w80','如 300k–350k')}</td>
+     <td class="gs">${signed?`<span class="mono">${p.qno||'—'}</span>`:p.lost?'<span class="muted">—</span>'
           :p.step===5?inp(p.qno,'w80','Q-…'):'<span class="masked">待签约时填</span>'}</td>
      <td class="num">${signed?(p.hrs||'—'):p.lost?'<span class="muted">—</span>'
           :p.step===5?inp(p.hrs,'w60','别漏'):'<span class="masked">待签约时填</span>'}</td>
      <td class="num">${signed?money(p.price,'customer'):p.lost?'<span class="muted">—</span>'
           :p.step===5?inp(p.price,'w80','定价后填'):'<span class="masked">未到待签约</span>'}</td>
-     ${bigCols.contact?`<td>${ro?(p.o1||'—'):inp(p.o1,'w60')}</td><td>${ro?`<span class="mono">${p.o1p||'—'}</span>`:inp(p.o1p)}</td>
+     ${bigCols.contact?`<td class="gs">${ro?(p.o1||'—'):inp(p.o1,'w60')}</td><td>${ro?`<span class="mono">${p.o1p||'—'}</span>`:inp(p.o1p)}</td>
        <td>${ro?(p.o2||'—'):inp(p.o2,'w60')}</td><td>${ro?`<span class="mono">${p.o2p||'—'}</span>`:inp(p.o2p)}</td>`:''}
-     ${bigCols.comm?`<td>${ro?(p.rel||'—'):inp(p.rel,'w60')}</td><td>${ro?`<span class="mono">${p.relp||'—'}</span>`:inp(p.relp)}</td>
+     ${bigCols.comm?`<td class="gs">${ro?(p.rel||'—'):inp(p.rel,'w60')}</td><td>${ro?`<span class="mono">${p.relp||'—'}</span>`:inp(p.relp)}</td>
        <td>${ro?(p.ct||'—'):`<select><option${p.ct?'':' selected'}>— 手选 —</option><option${p.ct==='百分比'?' selected':''}>百分比</option><option${p.ct==='固定'?' selected':''}>固定金额</option></select>`}</td>
        <td>${ro?(p.cv?(p.ct==='固定'?'A$'+p.cv:p.cv+'%'):'—'):inp(p.cv,'w60',p.ct==='固定'?'金额':'%')}</td>`:''}
-     ${bigCols.house?`<td>${ro?(p.use||'—'):`<select><option${p.use?'':' selected'}>—</option><option${p.use==='自住'?' selected':''}>自住</option><option${p.use==='出售'?' selected':''}>出售</option><option>混合</option><option>商业</option></select>`}</td>
+     ${bigCols.house?`<td class="gs">${ro?(p.use||'—'):`<select><option${p.use?'':' selected'}>—</option><option${p.use==='自住'?' selected':''}>自住</option><option${p.use==='出售'?' selected':''}>出售</option><option>混合</option><option>商业</option></select>`}</td>
        <td>${ro?(p.ht||'—'):`<select><option${p.ht?'':' selected'}>—</option><option${p.ht==='House'?' selected':''}>House</option><option${p.ht==='Duplex'?' selected':''}>Duplex</option><option${p.ht==='Townhouse'?' selected':''}>Townhouse</option><option>Apartment</option><option>Villa</option></select>`}</td>
        <td>${ro?(p.stage||'—'):`<select><option${p.stage?'':' selected'}>—</option><option${p.stage==='DA'?' selected':''}>DA</option><option${p.stage==='CC'?' selected':''}>CC</option><option>拆除</option><option>地基</option><option${p.stage==='结构'?' selected':''}>结构</option><option${p.stage==='Rough-in'?' selected':''}>Rough-in</option><option>翻新</option><option>其他</option></select>`}</td>`:''}
-     ${bigCols.notes?`<td>${noteCell(p.noteF,p.noteFr,'财务')}</td><td>${noteCell(p.noteE,p.noteEr,'工程')}</td>`:''}
-     <td>${ro?`<button class="btn" onclick="alert('${p.lost?'已流失（流标）项目 · 归档只读':'已签约项目转入工程线，售前侧只读'}')">查看</button>`
+     ${bigCols.notes?`<td class="gs">${noteCell(p.noteF,p.noteFr,'财务')}</td><td>${noteCell(p.noteE,p.noteEr,'工程')}</td>`:''}
+     <td class="gs">${ro?`<button class="btn" onclick="alert('${p.lost?'已流失（流标）项目 · 归档只读':'已签约项目转入工程线，售前侧只读'}')">查看</button>`
             :'<button class="btn" onclick="wizOpen()">继续完善</button>'}</td>
     </tr>`;}).join('')||`<tr><td colspan="${gCount}" class="muted" style="padding:var(--sp-4)">该筛选下暂无项目</td></tr>`}</tbody>
  </table></div>
