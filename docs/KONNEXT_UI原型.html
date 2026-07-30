@@ -295,6 +295,16 @@ tbody tr:hover{background:var(--bg-elevated)}
   <div class="drawer-body" id="drawer-body"></div>
 </aside>
 
+<!-- ═══════════════ 帮助弹层：教学与本页操作全收在这里（用户定：主页面保持干净） ═══════════════ -->
+<div class="wizback" id="helpback" onclick="helpClose()"></div>
+<div class="wizbox" id="helpbox" style="width:min(660px,94vw)">
+  <div class="wizhead"><b id="helptitle">帮助</b>
+    <button class="btn" style="margin-left:auto" onclick="helpClose()">✕</button></div>
+  <div class="wizbody" id="helpbody"></div>
+  <div class="wizfoot"><span class="muted" style="font-size:var(--fs-xs)">教学与操作说明都收在这里 · 每页各有各的帮助</span>
+    <button class="btn btn-primary" onclick="helpClose()">知道了</button></div>
+</div>
+
 <script>
 /* ════════ 身份与权限（对应契约 fn_can_see_* 与 account_department） ════════ */
 const WHO = {
@@ -403,25 +413,35 @@ function toggleDrawer(){
   document.getElementById('drawer').classList.toggle('open');
   document.getElementById('backdrop').classList.toggle('open');
 }
-/* ── 立项引导（分步弹层，演示） ── */
+/* ── 立项引导（5 步弹层，演示） ── */
 let wizN=1;
+const WIZ_STEPS=5;
 function wizPaint(){
-  for(let i=1;i<=4;i++){
+  for(let i=1;i<=WIZ_STEPS;i++){
     const s=document.getElementById('wizs'+i); if(s) s.style.display=(i===wizN?'':'none');
     const d=document.getElementById('wizd'+i); if(d) d.classList.toggle('on',i<=wizN);
   }
   const back=document.getElementById('wizprev'), next=document.getElementById('wiznext');
   if(back) back.style.visibility=(wizN===1?'hidden':'visible');
-  if(next) next.textContent=(wizN===4?'完成建档（演示）':'下一步 →');
+  if(next) next.textContent=(wizN===WIZ_STEPS?'完成建档（演示）':'下一步 →');
 }
 function wizOpen(){ wizN=1; document.getElementById('wizback').classList.add('open');
   document.getElementById('wizbox').classList.add('open'); wizPaint(); }
 function wizClose(){ document.getElementById('wizback').classList.remove('open');
   document.getElementById('wizbox').classList.remove('open'); }
-function wizNext(){ if(wizN===4){ wizClose();
+function wizNext(){ if(wizN===WIZ_STEPS){ wizClose();
     alert('已建档（演示）：新项目会出现在售前大表和全公司项目列表里，编号自动生成'); return; }
   wizN++; wizPaint(); }
 function wizPrev(){ if(wizN>1){ wizN--; wizPaint(); } }
+/* ── 「补全」抽屉（子表明细，演示） ── */
+function detOpen(code,nick){
+  const t=document.getElementById('dettitle');
+  if(t) t.textContent=`${code} · ${nick} · 补全子表`;
+  document.getElementById('detback').classList.add('open');
+  document.getElementById('detbox').classList.add('open');
+}
+function detClose(){ document.getElementById('detback').classList.remove('open');
+  document.getElementById('detbox').classList.remove('open'); }
 
 /* ════════ 渲染骨架 ════════ */
 function renderAll(){
@@ -439,7 +459,7 @@ function renderAll(){
 
   document.getElementById('side').innerHTML=DEPT[tab].pages
     .map(p=>`<button class="side-item${page===p?' on':''}" onclick="go('${tab}','${p}')">${p}</button>`).join('')
-    +`<div class="side-sep"></div><button class="side-item muted">帮助</button>`;
+    +`<div class="side-sep"></div><button class="side-item" onclick="helpOpen()">？ 帮助（本页说明）</button>`;
 
   const ts=myTodos();
   document.getElementById('todo-n').textContent=ts.length;
@@ -488,8 +508,33 @@ function renderAll(){
 /* ════════ 各页内容 ════════ */
 function view(){
   const key=tab+'/'+page;
+  HELP[key]={};             // 每次渲染重置本页帮助登记（ops/helpNote 会重新写入）
   return (PAGES[key]||PAGES[tab+'/总览']||placeholder)();
 }
+/* ── 帮助弹层：ops()/helpNote() 只登记不上屏，点「？帮助」才展示 ── */
+function helpOpen(){
+  const h=HELP[tab+'/'+page]||{};
+  document.getElementById('helptitle').textContent=`${DEPT[tab].label} · ${page} · 帮助`;
+  const opsHtml=(h.ops&&h.ops.length)?`
+    <div class="panel-head" style="padding:0 0 8px 0">本页操作 · 被什么门禁卡 · 操作完触发谁</div>
+    <table style="margin-bottom:var(--sp-4)"><thead><tr>
+      <th style="width:170px">操作</th><th>被什么门禁卡</th><th>操作完触发谁</th></tr></thead>
+    <tbody>${h.ops.map(r=>`<tr><td><b>${r[0]}</b></td><td class="hint">${r[1]}</td><td class="hint">${r[2]}</td></tr>`).join('')}</tbody></table>`:'';
+  const notesHtml=(h.notes&&h.notes.length)?`
+    <div class="panel-head" style="padding:0 0 8px 0">本页说明</div>
+    <div style="font-size:var(--fs-sm);line-height:1.9;color:var(--text-muted)">
+      ${h.notes.map(n=>`<div style="margin-bottom:10px">${n}</div>`).join('')}</div>`:'';
+  const none=(!opsHtml&&!notesHtml)?'<div class="muted">本页暂无专门说明。</div>':'';
+  document.getElementById('helpbody').innerHTML=opsHtml+notesHtml+none+`
+    <div class="panel-head" style="padding:12px 0 8px 0">全系统通用规则</div>
+    <div style="font-size:var(--fs-xs);line-height:1.9;color:var(--text-muted)">
+      门禁报错都是完整中文句，照着读就知道为什么不行 · 金额显示 — — 是您无权查看（不是 0）·
+      定格过的数据只读并写明定格时间 · 跨部门动作完成会显示「已通知谁」· 待办只有右上角 🔔 一处</div>`;
+  document.getElementById('helpback').classList.add('open');
+  document.getElementById('helpbox').classList.add('open');
+}
+function helpClose(){ document.getElementById('helpback').classList.remove('open');
+  document.getElementById('helpbox').classList.remove('open'); }
 function placeholder(){
   return `<h2>${DEPT[tab].label} · ${page}</h2>
   <div class="page-sub">原型未展开此页</div>
@@ -610,8 +655,7 @@ KNX四联面板 (白) ×12
 KNX四联面板 (黑) ×6
 未使用物料请于工程结束前办理退库。
 ★ 逾期未退回的物料将计入本项目变更(Variation)结算。</div>
-      <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)" >
-        <span class="muted">没有这份告知，业主凭什么认未退料那笔账。这不是通知，是凭证。</span></div>
+      ${helpNote('②Builder 发放告知：没有这份告知，业主凭什么认未退料那笔账 —— 这不是通知，是凭证。')}
     </div>
     <div class="panel">
       <div class="panel-head">③ 提货确认</div>
@@ -726,7 +770,6 @@ ${ops([
       <div class="gate">门禁：SM4 未完成（且未标不适用），不能派安装调试任务</div>
       <div class="gate">门禁：S4 尾款未结清，不能安排交付</div>
       <div class="gate">门禁：项目尚未交付，不能派技术维护任务（交付前的活属于安装调试）</div>
-      <div class="hint">报错原样透传，不包装成"操作失败" —— 用户要知道为什么不行</div>
     </div>
   </div>
   <div class="panel">
@@ -946,18 +989,14 @@ ${ops([
         <td class="num">${t[6]}h</td>
        </tr>`;}).join('')}</tbody>
    </table>
-   <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
-     <span class="muted">
-     <b>三类处理：</b>
-     ① 真公司级（盘点／采购单／汇率／假日／账号）→ 明确标「公司级」；
-     ② 跨项目（每日上报／日结／倒休）→ 带出<b>当天涉及哪些项目</b>；
-     ③ 本该有项目却可空（问题上报）→ 加约束，非公司级<b>必须填项目</b>。<br>
-     那条「无从追溯」是断言 <span class="mono">INV-UI-04</span> 抓出来的：
-     当天既无打卡也无派工，负责人补录时无从下手 —— 系统不猜，明确告诉你要人工确认。<br>
-     <b>为什么不放全部待办：</b>同一批待办已在 🔔 待办中心一处维护，这页再抄一遍只会两处对不上；
-     管理层要的不是队列，是<b>队列里卡死的那几件</b>。</span>
-   </div>
- </div>`;
+ </div>
+ ${helpNote(`三类处理：① 真公司级（盘点/采购单/汇率/假日/账号）明确标「公司级」；
+   ② 跨项目（每日上报/日结/倒休）带出当天涉及哪些项目；
+   ③ 本该有项目却可空（问题上报）加约束，非公司级必须填项目。`)}
+ ${helpNote(`「无从追溯」是断言 INV-UI-04 抓出来的：当天既无打卡也无派工，负责人补录时无从下手 ——
+   系统不猜，明确告诉你要人工确认。`)}
+ ${helpNote(`为什么不放全部待办：同一批待办已在 🔔 待办中心一处维护，这页再抄一遍只会两处对不上；
+   管理层要的不是队列，是队列里卡死的那几件。`)}`;
 },
 
 /* ───────── 决策页 · 系统健康 ───────── */
@@ -1160,55 +1199,76 @@ ${ops([
   </div>
 </div>`,
 
-/* ───────── 售前 · 售前大表（用户 2026-07-30 二轮反馈版） ─────────
-   ①售前状态 = 6+1 个勾：接洽中/设计中/报价中/修订中/待签约/已签约 + 第7红勾「已流失」
-     （流失=流标同一回事，勾上即终态；已签约只亮 6 个勾）；每勾记日期，当前状态显示停留天数
-   ②地址列：黑体=客户项目昵称，灰字带州缩写；可按 city/state 过滤
-   ③默认只显示 项目/售前状态/预测报价/签约定价 四大项，其余列组用开关调出
-   ④预测报价（范围）在立项第4步填；真报价金额=立项后第一次讲解前填；
-     预测人工工时=最终定价时填；无版本概念
-   ⑤行尾 财务注释/工程注释 两格：售前填 → 通知对应部门阅读（已读标记） */
+/* ───────── 售前 · 售前大表（用户 2026-07-30 定：整个售前=一页长大表） ─────────
+   五轮定稿要点：
+   ①状态=6+1 勾（第⑦红=流失/流标同一回事），勾下 45° 状态名，每勾定格日期+停留天数
+   ②默认四大项：项目/售前状态/预测报价/签约（单号·工时·定价·定金四样）；其余列组开关
+   ③预测报价（范围）立项填；单号/工时/定价「待签约」一并填；定金只读（财务写）
+   ④联系人每人五项（姓名/昵称/电话/邮箱/角色）；佣金与关系人同组
+   ⑤子表走「补全」抽屉：家庭成员/参建方/方案倾向/楼层结构屋顶 —— 参建方与方案倾向
+     是下游硬依赖（出库提货人/Builder告知/SM电工签字/SM2带线清单）
+   ⑥财务注释/工程注释：售前填 → 对应部门必读（已读标） */
 'presales/售前大表':()=>{
  const STAGES=['接洽中','设计中','报价中','修订中','待签约','已签约','已流失'];
  const BIGP=[
   {code:'KX-2026-0210',nick:'吴宅',street:'18 Church St',city:'Ryde',state:'NSW',
    step:1,lost:false,stay:3,d:['07-27'],est:'250k–300k',
-   o1:'吴先生',o1p:'0455 002 100',o2:'',o2p:'',rel:'',relp:'',ct:'',cv:'',
-   use:'',ht:'',stage:'',qno:'',qamt:'',hrs:'',price:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
+   o1:'吴先生',o1n:'',o1p:'0455 002 100',o1e:'',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
+   rel:'',reln:'',relp:'',rele:'',relr:'',ct:'',cv:'',
+   use:'',ht:'',stage:'',pp:0,hm:0,so:false,fl:false,
+   qno:'',hrs:'',price:'',dep:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
   {code:'KX-2026-0201',nick:'黄宅',street:'12 Orchard Rd',city:'Chatswood',state:'NSW',
    step:2,lost:false,stay:12,d:['07-02','07-18'],est:'300k–350k',
-   o1:'黄先生',o1p:'0433 111 222',o2:'黄太太',o2p:'0433 111 333',rel:'Kevin',relp:'0433 111 444',ct:'百分比',cv:'3.5',
-   use:'自住',ht:'House',stage:'结构',qno:'',qamt:'',hrs:'',price:'',
+   o1:'黄先生',o1n:'黄总',o1p:'0433 111 222',o1e:'huang@x.com',o1r:'决策人',
+   o2:'黄太太',o2n:'',o2p:'0433 111 333',o2e:'',o2r:'共同决策',
+   rel:'Kevin',reln:'',relp:'0433 111 444',rele:'',relr:'介绍人',ct:'百分比',cv:'3.5',
+   use:'自住',ht:'House',stage:'结构',pp:1,hm:3,so:true,fl:false,
+   qno:'',hrs:'',price:'',dep:'',
    noteF:'',noteFr:'',noteE:'业主提到想预留影音室，设计时留走线',noteEr:'unread'},
   {code:'KX-2026-0198',nick:'郑宅',street:'9 Old Northern Rd',city:'Castle Hill',state:'NSW',
    step:3,lost:false,stay:6,d:['06-20','07-08','07-24'],est:'400k–450k',
-   o1:'郑女士',o1p:'0400 219 800',o2:'郑先生',o2p:'0400 219 801',rel:'Amy',relp:'0400 219 900',ct:'百分比',cv:'2.0',
-   use:'自住',ht:'Townhouse',stage:'CC',qno:'Q-2026-0198',qamt:'428,000',hrs:'',price:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
+   o1:'郑女士',o1n:'',o1p:'0400 219 800',o1e:'',o1r:'决策人',
+   o2:'郑先生',o2n:'',o2p:'0400 219 801',o2e:'',o2r:'共同决策',
+   rel:'Amy',reln:'',relp:'0400 219 900',rele:'',relr:'介绍人',ct:'百分比',cv:'2.0',
+   use:'自住',ht:'Townhouse',stage:'CC',pp:2,hm:2,so:true,fl:false,
+   qno:'',hrs:'',price:'',dep:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
   {code:'KX-2026-0190',nick:'许宅',street:'5 Jersey St',city:'Hornsby',state:'NSW',
    step:4,lost:false,stay:9,d:['05-30','06-12','07-01','07-21'],est:'550k–650k',
-   o1:'许先生',o1p:'0412 300 190',o2:'',o2p:'',rel:'',relp:'',ct:'固定',cv:'3000',
-   use:'出售',ht:'Duplex',stage:'Rough-in',qno:'Q-2026-0190',qamt:'620,000',hrs:'',price:'',
+   o1:'许先生',o1n:'',o1p:'0412 300 190',o1e:'xu@x.com',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
+   rel:'',reln:'',relp:'',rele:'',relr:'',ct:'固定',cv:'3000',
+   use:'出售',ht:'Duplex',stage:'Rough-in',pp:1,hm:0,so:true,fl:false,
+   qno:'',hrs:'',price:'',dep:'',
    noteF:'业主想谈分期比例 5/45/40/10，能不能接？',noteFr:'unread',noteE:'',noteEr:''},
   {code:'KX-2026-0186',nick:'周宅',street:'27 Raglan St',city:'Mosman',state:'NSW',
    step:5,lost:false,stay:2,d:['05-12','05-28','06-15','07-10','07-28'],est:'600k–700k',
-   o1:'周女士',o1p:'0422 018 600',o2:'',o2p:'',rel:'设计师Lily',relp:'0422 018 900',ct:'百分比',cv:'2.5',
-   use:'自住',ht:'House',stage:'拆除',qno:'Q-2026-0186',qamt:'655,000',hrs:'500',price:'655,000',
+   o1:'周女士',o1n:'Amanda',o1p:'0422 018 600',o1e:'zhou@x.com',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
+   rel:'设计师Lily',reln:'',relp:'0422 018 900',rele:'lily@x.com',relr:'介绍人',ct:'百分比',cv:'2.5',
+   use:'自住',ht:'House',stage:'拆除',pp:3,hm:4,so:true,fl:true,
+   qno:'Q-2026-0186',hrs:'500',price:'655,000',dep:'',
    noteF:'定金比例按标准 10%，业主已确认',noteFr:'read',noteE:'泳池设备房要走专线，工程排线注意',noteEr:'read'},
   {code:'KX-2026-0155',nick:'李宅',street:'7 Beecroft Rd',city:'Epping',state:'NSW',
    step:3,lost:true,stay:'',d:['04-02','04-20','05-08','··','··','··','06-22'],est:'280k–320k',
-   o1:'李先生',o1p:'0433 155 000',o2:'',o2p:'',rel:'中介小赵',relp:'0433 155 900',ct:'百分比',cv:'3.0',
-   use:'出售',ht:'House',stage:'DA',qno:'Q-2026-0155',qamt:'300,000',hrs:'',price:'',
-   noteF:'流标 · 佣金不产生',noteFr:'read',noteE:'',noteEr:''},
+   o1:'李先生',o1n:'',o1p:'0433 155 000',o1e:'',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
+   rel:'中介小赵',reln:'',relp:'0433 155 900',rele:'',relr:'介绍人',ct:'百分比',cv:'3.0',
+   use:'出售',ht:'House',stage:'DA',pp:0,hm:0,so:false,fl:false,
+   qno:'',hrs:'',price:'',dep:'',noteF:'流标 · 佣金不产生',noteFr:'read',noteE:'',noteEr:''},
   {code:'KX-2026-0142',nick:'王宅',street:'8 Franklin Rd',city:'Cherrybrook',state:'NSW',
    step:6,lost:false,stay:'',d:['2025-11-02','11-20','12-05','12-18','12-28','01-05'],est:'450k–520k',
-   o1:'王先生',o1p:'0433 142 000',o2:'王太太',o2p:'0433 142 001',rel:'—',relp:'',ct:'—',cv:'',
-   use:'自住',ht:'House',stage:'Rough-in',qno:'Q-2026-0142',qamt:'500,000',hrs:'400',price:'500,000',
+   o1:'王先生',o1n:'老王',o1p:'0433 142 000',o1e:'wang@x.com',o1r:'决策人',
+   o2:'王太太',o2n:'',o2p:'0433 142 001',o2e:'',o2r:'共同决策',
+   rel:'—',reln:'',relp:'',rele:'',relr:'',ct:'—',cv:'',
+   use:'自住',ht:'House',stage:'Rough-in',pp:2,hm:4,so:true,fl:true,
+   qno:'Q-2026-0142',hrs:'400',price:'500,000',dep:'A$50,000',
    noteF:'S1 已开票已收',noteFr:'read',noteE:'已移交工程线',noteEr:'read'},
  ];
  const cities=['全部',...new Set(BIGP.map(p=>p.city))];
  const states=['全部',...new Set(BIGP.map(p=>p.state))];
  const rows=BIGP.filter(p=>(bigCity==='全部'||p.city===bigCity)&&(bigState==='全部'||p.state===bigState));
  const inp=(v,w,ph)=>`<input class="${w||'w80'}" value="${v||''}" placeholder="${ph||'手填'}">`;
+ const two=(a,b)=>`<div style="display:flex;flex-direction:column;gap:3px">${a}${b}</div>`;
+ const roleSel=(cur)=>`<select style="font-size:11px;padding:3px 4px">
+    <option${cur==='决策人'?' selected':''}>决策人</option><option${cur==='共同决策'?' selected':''}>共同决策</option>
+    <option${cur==='介绍人'?' selected':''}>介绍人</option><option${cur?'':' selected'}>—</option><option>其他</option></select>`;
  const colBtn=(k,label)=>`<button class="btn${bigCols[k]?' btn-primary':''}"
     onclick="bigCols['${k}']=!bigCols['${k}'];renderAll()">${label}</button>`;
  const noteCell=(v,r,who)=>{
@@ -1221,21 +1281,20 @@ ${ops([
     if(i===6) return `<div class="m7${p.lost?' lost':''}">
       <span class="bx" title="已流失（=流标，一回事）· 勾上即终态归档${p.lost?date:''}">${p.lost?'✗':'7'}</span>
       <i class="lb">${s}</i></div>`;
-    /* 勾到哪 = 处于哪：最后一个勾就是当前状态（蓝色高亮），之前的绿✓ */
     const done=i<p.step, cur=(i===p.step-1)&&!p.lost&&p.step<6;
     return `<div class="m7${done?(cur?' on now':' on'):''}">
       <span class="bx" title="${s}${cur?'（当前状态）':''} · 手填勾选${done?date:''}">${done?'✓':i+1}</span>
       <i class="lb">${s}</i></div>`;
    }).join('')}</div>`;
- const gCount=9
-   +(bigCols.contact?4:0)+(bigCols.comm?4:0)+(bigCols.house?3:0)+(bigCols.notes?2:0);
+ const gCount=10
+   +(bigCols.contact?6:0)+(bigCols.comm?5:0)+(bigCols.house?3:0)+(bigCols.notes?2:0);
  return `<h2>售前大表 <span class="pill p-cyan">整个售前 · 就这一页</span></h2>
- <div class="page-sub">默认只看四大项：项目 · 售前状态 · 预测报价 · 签约定价 —— 其余列组用下面的开关调出 ·
-   状态 6+1 个勾全部手填（第⑦勾=<b style="color:var(--breach)">流失/流标</b>，勾上即终态）</div>
+ <div class="page-sub">所有售前项目一页看全 · 更多列组用开关调出 · 说明看左下「？ 帮助」</div>
  ${ops([
-  ['＋ 立项（引导式）','无业务门禁 · 第 4 步填「预测报价（范围）」——立项阶段不填真报价','建档进本表 · 同步出现在全公司项目列表'],
+  ['＋ 立项（引导式）','无业务门禁 · 5 步引导：基本地址→联系人佣金→成员与参建方→房屋楼层→方案与预测报价','建档进本表 · 同步出现在全公司项目列表'],
   ['勾选售前状态（6+1）','顺序勾 · 每勾定格日期，当前状态显示停留天数 · 第⑦勾＝流失/流标（红，终态）','勾「已签约」→ ★自动通知财务开 S1 定金 Invoice；其余勾不惊动别的部门'],
-  ['报价单号 / 预测工时 / 签约定价','三样都在「待签约」阶段一并填写 · 预测工时是人工消耗率的分母，别漏','—'],
+  ['补全子表（成员/参建方/方案/楼层）','参建方与方案倾向是下游硬依赖：出库提货人、Builder 告知、SM 电工签字、SM2 带线清单全靠它','—'],
+  ['报价单号 / 预测工时 / 签约定价','三样都在「待签约」阶段一并填写 · 定金列只读（财务写）','—'],
   ['财务注释 / 工程注释','—','填写后自动通知财务/工程管理阅读，对方打开即标「已读」'],
  ])}
  <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);align-items:center;flex-wrap:wrap">
@@ -1255,20 +1314,21 @@ ${ops([
    <tr class="grp">
     <th class="c1" colspan="2" style="text-align:left">项目</th>
     <th colspan="2" class="gs">售前状态 · 6+1 全部手填</th>
-    <th class="gs">预测报价</th><th colspan="3" class="gs">签约 · 待签约时一并填</th>
-    ${bigCols.contact?'<th colspan="4" class="gs">联系人 · 手填</th>':''}
-    ${bigCols.comm?'<th colspan="4" class="gs">关系人与佣金 · 同一组</th>':''}
+    <th class="gs">预测报价</th><th colspan="4" class="gs">签约 · 前三样待签约时一并填</th>
+    ${bigCols.contact?'<th colspan="6" class="gs">联系人 · 每人五项</th>':''}
+    ${bigCols.comm?'<th colspan="5" class="gs">关系人与佣金 · 同一组</th>':''}
     ${bigCols.house?'<th colspan="3" class="gs">房屋</th>':''}
     ${bigCols.notes?'<th colspan="2" class="gs">注释 · 填了对方必读</th>':''}
     <th class="gs"></th>
    </tr>
    <tr class="leaf">
-    <th class="c1">编号</th><th class="c2">昵称 · 地址</th>
+    <th class="c1">编号</th><th class="c2">昵称 · 地址 · 子表</th>
     <th class="gs">顺序勾 · 状态名在勾下</th><th style="text-align:right">停留</th>
-    <th class="gs">范围（立项填）</th><th class="gs">报价单号</th><th style="text-align:right">预测工时 h</th><th style="text-align:right">签约定价 AUD</th>
-    ${bigCols.contact?'<th class="gs">业主一</th><th>电话</th><th>业主二</th><th>电话</th>':''}
-    ${bigCols.comm?'<th class="gs">关系人</th><th>电话</th><th>佣金类型</th><th>佣金数值</th>':''}
-    ${bigCols.house?'<th class="gs">用途</th><th>类型</th><th>施工阶段<span style="color:var(--breach)">★</span></th>':''}
+    <th class="gs">范围（立项填）</th>
+    <th class="gs">报价单号</th><th style="text-align:right">预测工时 h</th><th style="text-align:right">签约定价 AUD</th><th>定金（财务写）</th>
+    ${bigCols.contact?'<th class="gs">业主一 · 昵称</th><th>电话 · 邮箱</th><th>角色</th><th>业主二 · 昵称</th><th>电话 · 邮箱</th><th>角色</th>':''}
+    ${bigCols.comm?'<th class="gs">关系人 · 昵称</th><th>电话 · 邮箱</th><th>角色</th><th>佣金类型</th><th>佣金数值</th>':''}
+    ${bigCols.house?'<th class="gs">用途</th><th>类型（9选）</th><th>施工阶段<span style="color:var(--breach)">★</span></th>':''}
     ${bigCols.notes?'<th class="gs">财务注释</th><th>工程注释</th>':''}
     <th class="gs">操作</th>
    </tr>
@@ -1278,7 +1338,10 @@ ${ops([
     return `<tr${p.lost?' style="opacity:.62"':signed?' style="background:#fbfcfe"':''}>
      <td class="c1"><b class="mono">${p.code}</b></td>
      <td class="c2"><b>${p.nick}</b>${p.lost?' <span class="pill p-red">已流失</span>':signed?' <span class="pill p-green">已签约</span>':''}
-       <div class="hint">📍 ${p.street}, ${p.city} <b>${p.state}</b></div></td>
+       <div class="hint">📍 ${p.street}, ${p.city} <b>${p.state}</b></div>
+       <div class="hint">参建方 <b>${p.pp}</b> · 成员 <b>${p.hm}</b> · 方案${p.so?'✓':'<b style="color:var(--warning)">未填</b>'} ·
+         楼层${p.fl?'✓':'<b style="color:var(--warning)">未填</b>'}
+         <a style="color:var(--accent);cursor:pointer" onclick="detOpen('${p.code}','${p.nick}')">补全 →</a></div></td>
      <td class="gs">${ticks(p)}</td>
      <td class="num">${p.stay!==''?`<span${p.stay>10?' style="color:var(--warning);font-weight:600"':''}>${p.stay} 天</span>`:'—'}</td>
      <td class="gs">${ro?`<span class="muted">${p.est}</span>`:inp(p.est,'w80','如 300k–350k')}</td>
@@ -1288,33 +1351,45 @@ ${ops([
           :p.step===5?inp(p.hrs,'w60','别漏'):'<span class="masked">待签约时填</span>'}</td>
      <td class="num">${signed?money(p.price,'customer'):p.lost?'<span class="muted">—</span>'
           :p.step===5?inp(p.price,'w80','定价后填'):'<span class="masked">未到待签约</span>'}</td>
-     ${bigCols.contact?`<td class="gs">${ro?(p.o1||'—'):inp(p.o1,'w60')}</td><td>${ro?`<span class="mono">${p.o1p||'—'}</span>`:inp(p.o1p)}</td>
-       <td>${ro?(p.o2||'—'):inp(p.o2,'w60')}</td><td>${ro?`<span class="mono">${p.o2p||'—'}</span>`:inp(p.o2p)}</td>`:''}
-     ${bigCols.comm?`<td class="gs">${ro?(p.rel||'—'):inp(p.rel,'w60')}</td><td>${ro?`<span class="mono">${p.relp||'—'}</span>`:inp(p.relp)}</td>
+     <td>${signed?`<span class="pill p-green">${can('customer')?('已收 '+p.dep):'— —'}</span>`
+          :p.lost?'<span class="muted">—</span>':'<span class="masked">只读 · 财务写</span>'}</td>
+     ${bigCols.contact?`
+       <td class="gs">${ro?two(`<b>${p.o1||'—'}</b>`,`<span class="hint">${p.o1n||''}</span>`):two(inp(p.o1,'w60','姓名'),inp(p.o1n,'w60','昵称'))}</td>
+       <td>${ro?two(`<span class="mono">${p.o1p||'—'}</span>`,`<span class="hint">${p.o1e||''}</span>`):two(inp(p.o1p,'w80','电话'),inp(p.o1e,'w80','邮箱'))}</td>
+       <td>${ro?(p.o1r||'—'):roleSel(p.o1r)}</td>
+       <td>${ro?two(`<b>${p.o2||'—'}</b>`,`<span class="hint">${p.o2n||''}</span>`):two(inp(p.o2,'w60','姓名'),inp(p.o2n,'w60','昵称'))}</td>
+       <td>${ro?two(`<span class="mono">${p.o2p||'—'}</span>`,`<span class="hint">${p.o2e||''}</span>`):two(inp(p.o2p,'w80','电话'),inp(p.o2e,'w80','邮箱'))}</td>
+       <td>${ro?(p.o2r||'—'):roleSel(p.o2r)}</td>`:''}
+     ${bigCols.comm?`
+       <td class="gs">${ro?two(`<b>${p.rel||'—'}</b>`,`<span class="hint">${p.reln||''}</span>`):two(inp(p.rel,'w60','姓名'),inp(p.reln,'w60','昵称'))}</td>
+       <td>${ro?two(`<span class="mono">${p.relp||'—'}</span>`,`<span class="hint">${p.rele||''}</span>`):two(inp(p.relp,'w80','电话'),inp(p.rele,'w80','邮箱'))}</td>
+       <td>${ro?(p.relr||'—'):roleSel(p.relr)}</td>
        <td>${ro?(p.ct||'—'):`<select><option${p.ct?'':' selected'}>— 手选 —</option><option${p.ct==='百分比'?' selected':''}>百分比</option><option${p.ct==='固定'?' selected':''}>固定金额</option></select>`}</td>
        <td>${ro?(p.cv?(p.ct==='固定'?'A$'+p.cv:p.cv+'%'):'—'):inp(p.cv,'w60',p.ct==='固定'?'金额':'%')}</td>`:''}
      ${bigCols.house?`<td class="gs">${ro?(p.use||'—'):`<select><option${p.use?'':' selected'}>—</option><option${p.use==='自住'?' selected':''}>自住</option><option${p.use==='出售'?' selected':''}>出售</option><option>混合</option><option>商业</option></select>`}</td>
-       <td>${ro?(p.ht||'—'):`<select><option${p.ht?'':' selected'}>—</option><option${p.ht==='House'?' selected':''}>House</option><option${p.ht==='Duplex'?' selected':''}>Duplex</option><option${p.ht==='Townhouse'?' selected':''}>Townhouse</option><option>Apartment</option><option>Villa</option></select>`}</td>
-       <td>${ro?(p.stage||'—'):`<select><option${p.stage?'':' selected'}>—</option><option${p.stage==='DA'?' selected':''}>DA</option><option${p.stage==='CC'?' selected':''}>CC</option><option>拆除</option><option>地基</option><option${p.stage==='结构'?' selected':''}>结构</option><option${p.stage==='Rough-in'?' selected':''}>Rough-in</option><option>翻新</option><option>其他</option></select>`}</td>`:''}
+       <td>${ro?(p.ht||'—'):`<select><option${p.ht?'':' selected'}>—</option><option${p.ht==='House'?' selected':''}>House</option><option${p.ht==='Duplex'?' selected':''}>Duplex</option><option${p.ht==='Townhouse'?' selected':''}>Townhouse</option><option>Apartment</option><option>商铺</option><option>Villa</option><option>Granny Flat</option><option>空地</option><option>仓库</option></select>`}</td>
+       <td>${ro?(p.stage||'—'):`<select><option${p.stage?'':' selected'}>—</option><option${p.stage==='DA'?' selected':''}>DA</option><option${p.stage==='CC'?' selected':''}>CC</option><option>拆除</option><option>地基</option><option>地下室</option><option${p.stage==='结构'?' selected':''}>结构</option><option${p.stage==='Rough-in'?' selected':''}>Rough-in</option><option>翻新</option><option>其他</option></select>`}</td>`:''}
      ${bigCols.notes?`<td class="gs">${noteCell(p.noteF,p.noteFr,'财务')}</td><td>${noteCell(p.noteE,p.noteEr,'工程')}</td>`:''}
      <td class="gs">${ro?`<button class="btn" onclick="alert('${p.lost?'已流失（流标）项目 · 归档只读':'已签约项目转入工程线，售前侧只读'}')">查看</button>`
-            :'<button class="btn" onclick="wizOpen()">继续完善</button>'}</td>
+            :`<button class="btn" onclick="detOpen('${p.code}','${p.nick}')">补全</button>`}</td>
     </tr>`;}).join('')||`<tr><td colspan="${gCount}" class="muted" style="padding:var(--sp-4)">该筛选下暂无项目</td></tr>`}</tbody>
  </table></div>
- <div class="panel"><div class="panel-body" style="font-size:var(--fs-xs)"><span class="muted">
-   ① 6+1 个勾就是售前的全部状态，每勾定格日期（悬停可见），「停留」= 当前状态已等的天数；
-   ② 第⑦勾（红）= 流失/流标同一回事，勾上整行归档变灰；已签约只亮 6 个勾；
-   ③ 预测报价是范围、立项时填；报价单号、预测工时、签约定价三样在「待签约」阶段一并填 —— 没到时点的格子会自己提示；
-   ④ 财务注释/工程注释：售前填完对方必读（角标显示 已读✓/未读）；
-   ⑤ 佣金跟关系人永远同组出现；金额按权限遮罩。
- </span></div></div>
+ ${helpNote(`① 6+1 个勾就是售前的全部状态：接洽中/设计中/报价中/修订中/待签约/已签约 + 第⑦红勾「已流失」。
+   勾到哪=处于哪，每勾定格日期（悬停可见），「停留」= 当前状态已等的天数（超阈值变橙）。`)}
+ ${helpNote(`② 第⑦勾（红）= 流失/流标同一回事，勾上整行归档变灰；已签约只亮 6 个勾。
+   勾「已签约」会自动通知财务开 S1 定金 Invoice —— 其余勾不惊动别的部门。`)}
+ ${helpNote(`③ 预测报价（范围）立项时填；报价单号/预测工时/签约定价三样「待签约」阶段一并填；
+   定金列只读（财务写入后亮绿）。预测工时是人工消耗率的分母，别漏。`)}
+ ${helpNote(`④ 行内「补全 →」打开子表：联系人五项/家庭成员/参建方/方案倾向/楼层屋顶。
+   参建方与方案倾向是下游硬依赖 —— 出库提货人、Builder 告知、SM 电工签字、SM2 带线清单全靠它，没填的标黄。`)}
+ ${helpNote(`⑤ 财务注释/工程注释（列组开关里）：售前填完对方必读（角标显示 已读✓/未读）；佣金永远跟关系人同组。`)}
 
- <!-- ── 立项引导弹层（4 步） ── -->
+ <!-- ── 立项引导弹层（5 步） ── -->
  <div class="wizback" id="wizback" onclick="wizClose()"></div>
  <div class="wizbox" id="wizbox">
   <div class="wizhead"><b>立项 · 逐步引导</b>
     <span class="muted" style="font-size:var(--fs-xs)">随时可关闭，已填的存草稿</span>
-    <div class="wizdots"><i id="wizd1"></i><i id="wizd2"></i><i id="wizd3"></i><i id="wizd4"></i></div>
+    <div class="wizdots"><i id="wizd1"></i><i id="wizd2"></i><i id="wizd3"></i><i id="wizd4"></i><i id="wizd5"></i></div>
   </div>
   <div class="wizbody">
    <div id="wizs1">
@@ -1329,19 +1404,23 @@ ${ops([
     <div class="hint">坐标自动生成——给地图，也当考勤围栏圆心</div>
    </div>
    <div id="wizs2" style="display:none">
-    <div class="panel-head" style="padding:0 0 var(--sp-2) 0">联系人（手填）</div>
+    <div class="panel-head" style="padding:0 0 var(--sp-2) 0">联系人 · 每人五项（姓名/昵称/电话/邮箱/角色）</div>
     <div class="split" style="gap:var(--sp-3)">
       <div class="field"><label>业主一 · 姓名</label><input placeholder="手填"></div>
-      <div class="field"><label>电话</label><input placeholder="04xx xxx xxx"></div>
+      <div class="field"><label>昵称</label><input placeholder="平时怎么称呼"></div>
     </div>
     <div class="split" style="gap:var(--sp-3)">
-      <div class="field"><label>业主二 · 姓名（可空）</label><input placeholder="手填"></div>
       <div class="field"><label>电话</label><input placeholder="04xx xxx xxx"></div>
+      <div class="field"><label>邮箱</label><input placeholder="可空"></div>
+    </div>
+    <div class="split" style="gap:var(--sp-3)">
+      <div class="field"><label>角色</label><select><option>决策人</option><option>共同决策</option><option>其他</option></select></div>
+      <div class="field"><label>业主二（同样五项，可空）</label><input placeholder="姓名 · 展开后同上"></div>
     </div>
     <div class="panel-head" style="padding:var(--sp-2) 0">关系人与佣金（同一组填）</div>
     <div class="split" style="gap:var(--sp-3)">
       <div class="field"><label>关系人 · 姓名（介绍人）</label><input placeholder="手填，可空"></div>
-      <div class="field"><label>电话</label><input placeholder="04xx xxx xxx"></div>
+      <div class="field"><label>电话 / 邮箱</label><input placeholder="04xx… / 可空"></div>
     </div>
     <div class="split" style="gap:var(--sp-3)">
       <div class="field"><label>佣金类型</label><select><option>百分比</option><option>固定金额</option></select></div>
@@ -1349,27 +1428,69 @@ ${ops([
     </div>
    </div>
    <div id="wizs3" style="display:none">
+    <div class="panel-head" style="padding:0 0 var(--sp-2) 0">家庭成员（数量不定，逐个添加）</div>
+    <table style="margin-bottom:var(--sp-2)"><thead><tr><th>类型</th><th>年龄</th><th>备注</th><th></th></tr></thead>
+      <tbody><tr><td><select><option>成人</option><option>老人</option><option>儿童</option><option>保姆</option>
+        <option>司机</option><option>清洁工</option><option>宠物</option><option>其他</option></select></td>
+        <td><input class="mono" style="width:60px" placeholder="岁"></td>
+        <td><input placeholder="如：轮椅出行"></td>
+        <td><button class="btn">＋ 再加一位</button></td></tr></tbody></table>
+    <div class="panel-head" style="padding:var(--sp-2) 0">参建方（★下游硬依赖：出库提货/Builder告知/SM签字）</div>
+    <table><thead><tr><th>工种</th><th>公司</th><th>联系人</th><th>电话</th><th></th></tr></thead>
+      <tbody><tr><td><select><option>设计师</option><option>Builder</option><option>电工</option><option>空调</option>
+        <option>地暖</option><option>泳池</option><option>影音室</option><option>转盘</option><option>电梯</option><option>其他</option></select></td>
+        <td><input placeholder="公司名"></td><td><input placeholder="姓名"></td>
+        <td><input placeholder="04xx…"></td><td><button class="btn">＋ 再加一方</button></td></tr></tbody></table>
+    <div class="hint">现在不全没关系，SM1 现场见到分包商还会往里采集 —— 但 Builder 和电工越早录越好</div>
+   </div>
+   <div id="wizs4" style="display:none">
     <div class="split" style="gap:var(--sp-3)">
       <div class="field"><label>房屋用途</label><select><option>自住</option><option>出售</option>
         <option>混合</option><option>商业</option></select></div>
-      <div class="field"><label>房屋类型</label><select><option>House</option><option>Duplex</option>
-        <option>Townhouse</option><option>Apartment</option><option>Villa</option></select></div>
+      <div class="field"><label>房屋类型（9 选）</label><select><option>House</option><option>Duplex</option>
+        <option>Townhouse</option><option>Apartment</option><option>商铺</option><option>Villa</option>
+        <option>Granny Flat</option><option>空地</option><option>仓库</option></select></div>
     </div>
-    <div class="field"><label>施工阶段 <span style="color:var(--breach)">必填</span></label>
-      <select><option>DA</option><option>CC</option><option>拆除</option><option>地基</option>
-        <option>结构</option><option>Rough-in</option><option>翻新</option><option>其他</option></select></div>
+    <div class="split" style="gap:var(--sp-3)">
+      <div class="field"><label>施工阶段 <span style="color:var(--breach)">必填</span></label>
+        <select><option>DA</option><option>CC</option><option>拆除</option><option>地基</option><option>地下室</option>
+          <option>结构</option><option>Rough-in</option><option>翻新</option><option>其他（旁边补充说明）</option></select></div>
+      <div class="field"><label>选「其他」时说明</label><input placeholder="手填"></div>
+    </div>
+    <div class="field"><label>楼层结构（每层选一个，默认无）</label>
+      <table><tbody>
+        <tr><td class="muted">地下室</td><td><select><option>无</option><option>双砖</option><option>轻钢</option><option>木结构</option><option>混凝土</option><option>砖木</option><option>其他</option></select></td>
+            <td class="muted">一层</td><td><select><option>无</option><option selected>双砖</option><option>轻钢</option><option>木结构</option><option>混凝土</option><option>砖木</option><option>其他</option></select></td></tr>
+        <tr><td class="muted">二层</td><td><select><option>无</option><option>双砖</option><option selected>轻钢</option><option>木结构</option><option>混凝土</option><option>砖木</option><option>其他</option></select></td>
+            <td class="muted">三层</td><td><select><option selected>无</option><option>双砖</option><option>轻钢</option><option>木结构</option><option>混凝土</option><option>砖木</option><option>其他</option></select></td></tr>
+        <tr><td class="muted">四层及以上</td><td><select><option selected>无</option><option>双砖</option><option>轻钢</option><option>木结构</option><option>混凝土</option><option>砖木</option><option>其他</option></select></td>
+            <td class="muted">屋顶</td><td><select><option>瓦顶</option><option>平顶</option><option>露台</option><option>其他</option></select></td></tr>
+      </tbody></table></div>
     <div class="field"><label>★ 免责维保月数（0~12，默认 3）</label>
       <input value="3" class="mono" style="width:90px">
       <div class="hint">签约时定死，从交付之日起算</div></div>
    </div>
-   <div id="wizs4" style="display:none">
+   <div id="wizs5" style="display:none">
+    <div class="panel-head" style="padding:0 0 var(--sp-2) 0">方案倾向（★决定 SM2 清单带不带 KNX 线/地暖线）</div>
+    <div class="split" style="gap:var(--sp-3)">
+      <div class="field"><label>有线 / 无线</label><select><option>有线</option><option>无线</option></select></div>
+      <div class="field"><label>协议</label><select><option>KNX</option><option>C-Bus</option><option>RS485</option>
+        <option>WiFi</option><option>Zigbee</option><option>其他</option></select></div>
+    </div>
+    <div class="split" style="gap:var(--sp-3)">
+      <div class="field"><label>客户预算（AUD，可空）</label><input placeholder="手填" class="mono"></div>
+      <div class="field"><label>关键两项</label>
+        <div style="display:flex;gap:var(--sp-3);padding-top:6px">
+          <label style="display:flex;gap:4px;align-items:center;font-size:var(--fs-sm);color:var(--text)"><input type="checkbox" style="width:auto" checked>有 KNX</label>
+          <label style="display:flex;gap:4px;align-items:center;font-size:var(--fs-sm);color:var(--text)"><input type="checkbox" style="width:auto">有地暖</label>
+        </div></div>
+    </div>
     <div class="field"><label>预测报价（范围 · AUD）</label>
       <div class="split" style="gap:var(--sp-3)">
         <input placeholder="低值 · 如 250,000" class="mono">
         <input placeholder="高值 · 如 300,000" class="mono">
       </div>
-      <div class="hint">立项阶段只填<b>预测范围</b>。报价单号、预测人工工时、签约定价
-        都在「待签约」阶段一并填 —— 这里都不填。</div></div>
+      <div class="hint">立项只填<b>预测范围</b>。报价单号、预测工时、签约定价都在「待签约」阶段一并填。</div></div>
     <div class="field"><label>初始状态（自动）</label><input value="接洽中 · 今日起算停留" readonly></div>
     <div class="hint">完成后：新项目出现在售前大表第一行 + 全公司项目列表。之后随时回大表里改。</div>
    </div>
@@ -1380,6 +1501,55 @@ ${ops([
       <button class="btn" onclick="wizClose()">关闭</button>
       <button class="btn btn-primary" id="wiznext" onclick="wizNext()">下一步 →</button>
     </div>
+  </div>
+ </div>
+
+ <!-- ── 「补全」抽屉：子表内容（演示数据取王宅） ── -->
+ <div class="wizback" id="detback" onclick="detClose()"></div>
+ <div class="wizbox" id="detbox" style="width:min(680px,94vw)">
+  <div class="wizhead"><b id="dettitle">补全子表</b>
+    <span class="muted" style="font-size:var(--fs-xs)">大表只显示个数角标，明细都在这里</span>
+    <button class="btn" style="margin-left:auto" onclick="detClose()">✕</button>
+  </div>
+  <div class="wizbody">
+   <div class="panel-head" style="padding:0 0 var(--sp-2) 0">联系人 · 每人五项</div>
+   <table style="margin-bottom:var(--sp-3)"><thead><tr><th></th><th>姓名</th><th>昵称</th><th>电话</th><th>邮箱</th><th>角色</th></tr></thead>
+    <tbody>
+     <tr><td class="muted">业主一</td><td>王先生</td><td>老王</td><td class="mono">0433 142 000</td><td>wang@x.com</td><td>决策人</td></tr>
+     <tr><td class="muted">业主二</td><td>王太太</td><td>—</td><td class="mono">0433 142 001</td><td>—</td><td>共同决策</td></tr>
+     <tr><td class="muted">关系人</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+    </tbody></table>
+   <div class="panel-head" style="padding:0 0 var(--sp-2) 0">家庭成员 <span class="muted">设计输入</span></div>
+   <table style="margin-bottom:var(--sp-3)"><thead><tr><th>类型</th><th>年龄</th><th>备注</th></tr></thead>
+    <tbody>
+     <tr><td>成人 ×2</td><td class="mono">40 / 38</td><td>—</td></tr>
+     <tr><td>儿童 ×1</td><td class="mono">8</td><td>二楼儿童房</td></tr>
+     <tr><td>老人 ×1</td><td class="mono">70</td><td>一层主卧 · 夜灯感应</td></tr>
+    </tbody></table>
+   <button class="btn" style="margin-bottom:var(--sp-3)">＋ 添加成员</button>
+   <div class="panel-head" style="padding:0 0 var(--sp-2) 0">参建方 <span class="pill p-cyan">下游硬依赖</span></div>
+   <table style="margin-bottom:var(--sp-3)"><thead><tr><th>工种</th><th>公司</th><th>联系人</th><th>电话</th></tr></thead>
+    <tbody>
+     <tr><td>Builder</td><td>BuildCo</td><td>Mike</td><td class="mono">0422 000 111</td></tr>
+     <tr><td>电工</td><td>Spark 电气</td><td>Tony</td><td class="mono">0422 000 222</td></tr>
+    </tbody></table>
+   <button class="btn" style="margin-bottom:var(--sp-3)">＋ 添加参建方</button>
+   <div class="hint" style="margin-bottom:var(--sp-3)">出库提货人只能从这里选；Builder 收发放告知；SM2/SM3 找电工签字 —— 不录后面全卡</div>
+   <div class="panel-head" style="padding:0 0 var(--sp-2) 0">方案倾向 <span class="muted">决定 SM2 带线清单</span></div>
+   <table style="margin-bottom:var(--sp-3)"><tbody>
+     <tr><td class="muted">有线/无线</td><td>有线</td><td class="muted">协议</td><td>KNX</td></tr>
+     <tr><td class="muted">预算</td><td>${can('customer')?'A$ 480,000':'— —'}</td><td class="muted">关键项</td>
+       <td><span class="pill p-green">有 KNX ✓</span> <span class="pill p-grey">无地暖</span></td></tr>
+   </tbody></table>
+   <div class="panel-head" style="padding:0 0 var(--sp-2) 0">楼层结构 · 屋顶</div>
+   <table><tbody>
+     <tr><td class="muted">地下室</td><td>无</td><td class="muted">一层</td><td>双砖</td><td class="muted">二层</td><td>轻钢</td></tr>
+     <tr><td class="muted">三层</td><td>无</td><td class="muted">四层+</td><td>无</td><td class="muted">屋顶</td><td>瓦顶</td></tr>
+   </tbody></table>
+  </div>
+  <div class="wizfoot">
+    <span class="muted" style="font-size:var(--fs-xs)">演示数据 · 正式系统按项目各存各的</span>
+    <button class="btn btn-primary" onclick="detClose()">完成</button>
   </div>
  </div>`;
 },
@@ -1544,8 +1714,7 @@ ${ops([
       <div class="panel-body">
         <div class="gate">门禁：尚未完成第六步（最终定价·客户签字），不能置为「已签署报价」</div>
         <div class="gate">门禁：方案尚未定版（第六步未完成），不能进入施工/交付/维护状态</div>
-        <div class="hint">报错原样透传，不包装成"操作失败" —— 用户要知道为什么不行</div>
-      </div>
+        </div>
     </div>
   </div>
 </div>`,
@@ -1636,8 +1805,12 @@ function projectList(d){
   const rows=PROJECTS.filter(p=>eff==='全部'||p.status===eff);
   const canNew=WHO[me].tier===1||WHO[me].depts.includes('presales');
   return `<h2>项目列表 <span class="pill p-cyan">全公司一份</span></h2>
-  <div class="page-sub">★ 六个部门共用<b>同一张列表</b> —— 部门只决定<b>默认筛选</b>和<b>默认那一列</b>，其余完全相同。
-    编号与地址人人可见；金额按各自权限显示 · 对应 <span class="mono">v_project_directory</span></div>
+  <div class="page-sub">六个部门共用同一张列表 · 说明看左下「？ 帮助」</div>
+  ${helpNote(`六个部门共用同一张全公司列表 —— 部门只决定默认筛选和默认那一列，其余完全相同；
+    编号与地址人人可见，金额按各自权限遮罩（对应 v_project_directory）。`)}
+  ${helpNote(`读全部、写本部门 —— 下游能查上游的流水，卡在哪儿一目了然。
+    0155 与 0201 未开工不显示利润率（没花钱算出 100% 会误导）；
+    0160 已烂尾按实收 40,000 算 → −237.6%，按合同额算会显示 +66%，那是自欺。`)}
   ${canNew?ops([['+ 新建项目（售前）','无业务门禁 · 立项即建档，编号自动 KX-2026-XXXX','建档后即出现在这张全公司列表，各部门按默认筛选看到']]):''}
   <div class="panel">
     <div class="panel-head" style="gap:var(--sp-2);flex-wrap:wrap">
@@ -1670,21 +1843,14 @@ function projectList(d){
           <td><button class="btn" onclick="pickPj(${i});go('${d}','${DEPT[d].pages[2]||DEPT[d].pages[0]}')">进入 →</button></td>
         </tr>`;}).join('')||`<tr><td colspan="10" class="muted" style="padding:var(--sp-4)">「${eff}」状态下暂无项目</td></tr>`}</tbody>
     </table>
-    <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
-      <span class="muted">读全部、写本部门 —— 下游能查上游的流水，卡在哪儿一目了然。
-      <b>0155 留标</b>与<b>0201 未开工</b>不显示利润率（没花钱算出 100% 会误导）；
-      <b>0160 已烂尾</b>按<b>实收 40,000</b>算 → −237.6%，按合同额算会显示 +66%，那是自欺。</span>
-    </div>
   </div>`;
 }
-/* ★ 手术③：每页明确列出——能做哪些操作 · 被什么门禁卡 · 操作完触发谁 */
-function ops(rows){
-  return `<div class="panel">
-    <div class="panel-head">本页操作 <span class="muted" style="font-weight:400">操作 · 被什么门禁卡 · 操作完触发谁（静默发送等于没发）</span></div>
-    <table><thead><tr><th style="width:190px">操作</th><th>被什么门禁卡</th><th>操作完触发谁</th></tr></thead>
-    <tbody>${rows.map(r=>`<tr><td><b>${r[0]}</b></td><td class="hint">${r[1]}</td><td class="hint">${r[2]}</td></tr>`).join('')}</tbody></table>
-  </div>`;
-}
+/* ★ 手术③改：每页的「操作·门禁·触发谁」与教学说明只登记进 HELP，
+   不再上屏（用户定：主页面太乱）——点左栏「？帮助」查看 */
+const HELP={};
+function ops(rows){ const k=tab+'/'+page; (HELP[k]=HELP[k]||{}).ops=rows; return ''; }
+function helpNote(html){ const k=tab+'/'+page; const h=HELP[k]=HELP[k]||{};
+  (h.notes=h.notes||[]).push(html); return ''; }
 
 /* ★ 手术①：总览不再是待办副本 —— 回答「本部门此刻卡在哪」
    每行：卡点 · 卡在哪/影响什么 · 卡了多久 · 去哪处理
