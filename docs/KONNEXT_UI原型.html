@@ -197,6 +197,8 @@ tbody tr:hover{background:var(--bg-elevated)}
   font-size:10px;background:var(--bg-elevated);color:var(--text-muted);cursor:pointer}
 .mini7 span.on{background:rgba(4,120,87,.14);color:var(--healthy)}
 .mini7 span.now{background:rgba(37,99,235,.16);color:var(--accent);font-weight:700}
+.mini7 span:last-child{border:1px dashed rgba(220,38,38,.45)}   /* 第⑦格常显红框：流失/流标 */
+.mini7 span.lost{background:rgba(220,38,38,.16);color:var(--breach);font-weight:700;border-style:solid}
 
 /* 立项引导弹层 */
 .wizback{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:60;display:none}
@@ -339,6 +341,9 @@ const PROJECTS=[
 let pj=0;   // 当前项目
 let me='finance', tab='fin', page='总览';
 let pjFilter=null; // 项目列表状态筛选：null=用本部门默认（DEPT_FILTER）
+/* 售前大表：列组开关（默认只显示 项目/售前状态/预测报价/签约定价）+ city/state 过滤 */
+let bigCols={contact:false,comm:false,house:false,quote:false,notes:false};
+let bigCity='全部', bigState='全部';
 const can = k => WHO[me].see.includes(k);
 /* 金额遮罩：看不到就是 — —，绝不显示 0 */
 const money = (v,k) => can(k) ? `<span class="num">${v}</span>` : `<span class="masked">— —</span>`;
@@ -383,7 +388,7 @@ function switchWho(w){ me=w; tab=WHO[w].depts.includes(tab)?tab:(w==='admin'?'de
   if(tab==='decision'&&WHO[w].tier!==1) tab=WHO[w].depts[0];
   page=DEPT[tab].pages[0]; pjFilter=null; renderAll(); }
 function pickPj(i){ pj=+i; renderAll(); }
-function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; renderAll(); }
+function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; renderAll(); }
 function toggleDrawer(){
   document.getElementById('drawer').classList.toggle('open');
   document.getElementById('backdrop').classList.toggle('open');
@@ -1145,105 +1150,150 @@ ${ops([
   </div>
 </div>`,
 
-/* ───────── 售前 · 售前大表（用户 2026-07-30 定：整个售前=一页长大表） ─────────
-   要点：①所有售前项目一页看全，横向一张长表（冻结前两列，其余横向滚动）
-        ②联系人手填 ③佣金与关系人同组 ④状态/七步全部售前手填，系统不猜
-        ⑤立项=表上按钮 → 分步引导逐一填写 */
+/* ───────── 售前 · 售前大表（用户 2026-07-30 二轮反馈版） ─────────
+   ①售前状态 = 6+1 个勾：接洽中/设计中/报价中/修订中/待签约/已签约 + 第7红勾「已流失」
+     （流失=流标同一回事，勾上即终态；已签约只亮 6 个勾）；每勾记日期，当前状态显示停留天数
+   ②地址列：黑体=客户项目昵称，灰字带州缩写；可按 city/state 过滤
+   ③默认只显示 项目/售前状态/预测报价/签约定价 四大项，其余列组用开关调出
+   ④预测报价（范围）在立项第4步填；真报价金额=立项后第一次讲解前填；
+     预测人工工时=最终定价时填；无版本概念
+   ⑤行尾 财务注释/工程注释 两格：售前填 → 通知对应部门阅读（已读标记） */
 'presales/售前大表':()=>{
- const PRE_STATUS=['接洽当中','讲解修改中','出 Draft 中','待签约','已签约','留标','已流失'];
- const STEP7=['①讲功能','②全功能设计','③讲解修改','④出Draft','⑤讲Draft','⑥签字','⑦收定金'];
+ const STAGES=['接洽中','设计中','报价中','修订中','待签约','已签约','已流失'];
  const BIGP=[
-  {code:'KX-2026-0210',name:'Ryde 吴宅',addr:'18 Church St, Ryde',st:'接洽当中',step:1,
+  {code:'KX-2026-0210',nick:'吴宅',street:'18 Church St',city:'Ryde',state:'NSW',
+   step:1,lost:false,stay:3,d:['07-27'],est:'250k–300k',
    o1:'吴先生',o1p:'0455 002 100',o2:'',o2p:'',rel:'',relp:'',ct:'',cv:'',
-   use:'',ht:'',stage:'',qno:'',qamt:'',qv:'',hrs:'',sign:'',dep:''},
-  {code:'KX-2026-0201',name:'Chatswood 黄宅',addr:'12 Orchard Rd, Chatswood',st:'接洽当中',step:2,
+   use:'',ht:'',stage:'',qno:'',qamt:'',hrs:'',price:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
+  {code:'KX-2026-0201',nick:'黄宅',street:'12 Orchard Rd',city:'Chatswood',state:'NSW',
+   step:2,lost:false,stay:12,d:['07-02','07-18'],est:'300k–350k',
    o1:'黄先生',o1p:'0433 111 222',o2:'黄太太',o2p:'0433 111 333',rel:'Kevin',relp:'0433 111 444',ct:'百分比',cv:'3.5',
-   use:'自住',ht:'House',stage:'结构',qno:'',qamt:'',qv:'',hrs:'',sign:'',dep:''},
-  {code:'KX-2026-0198',name:'Castle Hill 郑宅',addr:'9 Old Northern Rd, Castle Hill',st:'出 Draft 中',step:4,
+   use:'自住',ht:'House',stage:'结构',qno:'',qamt:'',hrs:'',price:'',
+   noteF:'',noteFr:'',noteE:'业主提到想预留影音室，设计时留走线',noteEr:'unread'},
+  {code:'KX-2026-0198',nick:'郑宅',street:'9 Old Northern Rd',city:'Castle Hill',state:'NSW',
+   step:3,lost:false,stay:6,d:['06-20','07-08','07-24'],est:'400k–450k',
    o1:'郑女士',o1p:'0400 219 800',o2:'郑先生',o2p:'0400 219 801',rel:'Amy',relp:'0400 219 900',ct:'百分比',cv:'2.0',
-   use:'自住',ht:'Townhouse',stage:'CC',qno:'Q-2026-0198-v1',qamt:'',qv:'v1 · 草拟',hrs:'',sign:'',dep:''},
-  {code:'KX-2026-0190',name:'Hornsby 许宅',addr:'5 Jersey St, Hornsby',st:'讲解修改中',step:5,
+   use:'自住',ht:'Townhouse',stage:'CC',qno:'Q-2026-0198',qamt:'428,000',hrs:'',price:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
+  {code:'KX-2026-0190',nick:'许宅',street:'5 Jersey St',city:'Hornsby',state:'NSW',
+   step:4,lost:false,stay:9,d:['05-30','06-12','07-01','07-21'],est:'550k–650k',
    o1:'许先生',o1p:'0412 300 190',o2:'',o2p:'',rel:'',relp:'',ct:'固定',cv:'3000',
-   use:'出售',ht:'Duplex',stage:'Rough-in',qno:'Q-2026-0190-v3',qamt:'620,000',qv:'v3 · 已讲解',hrs:'480',sign:'',dep:''},
-  {code:'KX-2026-0155',name:'Epping 李宅',addr:'7 Beecroft Rd, Epping',st:'留标',step:3,
+   use:'出售',ht:'Duplex',stage:'Rough-in',qno:'Q-2026-0190',qamt:'620,000',hrs:'',price:'',
+   noteF:'业主想谈分期比例 5/45/40/10，能不能接？',noteFr:'unread',noteE:'',noteEr:''},
+  {code:'KX-2026-0186',nick:'周宅',street:'27 Raglan St',city:'Mosman',state:'NSW',
+   step:5,lost:false,stay:2,d:['05-12','05-28','06-15','07-10','07-28'],est:'600k–700k',
+   o1:'周女士',o1p:'0422 018 600',o2:'',o2p:'',rel:'设计师Lily',relp:'0422 018 900',ct:'百分比',cv:'2.5',
+   use:'自住',ht:'House',stage:'拆除',qno:'Q-2026-0186',qamt:'655,000',hrs:'500',price:'655,000',
+   noteF:'定金比例按标准 10%，业主已确认',noteFr:'read',noteE:'泳池设备房要走专线，工程排线注意',noteEr:'read'},
+  {code:'KX-2026-0155',nick:'李宅',street:'7 Beecroft Rd',city:'Epping',state:'NSW',
+   step:3,lost:true,stay:'',d:['04-02','04-20','05-08','··','··','··','06-22'],est:'280k–320k',
    o1:'李先生',o1p:'0433 155 000',o2:'',o2p:'',rel:'中介小赵',relp:'0433 155 900',ct:'百分比',cv:'3.0',
-   use:'出售',ht:'House',stage:'DA',qno:'Q-2026-0155-v1',qamt:'300,000',qv:'v1 · 已出',hrs:'320',sign:'',dep:''},
-  {code:'KX-2026-0142',name:'Cherrybrook 王宅',addr:'8 Franklin Rd, Cherrybrook',st:'已签约',step:7,
+   use:'出售',ht:'House',stage:'DA',qno:'Q-2026-0155',qamt:'300,000',hrs:'',price:'',
+   noteF:'流标 · 佣金不产生',noteFr:'read',noteE:'',noteEr:''},
+  {code:'KX-2026-0142',nick:'王宅',street:'8 Franklin Rd',city:'Cherrybrook',state:'NSW',
+   step:6,lost:false,stay:'',d:['2025-11-02','11-20','12-05','12-18','12-28','01-05'],est:'450k–520k',
    o1:'王先生',o1p:'0433 142 000',o2:'王太太',o2p:'0433 142 001',rel:'—',relp:'',ct:'—',cv:'',
-   use:'自住',ht:'House',stage:'Rough-in',qno:'Q-2026-0142-v5',qamt:'500,000',qv:'v5 · 已定版',hrs:'400',sign:'2026-01-05',dep:'已收 A$50,000'},
+   use:'自住',ht:'House',stage:'Rough-in',qno:'Q-2026-0142',qamt:'500,000',hrs:'400',price:'500,000',
+   noteF:'S1 已开票已收',noteFr:'read',noteE:'已移交工程线',noteEr:'read'},
  ];
+ const cities=['全部',...new Set(BIGP.map(p=>p.city))];
+ const states=['全部',...new Set(BIGP.map(p=>p.state))];
+ const rows=BIGP.filter(p=>(bigCity==='全部'||p.city===bigCity)&&(bigState==='全部'||p.state===bigState));
  const inp=(v,w,ph)=>`<input class="${w||'w80'}" value="${v||''}" placeholder="${ph||'手填'}">`;
- const sel=(opts,cur,empty)=>`<select>${empty?`<option${cur?'':' selected'}>— 手选 —</option>`:''}${
-   opts.map(o=>`<option${o===cur?' selected':''}>${o}</option>`).join('')}</select>`;
+ const colBtn=(k,label)=>`<button class="btn${bigCols[k]?' btn-primary':''}"
+    onclick="bigCols['${k}']=!bigCols['${k}'];renderAll()">${label}</button>`;
+ const noteCell=(v,r,who)=>{
+   const badge=v?(r==='read'?`<span class="pill p-green">${who}已读 ✓</span>`
+                           :`<span class="pill p-amber">${who}未读</span>`):'';
+   return `<div style="display:flex;gap:4px;align-items:center">${inp(v,'w80',`售前填 → 通知${who}`)}${badge}</div>`;
+ };
+ const ticks=(p)=>`<div class="mini7">${STAGES.map((s,i)=>{
+    const date=p.d&&p.d[i]&&p.d[i]!=='··'?` · ${p.d[i]}`:'';
+    if(i===6) return `<span class="${p.lost?'lost':''}" title="已流失（=流标，一回事）· 勾上即终态归档${p.lost?date:''}">${p.lost?'✗':'7'}</span>`;
+    /* 勾到哪 = 处于哪：最后一个勾就是当前状态（蓝色高亮），之前的绿✓ */
+    const done=i<p.step, cur=(i===p.step-1)&&!p.lost&&p.step<6;
+    return `<span class="${done?(cur?'on now':'on'):''}" title="${s}${cur?'（当前状态）':''} · 手填勾选${done?date:''}">${done?'✓':i+1}</span>`;
+   }).join('')}</div>`;
+ const gCount=4+2
+   +(bigCols.contact?4:0)+(bigCols.comm?4:0)+(bigCols.house?3:0)+(bigCols.quote?3:0)+(bigCols.notes?2:0)+1;
  return `<h2>售前大表 <span class="pill p-cyan">整个售前 · 就这一页</span></h2>
- <div class="page-sub">所有售前项目一页看全 · 前两列冻结，往右拖着看 ·
-   <b>状态与七步全部售前手填</b>，系统不自动猜 · 金额按权限遮罩</div>
+ <div class="page-sub">默认只看四大项：项目 · 售前状态 · 预测报价 · 签约定价 —— 其余列组用下面的开关调出 ·
+   状态 6+1 个勾全部手填（第⑦勾=<b style="color:var(--breach)">流失/流标</b>，勾上即终态）</div>
  ${ops([
-  ['＋ 立项（引导式）','无业务门禁 —— 点开后分 4 步逐一引导填写','建档即出现在本表第一行与全公司项目列表'],
-  ['状态 / 七步 手填','全部由售前同事手选手勾（下拉与格子）','改状态不发通知 —— 通知只挂在「⑥签字」那一格上'],
-  ['第⑥步 签字 打勾','需先上传签署页扫描件（正式系统强制）','★自动短信通知财务开 S1 定金 Invoice（整条链第一条通知）· ⑦收定金由财务自动写'],
+  ['＋ 立项（引导式）','无业务门禁 · 第 4 步填「预测报价（范围）」——立项阶段不填真报价','建档进本表 · 同步出现在全公司项目列表'],
+  ['勾选售前状态（6+1）','顺序勾 · 每勾定格日期，当前状态显示停留天数 · 第⑦勾＝流失/流标（红，终态）','勾「已签约」→ ★自动通知财务开 S1 定金 Invoice；其余勾不惊动别的部门'],
+  ['报价金额 / 预测工时','报价金额：立项后、第一次报价讲解前才能填 · 预测工时：最终定价时才填（消耗率分母）· 无版本概念','—'],
+  ['财务注释 / 工程注释','—','填写后自动通知财务/工程管理阅读，对方打开即标「已读」'],
  ])}
- <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);align-items:center">
+ <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);align-items:center;flex-wrap:wrap">
    <button class="btn btn-primary" onclick="wizOpen()">＋ 立项（引导式）</button>
-   <span class="muted" style="font-size:var(--fs-xs)">共 ${BIGP.length} 个售前项目 · 已签约的行转为只读，后续在工程线推进</span>
+   <span class="sep" style="width:1px;height:20px;background:var(--border)"></span>
+   <span class="muted" style="font-size:var(--fs-xs)">更多列组：</span>
+   ${colBtn('contact','联系人')}${colBtn('comm','关系人与佣金')}${colBtn('house','房屋')}
+   ${colBtn('quote','报价明细')}${colBtn('notes','注释(财务·工程)')}
+   <span class="sep" style="width:1px;height:20px;background:var(--border)"></span>
+   <span class="muted" style="font-size:var(--fs-xs)">City</span>
+   <select onchange="bigCity=this.value;renderAll()" style="width:auto">${cities.map(c=>`<option${c===bigCity?' selected':''}>${c}</option>`).join('')}</select>
+   <span class="muted" style="font-size:var(--fs-xs)">State</span>
+   <select onchange="bigState=this.value;renderAll()" style="width:auto">${states.map(s=>`<option${s===bigState?' selected':''}>${s}</option>`).join('')}</select>
+   <span class="muted" style="font-size:var(--fs-xs)">显示 ${rows.length} / ${BIGP.length}</span>
  </div>
- <div class="bigwrap"><table class="bigtable">
+ <div class="bigwrap"><table class="bigtable" style="min-width:0">
   <thead>
    <tr class="grp">
     <th class="c1" colspan="2" style="text-align:left">项目</th>
-    <th colspan="2">售前状态 · 全部手填</th>
-    <th colspan="4">联系人 · 手填</th>
-    <th colspan="4">关系人与佣金 · 同一组</th>
-    <th colspan="3">房屋</th>
-    <th colspan="4">报价 · 手填</th>
-    <th colspan="3">签约</th>
+    <th colspan="2">售前状态 · 6+1 全部手填</th>
+    <th>预测报价</th><th>签约定价</th>
+    ${bigCols.contact?'<th colspan="4">联系人 · 手填</th>':''}
+    ${bigCols.comm?'<th colspan="4">关系人与佣金 · 同一组</th>':''}
+    ${bigCols.house?'<th colspan="3">房屋</th>':''}
+    ${bigCols.quote?'<th colspan="3">报价明细 · 无版本概念</th>':''}
+    ${bigCols.notes?'<th colspan="2">注释 · 填了对方必读</th>':''}
     <th></th>
    </tr>
    <tr class="leaf">
-    <th class="c1">编号</th><th class="c2">项目 · 地址</th>
-    <th>状态</th><th>七步（点格子勾）</th>
-    <th>业主一</th><th>电话</th><th>业主二</th><th>电话</th>
-    <th>关系人</th><th>电话</th><th>佣金类型</th><th>佣金数值</th>
-    <th>用途</th><th>类型</th><th>施工阶段<span style="color:var(--breach)">★</span></th>
-    <th>报价单号</th><th style="text-align:right">金额 AUD</th><th>版本 · 状态</th><th style="text-align:right">预测工时 h</th>
-    <th style="text-align:right">签约价 AUD</th><th>⑥签字日期</th><th>定金（财务写）</th>
+    <th class="c1">编号</th><th class="c2">昵称 · 地址</th>
+    <th>接洽中→已签约 ＋ ⑦流失</th><th style="text-align:right">停留</th>
+    <th>范围（立项填）</th><th style="text-align:right">AUD</th>
+    ${bigCols.contact?'<th>业主一</th><th>电话</th><th>业主二</th><th>电话</th>':''}
+    ${bigCols.comm?'<th>关系人</th><th>电话</th><th>佣金类型</th><th>佣金数值</th>':''}
+    ${bigCols.house?'<th>用途</th><th>类型</th><th>施工阶段<span style="color:var(--breach)">★</span></th>':''}
+    ${bigCols.quote?'<th>报价单号</th><th style="text-align:right">报价金额<div class="hint">讲解前填</div></th><th style="text-align:right">预测工时 h<div class="hint">最终定价时填</div></th>':''}
+    ${bigCols.notes?'<th>财务注释</th><th>工程注释</th>':''}
     <th>操作</th>
    </tr>
   </thead>
-  <tbody>${BIGP.map(p=>{
-    const signed=p.st==='已签约';
-    return `<tr${signed?' style="background:#fbfcfe"':''}>
+  <tbody>${rows.map(p=>{
+    const signed=p.step>=6&&!p.lost, ro=signed||p.lost;
+    return `<tr${p.lost?' style="opacity:.62"':signed?' style="background:#fbfcfe"':''}>
      <td class="c1"><b class="mono">${p.code}</b></td>
-     <td class="c2"><b>${p.name}</b><div class="hint">📍 ${p.addr}</div></td>
-     <td>${signed?'<span class="pill p-green">已签约</span>':sel(PRE_STATUS,p.st)}</td>
-     <td><div class="mini7">${STEP7.map((s,i)=>{
-        const done=(i+1<p.step)||p.step===7, now=(i+1===p.step)&&p.step<7;
-        return `<span class="${done?'on':now?'now':''}" title="${s} · 手填勾选">${done?'✓':i+1}</span>`;
-       }).join('')}</div></td>
-     <td>${signed?p.o1:inp(p.o1,'w60')}</td><td>${signed?`<span class="mono">${p.o1p}</span>`:inp(p.o1p)}</td>
-     <td>${signed?(p.o2||'—'):inp(p.o2,'w60')}</td><td>${signed?`<span class="mono">${p.o2p||'—'}</span>`:inp(p.o2p)}</td>
-     <td>${signed?(p.rel||'—'):inp(p.rel,'w60')}</td><td>${signed?`<span class="mono">${p.relp||'—'}</span>`:inp(p.relp)}</td>
-     <td>${signed?(p.ct||'—'):sel(['百分比','固定金额'],p.ct==='固定'?'固定金额':p.ct,!p.ct)}</td>
-     <td>${signed?(p.cv?(p.ct==='固定'?'A$'+p.cv:p.cv+'%'):'—'):inp(p.cv,'w60',p.ct==='固定'?'金额':'%')}</td>
-     <td>${signed?p.use:sel(['自住','出售','混合','商业'],p.use,!p.use)}</td>
-     <td>${signed?p.ht:sel(['House','Duplex','Townhouse','Apartment','Villa'],p.ht,!p.ht)}</td>
-     <td>${signed?p.stage:sel(['DA','CC','拆除','地基','结构','Rough-in','翻新','其他'],p.stage,!p.stage)}</td>
-     <td>${signed?`<span class="mono">${p.qno}</span>`:inp(p.qno,'w80','Q-…')}</td>
-     <td class="num">${p.qamt?money(p.qamt,'customer'):(signed?'—':inp(p.qamt,'w80','未出'))}</td>
-     <td>${signed?p.qv:inp(p.qv,'w80','v1 · 草拟')}</td>
-     <td class="num">${signed?p.hrs:inp(p.hrs,'w60','别漏')}</td>
-     <td class="num">${signed?money(p.qamt,'customer'):'<span class="masked">签约时定</span>'}</td>
-     <td>${signed?`<span class="mono">${p.sign}</span>`:'<span class="muted">⑥完成时填</span>'}</td>
-     <td>${signed?`<span class="pill p-green">${can('customer')?p.dep:'— —'}</span>`:'<span class="masked">只读 · 财务写</span>'}</td>
-     <td>${signed?`<button class="btn" onclick="alert('已签约项目转入工程线，售前侧只读')">查看</button>`
-               :'<button class="btn" onclick="wizOpen()">继续完善</button>'}</td>
-    </tr>`;}).join('')}</tbody>
+     <td class="c2"><b>${p.nick}</b>${p.lost?' <span class="pill p-red">已流失</span>':signed?' <span class="pill p-green">已签约</span>':''}
+       <div class="hint">📍 ${p.street}, ${p.city} <b>${p.state}</b></div></td>
+     <td>${ticks(p)}</td>
+     <td class="num">${p.stay!==''?`<span${p.stay>10?' style="color:var(--warning);font-weight:600"':''}>${p.stay} 天</span>`:'—'}</td>
+     <td>${ro?`<span class="muted">${p.est}</span>`:inp(p.est,'w80','如 300k–350k')}</td>
+     <td class="num">${signed?money(p.price,'customer'):p.step===5?inp(p.price,'w80','定价后填'):'<span class="masked">未到待签约</span>'}</td>
+     ${bigCols.contact?`<td>${ro?(p.o1||'—'):inp(p.o1,'w60')}</td><td>${ro?`<span class="mono">${p.o1p||'—'}</span>`:inp(p.o1p)}</td>
+       <td>${ro?(p.o2||'—'):inp(p.o2,'w60')}</td><td>${ro?`<span class="mono">${p.o2p||'—'}</span>`:inp(p.o2p)}</td>`:''}
+     ${bigCols.comm?`<td>${ro?(p.rel||'—'):inp(p.rel,'w60')}</td><td>${ro?`<span class="mono">${p.relp||'—'}</span>`:inp(p.relp)}</td>
+       <td>${ro?(p.ct||'—'):`<select><option${p.ct?'':' selected'}>— 手选 —</option><option${p.ct==='百分比'?' selected':''}>百分比</option><option${p.ct==='固定'?' selected':''}>固定金额</option></select>`}</td>
+       <td>${ro?(p.cv?(p.ct==='固定'?'A$'+p.cv:p.cv+'%'):'—'):inp(p.cv,'w60',p.ct==='固定'?'金额':'%')}</td>`:''}
+     ${bigCols.house?`<td>${ro?(p.use||'—'):`<select><option${p.use?'':' selected'}>—</option><option${p.use==='自住'?' selected':''}>自住</option><option${p.use==='出售'?' selected':''}>出售</option><option>混合</option><option>商业</option></select>`}</td>
+       <td>${ro?(p.ht||'—'):`<select><option${p.ht?'':' selected'}>—</option><option${p.ht==='House'?' selected':''}>House</option><option${p.ht==='Duplex'?' selected':''}>Duplex</option><option${p.ht==='Townhouse'?' selected':''}>Townhouse</option><option>Apartment</option><option>Villa</option></select>`}</td>
+       <td>${ro?(p.stage||'—'):`<select><option${p.stage?'':' selected'}>—</option><option${p.stage==='DA'?' selected':''}>DA</option><option${p.stage==='CC'?' selected':''}>CC</option><option>拆除</option><option>地基</option><option${p.stage==='结构'?' selected':''}>结构</option><option${p.stage==='Rough-in'?' selected':''}>Rough-in</option><option>翻新</option><option>其他</option></select>`}</td>`:''}
+     ${bigCols.quote?`<td>${ro?`<span class="mono">${p.qno||'—'}</span>`:inp(p.qno,'w80','Q-…')}</td>
+       <td class="num">${p.qamt?(ro?money(p.qamt,'customer'):inp(p.qamt,'w80')):(p.step>=2?inp(p.qamt,'w80','讲解前填'):'<span class="masked" title="立项阶段还没报价">立项后才填</span>')}</td>
+       <td class="num">${p.hrs?(ro?p.hrs:inp(p.hrs,'w60')):(p.step>=5?inp(p.hrs,'w60','别漏'):'<span class="masked">定价时填</span>')}</td>`:''}
+     ${bigCols.notes?`<td>${noteCell(p.noteF,p.noteFr,'财务')}</td><td>${noteCell(p.noteE,p.noteEr,'工程')}</td>`:''}
+     <td>${ro?`<button class="btn" onclick="alert('${p.lost?'已流失（流标）项目 · 归档只读':'已签约项目转入工程线，售前侧只读'}')">查看</button>`
+            :'<button class="btn" onclick="wizOpen()">继续完善</button>'}</td>
+    </tr>`;}).join('')||`<tr><td colspan="${gCount}" class="muted" style="padding:var(--sp-4)">该筛选下暂无项目</td></tr>`}</tbody>
  </table></div>
  <div class="panel"><div class="panel-body" style="font-size:var(--fs-xs)"><span class="muted">
-   ① 佣金跟关系人放同一组 —— 介绍费付给谁、按什么算，一眼对上；
-   ② 预测工时那格「别漏」—— 它是人工消耗率的分母；
-   ③ 定金列售前只读（财务写入）；⑦收定金由财务动作自动打勾；
-   ④ 「⑥签字」勾下去才触发通知财务开 S1 —— 其它状态怎么改都不惊动别的部门。
+   ① 6+1 个勾就是售前的全部状态，每勾定格日期（悬停可见），「停留」= 当前状态已等的天数；
+   ② 第⑦勾（红）= 流失/流标同一回事，勾上整行归档变灰；已签约只亮 6 个勾；
+   ③ 预测报价是范围、立项时填；报价金额讲解前填；预测工时最终定价时填 —— 三个时点不一样，格子会自己提示；
+   ④ 财务注释/工程注释：售前填完对方必读（角标显示 已读✓/未读）；
+   ⑤ 佣金跟关系人永远同组出现；金额按权限遮罩。
  </span></div></div>
 
  <!-- ── 立项引导弹层（4 步） ── -->
@@ -1256,11 +1306,11 @@ ${ops([
   <div class="wizbody">
    <div id="wizs1">
     <div class="field"><label>项目编号（自动生成）</label><input value="KX-2026-0211" readonly class="mono"></div>
-    <div class="field"><label>项目名称</label><input placeholder="如：Ryde 吴宅"></div>
+    <div class="field"><label>客户项目昵称（大表黑体显示）</label><input placeholder="如：吴宅"></div>
     <div class="field"><label>街道</label><input placeholder="手填"></div>
     <div class="split" style="gap:var(--sp-3)">
-      <div class="field"><label>Suburb</label><input placeholder="手填"></div>
-      <div class="field"><label>州</label><select><option>NSW</option><option>VIC</option><option>QLD</option>
+      <div class="field"><label>City / Suburb</label><input placeholder="手填"></div>
+      <div class="field"><label>State</label><select><option>NSW</option><option>VIC</option><option>QLD</option>
         <option>SA</option><option>WA</option><option>TAS</option><option>ACT</option><option>NT</option></select></div>
     </div>
     <div class="hint">坐标自动生成——给地图，也当考勤围栏圆心</div>
@@ -1300,14 +1350,14 @@ ${ops([
       <div class="hint">签约时定死，从交付之日起算</div></div>
    </div>
    <div id="wizs4" style="display:none">
-    <div class="field"><label>当前状态（手选）</label>
-      <select><option>接洽当中</option><option>讲解修改中</option><option>出 Draft 中</option>
-        <option>待签约</option><option>留标</option></select></div>
-    <div class="field"><label>报价单号（有了再填）</label><input placeholder="Q-2026-…" class="mono"></div>
-    <div class="split" style="gap:var(--sp-3)">
-      <div class="field"><label>报价金额 AUD</label><input placeholder="手填" class="mono"></div>
-      <div class="field"><label>★ 预测人工工时 h</label><input placeholder="别漏——消耗率分母" class="mono"></div>
-    </div>
+    <div class="field"><label>预测报价（范围 · AUD）</label>
+      <div class="split" style="gap:var(--sp-3)">
+        <input placeholder="低值 · 如 250,000" class="mono">
+        <input placeholder="高值 · 如 300,000" class="mono">
+      </div>
+      <div class="hint">立项阶段只填<b>预测范围</b>。真正的报价金额在立项之后、第一次报价讲解前才能填；
+        预测人工工时在最终定价时才填 —— 这两个这里都不填。</div></div>
+    <div class="field"><label>初始状态（自动）</label><input value="接洽中 · 今日起算停留" readonly></div>
     <div class="hint">完成后：新项目出现在售前大表第一行 + 全公司项目列表。之后随时回大表里改。</div>
    </div>
   </div>
@@ -1640,9 +1690,9 @@ const STUCK={
   {pj:'',what:'盘点待审批 · 盘亏 A$255.60',why:'超审批线 A$200，盘点人不能自批',h:26,t:'wh',p:'盘点'},
  ],
  presales:[
-  {pj:'KX-2026-0155',what:'留标 · 讲解修改后无反馈',why:'停留超阈值 45 天 —— 继续跟进或确认归档',h:'',p:'售前大表'},
-  {pj:'KX-2026-0201',what:'Draft 报价讲解后未定版',why:'超 SLA 48h —— 修改后定版才能走到第六步',h:52,p:'售前大表'},
-  {pj:'KX-2026-0201',what:'报价缺预测人工工时',why:'人工消耗率的分母 —— 不填签约后消耗%算不出',h:'',p:'售前大表'},
+  {pj:'KX-2026-0201',what:'设计中已停留 12 天',why:'超停留阈值 —— 推进出报价或回访客户',h:'',p:'售前大表'},
+  {pj:'KX-2026-0190',what:'修订中 · 报价讲解后 9 天未定',why:'待签约推进受阻 —— 修订完尽快约签约',h:'',p:'售前大表'},
+  {pj:'KX-2026-0186',what:'待签约 · 预测工时未填',why:'最终定价要填人工工时 —— 消耗率的分母',h:'',p:'售前大表'},
  ],
  proc:[
   {pj:'',what:'C1 低于红线 5 项',why:'定期备货 —— 待纳入下次集中采购单',h:12,p:'补货建议'},
