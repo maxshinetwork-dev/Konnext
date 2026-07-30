@@ -33,10 +33,10 @@ button{font:inherit;cursor:pointer}
 .login-sub{color:var(--text-muted);font-size:var(--fs-sm);margin-bottom:var(--sp-5)}
 label{display:block;font-size:var(--fs-xs);color:var(--text-muted);
   margin-bottom:var(--sp-1);letter-spacing:.04em}
-input,select{width:100%;background:var(--bg);border:1px solid var(--border);
+input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--border);
   color:var(--text);padding:10px var(--sp-3);border-radius:var(--radius);
   font:var(--fs-md) var(--font)}
-input:focus,select:focus{outline:none;border-color:var(--accent)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
 .btn{background:var(--bg-elevated);border:1px solid var(--border);color:var(--text);
   padding:7px var(--sp-3);border-radius:var(--radius);font-size:var(--fs-sm)}
 .btn:hover{border-color:var(--accent)}
@@ -209,6 +209,18 @@ tbody tr:hover{background:var(--bg-elevated)}
 .m7.lost .lb{color:var(--breach);font-weight:600}
 /* 列组分隔线（用户定：分组线清晰） */
 .bigtable .gs{border-left:2px solid #c3d2e4}
+/* 注释大框（用户定）：多行小字 textarea + 悬浮弹出全文 */
+.notewrap{position:relative;min-width:176px}
+.notewrap textarea{width:176px;min-height:46px;font-size:11px;line-height:1.55;
+  padding:5px 7px;resize:vertical;display:block}
+.notepop{display:none;position:absolute;bottom:calc(100% + 6px);left:0;z-index:30;
+  width:300px;background:#243447;color:#f5f8fa;font-size:11.5px;line-height:1.8;
+  padding:9px 11px;border-radius:6px;white-space:pre-wrap;
+  box-shadow:0 8px 24px rgba(16,24,40,.28)}
+.notewrap:hover .notepop{display:block}
+/* 列表行删除按钮（修改抽屉） */
+.delx{cursor:pointer;color:var(--breach);font-size:13px;padding:0 5px;font-weight:600}
+.delx:hover{background:rgba(220,38,38,.10);border-radius:4px}
 
 /* 立项引导弹层 */
 .wizback{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:60;display:none}
@@ -455,10 +467,81 @@ function wizNext(){ if(wizN===WIZ_STEPS){ wizClose();
     alert('已建档（演示）：新项目会出现在售前大表和全公司项目列表里，编号自动生成'); return; }
   wizN++; wizPaint(); }
 function wizPrev(){ if(wizN>1){ wizN--; wizPaint(); } }
-/* ── 「补全」抽屉（子表明细，演示） ── */
+/* ── 「修改」抽屉：子表全部可编辑、列表行可增删（演示数据取王宅） ── */
+let detContacts=[
+ {lab:'业主一',nm:'王先生',nk:'老王',ph:'0433 142 000',em:'wang@x.com',role:'决策人'},
+ {lab:'业主二',nm:'王太太',nk:'',ph:'0433 142 001',em:'',role:'共同决策'},
+ {lab:'关系人',nm:'',nk:'',ph:'',em:'',role:''}];
+let detFam=[{t:'成人',age:'40',note:''},{t:'成人',age:'38',note:''},
+ {t:'儿童',age:'8',note:'二楼儿童房'},{t:'老人',age:'70',note:'一层主卧 · 夜灯感应'}];
+let detParties=[{tr:'Builder',co:'BuildCo',nm:'Mike',ph:'0422 000 111'},
+ {tr:'电工',co:'Spark 电气',nm:'Tony',ph:'0422 000 222'}];
+let detSol={wiring:'有线',proto:'KNX',budget:'480,000',knx:true,fh:false};
+let detFloors={b:'无',l1:'双砖',l2:'轻钢',l3:'无',l4:'无',roof:'瓦顶'};
+const FLOOR_OPTS=['无','双砖','轻钢','木结构','混凝土','砖木','其他'];
+const FAM_TYPES=['成人','老人','儿童','保姆','司机','清洁工','宠物','其他'];
+function detFamAdd(){ detFam.push({t:'成人',age:'',note:''}); detPaint(); }
+function detFamDel(i){ detFam.splice(i,1); detPaint(); }
+function detPartyAdd(){ detParties.push({tr:tradeOpts[0]||'其他',co:'',nm:'',ph:''}); detPaint(); }
+function detPartyDel(i){ detParties.splice(i,1); detPaint(); }
+function detPaint(){
+ const sel=(opts,cur,oc)=>`<select style="width:auto" onchange="${oc}">${
+   opts.map(o=>`<option${o===cur?' selected':''}>${o}</option>`).join('')}</select>`;
+ const body=document.getElementById('detbody'); if(!body) return;
+ body.innerHTML=`
+  <div class="panel-head" style="padding:0 0 8px 0">联系人 · 每人五项
+    <span class="muted" style="font-weight:400">三个角色固定 · 内容全可改</span></div>
+  <table style="margin-bottom:14px"><thead><tr><th></th><th>姓名</th><th>昵称</th><th>电话</th><th>邮箱</th><th>角色</th></tr></thead>
+   <tbody>${detContacts.map((c,i)=>`<tr><td class="muted">${c.lab}</td>
+     <td><input style="width:72px" value="${c.nm}" oninput="detContacts[${i}].nm=this.value"></td>
+     <td><input style="width:62px" value="${c.nk}" oninput="detContacts[${i}].nk=this.value"></td>
+     <td><input style="width:112px" value="${c.ph}" oninput="detContacts[${i}].ph=this.value"></td>
+     <td><input style="width:112px" value="${c.em}" oninput="detContacts[${i}].em=this.value"></td>
+     <td>${sel(['—',...roleOpts],c.role||'—',`detContacts[${i}].role=this.value`)}</td></tr>`).join('')}</tbody></table>
+  <div class="panel-head" style="padding:0 0 8px 0">家庭成员
+    <span class="muted" style="font-weight:400">设计输入 · 可增删</span></div>
+  <table style="margin-bottom:8px"><thead><tr><th>类型</th><th>年龄</th><th>备注</th><th></th></tr></thead>
+   <tbody>${detFam.map((m,i)=>`<tr>
+     <td>${sel(FAM_TYPES,m.t,`detFam[${i}].t=this.value`)}</td>
+     <td><input class="mono" style="width:56px" value="${m.age}" oninput="detFam[${i}].age=this.value"></td>
+     <td><input style="width:200px" value="${m.note}" oninput="detFam[${i}].note=this.value"></td>
+     <td><a class="delx" onclick="detFamDel(${i})" title="删除本行">✕</a></td></tr>`).join('')}</tbody></table>
+  <button class="btn" style="margin-bottom:14px" onclick="detFamAdd()">＋ 添加成员</button>
+  <div class="panel-head" style="padding:0 0 8px 0">参建方 <span class="pill p-cyan">下游硬依赖</span>
+    <span class="muted" style="font-weight:400">可增删 · 工种选项在「设置」维护</span></div>
+  <table style="margin-bottom:8px"><thead><tr><th>工种</th><th>公司</th><th>联系人</th><th>电话</th><th></th></tr></thead>
+   <tbody>${detParties.map((p,i)=>`<tr>
+     <td>${sel(tradeOpts,p.tr,`detParties[${i}].tr=this.value`)}</td>
+     <td><input style="width:112px" value="${p.co}" oninput="detParties[${i}].co=this.value"></td>
+     <td><input style="width:82px" value="${p.nm}" oninput="detParties[${i}].nm=this.value"></td>
+     <td><input style="width:120px" value="${p.ph}" oninput="detParties[${i}].ph=this.value"></td>
+     <td><a class="delx" onclick="detPartyDel(${i})" title="删除本行">✕</a></td></tr>`).join('')}</tbody></table>
+  <button class="btn" style="margin-bottom:14px" onclick="detPartyAdd()">＋ 添加参建方</button>
+  <div class="panel-head" style="padding:0 0 8px 0">方案倾向
+    <span class="muted" style="font-weight:400">决定 SM2 带线清单 · 全可改</span></div>
+  <table style="margin-bottom:14px"><tbody>
+    <tr><td class="muted">有线/无线</td><td>${sel(['有线','无线'],detSol.wiring,'detSol.wiring=this.value')}</td>
+        <td class="muted">协议</td><td>${sel(['KNX','C-Bus','RS485','WiFi','Zigbee','其他'],detSol.proto,'detSol.proto=this.value')}</td></tr>
+    <tr><td class="muted">预算 AUD</td><td><input class="mono" style="width:110px" value="${detSol.budget}" oninput="detSol.budget=this.value"></td>
+        <td class="muted">关键项</td><td>
+          <label style="font-size:12px;margin-right:10px"><input type="checkbox" style="width:auto"${detSol.knx?' checked':''} onchange="detSol.knx=this.checked"> 有 KNX</label>
+          <label style="font-size:12px"><input type="checkbox" style="width:auto"${detSol.fh?' checked':''} onchange="detSol.fh=this.checked"> 有地暖</label></td></tr>
+  </tbody></table>
+  <div class="panel-head" style="padding:0 0 8px 0">楼层结构 · 屋顶
+    <span class="muted" style="font-weight:400">每层可改</span></div>
+  <table><tbody>
+    <tr><td class="muted">地下室</td><td>${sel(FLOOR_OPTS,detFloors.b,'detFloors.b=this.value')}</td>
+        <td class="muted">一层</td><td>${sel(FLOOR_OPTS,detFloors.l1,'detFloors.l1=this.value')}</td>
+        <td class="muted">二层</td><td>${sel(FLOOR_OPTS,detFloors.l2,'detFloors.l2=this.value')}</td></tr>
+    <tr><td class="muted">三层</td><td>${sel(FLOOR_OPTS,detFloors.l3,'detFloors.l3=this.value')}</td>
+        <td class="muted">四层+</td><td>${sel(FLOOR_OPTS,detFloors.l4,'detFloors.l4=this.value')}</td>
+        <td class="muted">屋顶</td><td>${sel(['瓦顶','平顶','露台','其他'],detFloors.roof,'detFloors.roof=this.value')}</td></tr>
+  </tbody></table>`;
+}
 function detOpen(code,nick){
   const t=document.getElementById('dettitle');
-  if(t) t.textContent=`${code} · ${nick} · 补全子表`;
+  if(t) t.textContent=`${code} · ${nick} · 修改子表`;
+  detPaint();
   document.getElementById('detback').classList.add('open');
   document.getElementById('detbox').classList.add('open');
 }
@@ -1227,7 +1310,7 @@ ${ops([
    ②默认四大项：项目/售前状态/预测报价/签约（单号·工时·定价·定金四样）；其余列组开关
    ③预测报价（范围）立项填；单号/工时/定价「待签约」一并填；定金只读（财务写）
    ④联系人每人五项（姓名/昵称/电话/邮箱/角色）；佣金与关系人同组
-   ⑤子表走「补全」抽屉：家庭成员/参建方/方案倾向/楼层结构屋顶 —— 参建方与方案倾向
+   ⑤子表走「修改」抽屉（全可编辑、行可增删）：家庭成员/参建方/方案倾向/楼层结构屋顶 —— 参建方与方案倾向
      是下游硬依赖（出库提货人/Builder告知/SM电工签字/SM2带线清单）
    ⑥财务注释/工程注释：售前填 → 对应部门必读（已读标） */
 'presales/售前大表':()=>{
@@ -1267,7 +1350,8 @@ ${ops([
    rel:'设计师Lily',reln:'',relp:'0422 018 900',rele:'lily@x.com',relr:'介绍人',ct:'百分比',cv:'2.5',
    use:'自住',ht:'House',stage:'拆除',pp:3,hm:4,so:true,fl:true,
    qno:'Q-2026-0186',hrs:'500',price:'655,000',dep:'',
-   noteF:'定金比例按标准 10%，业主已确认',noteFr:'read',noteE:'泳池设备房要走专线，工程排线注意',noteEr:'read'},
+   noteF:'定金比例按标准 10%，业主已确认',noteFr:'read',
+   noteE:'泳池设备房要走专线，工程排线注意\n二楼影音室墙内预埋 HDMI 光纤 ×2\n车库充电桩 32A 独立回路',noteEr:'read'},
   {code:'KX-2026-0155',nick:'李宅',street:'7 Beecroft Rd',city:'Epping',state:'NSW',
    step:3,lost:true,stay:'',d:['04-02','04-20','05-08','··','··','··','06-22'],est:'280k–320k',
    o1:'李先生',o1n:'',o1p:'0433 155 000',o1e:'',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
@@ -1294,7 +1378,7 @@ ${ops([
  const roleSel=(cur)=>`<select style="font-size:11px;padding:3px 4px">
     <option${cur&&roleOpts.includes(cur)?'':' selected'}>—</option>${
     roleOpts.map(r=>`<option${r===cur?' selected':''}>${r}</option>`).join('')}</select>`;
- /* 子表在大表里的直读文本（点「改」进补全抽屉编辑） */
+ /* 子表在大表里的直读文本（点「改」进修改抽屉编辑） */
  const EXTRA={
   'KX-2026-0201':{parties:'Builder Ken·NBuild',fam:'成人×2 · 老人×1(68)',floors:''},
   'KX-2026-0198':{parties:'Builder Joe·CastleCo / 电工 Ken·Volt',fam:'成人×2',floors:'一层双砖 · 瓦顶'},
@@ -1308,10 +1392,14 @@ ${ops([
     <a style="color:var(--accent);cursor:pointer;font-size:11px" onclick="detOpen('${p.code}','${p.nick}')">改</a>`;
  const colBtn=(k,label)=>`<button class="btn${bigCols[k]?' btn-primary':''}"
     onclick="bigCols['${k}']=!bigCols['${k}'];renderAll()">${label}</button>`;
+ /* 注释大框：多行 textarea 小字 + 悬浮弹出全文（用户定） */
  const noteCell=(v,r,who)=>{
    const badge=v?(r==='read'?`<span class="pill p-green">${who}已读 ✓</span>`
                            :`<span class="pill p-amber">${who}未读</span>`):'';
-   return `<div style="display:flex;gap:4px;align-items:center">${inp(v,'w80',`售前填 → 通知${who}`)}${badge}</div>`;
+   return `<div class="notewrap">
+     <textarea placeholder="售前填 → 通知${who}\n（支持多行，可拖右下角加高）">${v||''}</textarea>
+     ${v?`<div class="notepop">${v}</div>`:''}
+     <div style="margin-top:3px">${badge}</div></div>`;
  };
  const ticks=(p)=>`<div class="mini7">${STAGES.map((s,i)=>{
     const date=p.d&&p.d[i]&&p.d[i]!=='··'?` · ${p.d[i]}`:'';
@@ -1330,7 +1418,7 @@ ${ops([
  ${ops([
   ['＋ 立项（引导式）','无业务门禁 · 5 步引导：基本地址→联系人佣金→成员与参建方→房屋楼层→方案与预测报价','建档进本表 · 同步出现在全公司项目列表'],
   ['勾选售前状态（6+1）','顺序勾 · 每勾定格日期，当前状态显示停留天数 · 第⑦勾＝流失/流标（红，终态）','勾「已签约」→ ★自动通知财务开 S1 定金 Invoice；其余勾不惊动别的部门'],
-  ['补全子表（成员/参建方/方案/楼层）','参建方与方案倾向是下游硬依赖：出库提货人、Builder 告知、SM 电工签字、SM2 带线清单全靠它','—'],
+  ['修改子表（成员/参建方/方案/楼层）','抽屉里全部可编辑、列表行可增删 · 参建方与方案倾向是下游硬依赖（出库提货人/Builder 告知/SM 电工签字/SM2 带线清单）','—'],
   ['报价单号 / 预测工时 / 签约定价','三样都在「待签约」阶段一并填写 · 定金列只读（财务写）','—'],
   ['财务注释 / 工程注释','—','填写后自动通知财务/工程管理阅读，对方打开即标「已读」'],
  ])}
@@ -1382,7 +1470,7 @@ ${ops([
        <div class="hint">📍 ${p.street}, ${p.city} <b>${p.state}</b></div>
        <div class="hint">参建方 <b>${p.pp}</b> · 成员 <b>${p.hm}</b> · 方案${p.so?'✓':'<b style="color:var(--warning)">未填</b>'} ·
          楼层${p.fl?'✓':'<b style="color:var(--warning)">未填</b>'}
-         <a style="color:var(--accent);cursor:pointer" onclick="detOpen('${p.code}','${p.nick}')">补全 →</a></div></td>
+         <a style="color:var(--accent);cursor:pointer" onclick="detOpen('${p.code}','${p.nick}')">修改 →</a></div></td>
      <td class="gs">${ticks(p)}</td>
      <td class="num">${p.stay!==''?`<span title="阈值 ${preRemindDays} 天起每天提醒（售前设置里改）"${p.stay>=preRemindDays?' style="color:var(--warning);font-weight:600"':''}>${p.stay} 天</span>`:'—'}</td>
      <td class="gs">${ro?`<span class="muted">${p.est}</span>`:inp(p.est,'w80','如 300k–350k')}</td>
@@ -1415,7 +1503,7 @@ ${ops([
      ${bigCols.family?`<td class="gs">${subCell(p,EX(p).fam,'成员未录')}</td>`:''}
      ${bigCols.notes?`<td class="gs">${noteCell(p.noteF,p.noteFr,'财务')}</td><td>${noteCell(p.noteE,p.noteEr,'工程')}</td>`:''}
      <td class="gs">${ro?`<button class="btn" onclick="alert('${p.lost?'已流失（流标）项目 · 归档只读':'已签约项目转入工程线，售前侧只读'}')">查看</button>`
-            :`<button class="btn" onclick="detOpen('${p.code}','${p.nick}')">补全</button>`}</td>
+            :`<button class="btn" onclick="detOpen('${p.code}','${p.nick}')">修改</button>`}</td>
     </tr>`;}).join('')||`<tr><td colspan="${gCount}" class="muted" style="padding:var(--sp-4)">该筛选下暂无项目</td></tr>`}</tbody>
  </table></div>
  ${helpNote(`① 6+1 个勾就是售前的全部状态：接洽中/设计中/报价中/修订中/待签约/已签约 + 第⑦红勾「已流失」。
@@ -1425,7 +1513,7 @@ ${ops([
  ${helpNote(`③ 预测报价（范围）立项时填；报价单号/预测工时/签约定价三样「待签约」阶段一并填；
    定金列只读（财务写入后亮绿）。预测工时是人工消耗率的分母，别漏。`)}
  ${helpNote(`④ 子表内容在大表直读：<b>参建方</b>在「联系人+参建方」列组末列、<b>楼层屋顶</b>在「房屋+楼层」列组末列、
-   <b>家庭成员</b>单独列组 —— 点格子里的「改」进补全抽屉编辑；未填的标黄。
+   <b>家庭成员</b>单独列组 —— 点格子里的「改」进修改抽屉（全部可编辑、列表行可增删）；未填的标黄。
    参建方与方案倾向是下游硬依赖 —— 出库提货人、Builder 告知、SM 电工签字、SM2 带线清单全靠它。`)}
  ${helpNote(`⑤ 财务注释/工程注释（列组开关里）：售前填完对方必读（角标显示 已读✓/未读）；佣金永远跟关系人同组。`)}
  ${helpNote(`⑥ 售前的提醒全部来自这六步本身（不来自外部交接）：前六步任一步停留达到阈值（默认 3 天，
@@ -1481,12 +1569,12 @@ ${ops([
         <option>司机</option><option>清洁工</option><option>宠物</option><option>其他</option></select></td>
         <td><input class="mono" style="width:60px" placeholder="岁"></td>
         <td><input placeholder="如：轮椅出行"></td>
-        <td><button class="btn">＋ 再加一位</button></td></tr></tbody></table>
+        <td><button class="btn" onclick="alert('演示：立项时可连续加行；建档后在大表行内「修改」里随时增删')">＋ 再加一位</button></td></tr></tbody></table>
     <div class="panel-head" style="padding:var(--sp-2) 0">参建方（★下游硬依赖：出库提货/Builder告知/SM签字）</div>
     <table><thead><tr><th>工种</th><th>公司</th><th>联系人</th><th>电话</th><th></th></tr></thead>
       <tbody><tr><td><select>${tradeOpts.map(t=>`<option>${t}</option>`).join('')}</select></td>
         <td><input placeholder="公司名"></td><td><input placeholder="姓名"></td>
-        <td><input placeholder="04xx…"></td><td><button class="btn">＋ 再加一方</button></td></tr></tbody></table>
+        <td><input placeholder="04xx…"></td><td><button class="btn" onclick="alert('演示：立项时可连续加行；建档后在大表行内「修改」里随时增删')">＋ 再加一方</button></td></tr></tbody></table>
     <div class="hint">现在不全没关系，SM1 现场见到分包商还会往里采集 —— 但 Builder 和电工越早录越好</div>
    </div>
    <div id="wizs4" style="display:none">
@@ -1550,51 +1638,16 @@ ${ops([
   </div>
  </div>
 
- <!-- ── 「补全」抽屉：子表内容（演示数据取王宅） ── -->
+ <!-- ── 「修改」抽屉：子表内容全部可编辑（detPaint 渲染，列表行可增删） ── -->
  <div class="wizback" id="detback" onclick="detClose()"></div>
- <div class="wizbox" id="detbox" style="width:min(680px,94vw)">
-  <div class="wizhead"><b id="dettitle">补全子表</b>
-    <span class="muted" style="font-size:var(--fs-xs)">大表只显示个数角标，明细都在这里</span>
+ <div class="wizbox" id="detbox" style="width:min(700px,94vw)">
+  <div class="wizhead"><b id="dettitle">修改子表</b>
+    <span class="muted" style="font-size:var(--fs-xs)">全部可编辑 · 列表行可增删</span>
     <button class="btn" style="margin-left:auto" onclick="detClose()">✕</button>
   </div>
-  <div class="wizbody">
-   <div class="panel-head" style="padding:0 0 var(--sp-2) 0">联系人 · 每人五项</div>
-   <table style="margin-bottom:var(--sp-3)"><thead><tr><th></th><th>姓名</th><th>昵称</th><th>电话</th><th>邮箱</th><th>角色</th></tr></thead>
-    <tbody>
-     <tr><td class="muted">业主一</td><td>王先生</td><td>老王</td><td class="mono">0433 142 000</td><td>wang@x.com</td><td>决策人</td></tr>
-     <tr><td class="muted">业主二</td><td>王太太</td><td>—</td><td class="mono">0433 142 001</td><td>—</td><td>共同决策</td></tr>
-     <tr><td class="muted">关系人</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-    </tbody></table>
-   <div class="panel-head" style="padding:0 0 var(--sp-2) 0">家庭成员 <span class="muted">设计输入</span></div>
-   <table style="margin-bottom:var(--sp-3)"><thead><tr><th>类型</th><th>年龄</th><th>备注</th></tr></thead>
-    <tbody>
-     <tr><td>成人 ×2</td><td class="mono">40 / 38</td><td>—</td></tr>
-     <tr><td>儿童 ×1</td><td class="mono">8</td><td>二楼儿童房</td></tr>
-     <tr><td>老人 ×1</td><td class="mono">70</td><td>一层主卧 · 夜灯感应</td></tr>
-    </tbody></table>
-   <button class="btn" style="margin-bottom:var(--sp-3)">＋ 添加成员</button>
-   <div class="panel-head" style="padding:0 0 var(--sp-2) 0">参建方 <span class="pill p-cyan">下游硬依赖</span></div>
-   <table style="margin-bottom:var(--sp-3)"><thead><tr><th>工种</th><th>公司</th><th>联系人</th><th>电话</th></tr></thead>
-    <tbody>
-     <tr><td>Builder</td><td>BuildCo</td><td>Mike</td><td class="mono">0422 000 111</td></tr>
-     <tr><td>电工</td><td>Spark 电气</td><td>Tony</td><td class="mono">0422 000 222</td></tr>
-    </tbody></table>
-   <button class="btn" style="margin-bottom:var(--sp-3)">＋ 添加参建方</button>
-   <div class="hint" style="margin-bottom:var(--sp-3)">出库提货人只能从这里选；Builder 收发放告知；SM2/SM3 找电工签字 —— 不录后面全卡</div>
-   <div class="panel-head" style="padding:0 0 var(--sp-2) 0">方案倾向 <span class="muted">决定 SM2 带线清单</span></div>
-   <table style="margin-bottom:var(--sp-3)"><tbody>
-     <tr><td class="muted">有线/无线</td><td>有线</td><td class="muted">协议</td><td>KNX</td></tr>
-     <tr><td class="muted">预算</td><td>${can('customer')?'A$ 480,000':'— —'}</td><td class="muted">关键项</td>
-       <td><span class="pill p-green">有 KNX ✓</span> <span class="pill p-grey">无地暖</span></td></tr>
-   </tbody></table>
-   <div class="panel-head" style="padding:0 0 var(--sp-2) 0">楼层结构 · 屋顶</div>
-   <table><tbody>
-     <tr><td class="muted">地下室</td><td>无</td><td class="muted">一层</td><td>双砖</td><td class="muted">二层</td><td>轻钢</td></tr>
-     <tr><td class="muted">三层</td><td>无</td><td class="muted">四层+</td><td>无</td><td class="muted">屋顶</td><td>瓦顶</td></tr>
-   </tbody></table>
-  </div>
+  <div class="wizbody" id="detbody"></div>
   <div class="wizfoot">
-    <span class="muted" style="font-size:var(--fs-xs)">演示数据 · 正式系统按项目各存各的</span>
+    <span class="muted" style="font-size:var(--fs-xs)">演示数据 · 正式系统按项目各存各的并全程留痕</span>
     <button class="btn btn-primary" onclick="detClose()">完成</button>
   </div>
  </div>`;
