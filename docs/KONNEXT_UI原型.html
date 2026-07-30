@@ -320,7 +320,7 @@ const WHO = {
   eng:        {name:'陈工', role:'工程管理',   tier:2, depts:['eng'], see:[]},
 };
 const DEPT = {
-  presales:{label:'售前', pages:['售前大表','项目列表']},  /* 用户定：整个售前=一页长大表 */
+  presales:{label:'售前', pages:['售前大表','项目列表','设置']},  /* 用户定：整个售前=一页长大表；设置=提醒阈值自定义 */
   eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','Site Meeting','安装调试','交付','工程流水账','每日上报','人员与外包','文档库','设置']},
   proc:    {label:'采购', pages:['总览','项目列表','物料主表','汇率','采购单','补货建议','调价历史','RMA索赔']},
   wh:      {label:'库管', pages:['总览','项目列表','入库','出库','退库与拒收','RMA登记','盘点','物料在谁手里','库存流水','期初移库']},
@@ -334,7 +334,7 @@ const COMPANY_PAGES=new Set([
   'proc/总览','proc/物料主表','proc/汇率','proc/采购单','proc/补货建议','proc/调价历史','proc/RMA索赔',
   'wh/总览','wh/入库','wh/盘点','wh/库存流水','wh/期初移库','wh/RMA登记',
   'eng/总览','eng/派工排班','eng/每日上报','eng/人员与外包','eng/文档库','eng/设置',
-  'fin/总览','fin/工资','presales/总览','presales/售前大表','mt/总览',
+  'fin/总览','fin/工资','presales/总览','presales/售前大表','presales/设置','mt/总览',
   'presales/项目列表','eng/项目列表','proc/项目列表','wh/项目列表','fin/项目列表','mt/项目列表',
   'decision/决策看板','decision/风险看板','decision/悬而未决','decision/账号与权限',
   'decision/系统健康','decision/审计日志','decision/全局参数',
@@ -364,14 +364,20 @@ let pjFilter=null; // 项目列表状态筛选：null=用本部门默认（DEPT_
 /* 售前大表：列组开关（默认只显示 项目/售前状态/预测报价/签约定价）+ city/state 过滤 */
 let bigCols={contact:false,comm:false,house:false,notes:false};
 let bigCity='全部', bigState='全部';
+/* 售前提醒阈值（天）：前六步任一步停留达到此值 → 每天提醒；售前自己在「设置」改 */
+let preRemindDays=3;
 const can = k => WHO[me].see.includes(k);
 /* 金额遮罩：看不到就是 — —，绝不显示 0 */
 const money = (v,k) => can(k) ? `<span class="num">${v}</span>` : `<span class="masked">— —</span>`;
 
 /* ════════ 待办（对应 v_pending_handoff） ════════ */
 const TODOS=[
- {dept:'presales',ev:'新客户来电',      from:'市场',     act:'安排第一次见面讲解功能',   h:8,  sla:48, pj:'KX-2026-0201'},
- {dept:'presales',ev:'客户已看过 Draft 报价', from:'报价',  act:'讲解 Draft 并修改后定版',  h:52, sla:48, pj:'KX-2026-0190'},
+ /* ★售前提醒全部内生：不来自外部交接，只来自前六步的停留天数
+    （达到阈值 preRemindDays=3 天起，每天提醒一次，直到推进或流失） */
+ {dept:'presales',ev:'黄宅 · 设计中已停留 12 天',from:'售前流程',act:'推进出报价，或回访客户（每天提醒）',h:288,sla:72,pj:'KX-2026-0201'},
+ {dept:'presales',ev:'许宅 · 修订中已停留 9 天', from:'售前流程',act:'修订完尽快约签约（每天提醒）',      h:216,sla:72,pj:'KX-2026-0190'},
+ {dept:'presales',ev:'郑宅 · 报价中已停留 6 天', from:'售前流程',act:'报价该出了（每天提醒）',            h:144,sla:72,pj:'KX-2026-0198'},
+ {dept:'presales',ev:'吴宅 · 接洽中已停留 3 天', from:'售前流程',act:'今天刚到 3 天线，开始每天提醒',      h:72, sla:72,pj:'KX-2026-0210'},
  {dept:'fin', ev:'SM3 检查布线完成',   from:'工程管理', act:'开 S2 物料款 Invoice',    h:31, sla:24, pj:'KX-2026-0142'},
  {dept:'fin', ev:'SM3 登记了变更',     from:'工程管理', act:'安排变更估价',            h:31, sla:48, pj:'KX-2026-0142'},
  {dept:'fin', ev:'维护上门服务完成',   from:'运维',     act:'按现场归因与工时定价开票', h:6,  sla:24, pj:'KX-2026-0180'},
@@ -383,10 +389,14 @@ const TODOS=[
  {dept:'eng', ev:'盘点待审批',         from:'库管',     act:'复核并审批盘亏 A$255.60', h:26, sla:24, pj:''},
  {dept:'mt',  ev:'项目交付完成',       from:'工程管理', act:'接管运维，启动免责维保',   h:14, sla:24, pj:'KX-2026-0180'},
 ];
+/* 售前管道里未进全公司项目列表演示数据的地址（补给待办抽屉显示） */
+const PRE_ADDR={
+ 'KX-2026-0190':'5 Jersey St, Hornsby NSW','KX-2026-0198':'9 Old Northern Rd, Castle Hill NSW',
+ 'KX-2026-0186':'27 Raglan St, Mosman NSW','KX-2026-0210':'18 Church St, Ryde NSW'};
 const pjLabel = code => { const x=PROJECTS.find(p=>p.code===code);
   return x? `${x.code.slice(-4)} ${x.suburb}` : code; };
 const pjAddr = code => { const x=PROJECTS.find(p=>p.code===code);
-  return x? `${x.street}, ${x.suburb} ${x.state}` : '—'; };
+  return x? `${x.street}, ${x.suburb} ${x.state}` : (PRE_ADDR[code]||'—'); };
 const myTodos = () => TODOS.filter(t=>WHO[me].depts.includes(t.dept))
   .sort((a,b)=>((b.h>b.sla)-(a.h>a.sla))||b.h-a.h);
 
@@ -1343,7 +1353,7 @@ ${ops([
          楼层${p.fl?'✓':'<b style="color:var(--warning)">未填</b>'}
          <a style="color:var(--accent);cursor:pointer" onclick="detOpen('${p.code}','${p.nick}')">补全 →</a></div></td>
      <td class="gs">${ticks(p)}</td>
-     <td class="num">${p.stay!==''?`<span${p.stay>10?' style="color:var(--warning);font-weight:600"':''}>${p.stay} 天</span>`:'—'}</td>
+     <td class="num">${p.stay!==''?`<span title="阈值 ${preRemindDays} 天起每天提醒（售前设置里改）"${p.stay>=preRemindDays?' style="color:var(--warning);font-weight:600"':''}>${p.stay} 天</span>`:'—'}</td>
      <td class="gs">${ro?`<span class="muted">${p.est}</span>`:inp(p.est,'w80','如 300k–350k')}</td>
      <td class="gs">${signed?`<span class="mono">${p.qno||'—'}</span>`:p.lost?'<span class="muted">—</span>'
           :p.step===5?inp(p.qno,'w80','Q-…'):'<span class="masked">待签约时填</span>'}</td>
@@ -1383,6 +1393,8 @@ ${ops([
  ${helpNote(`④ 行内「补全 →」打开子表：联系人五项/家庭成员/参建方/方案倾向/楼层屋顶。
    参建方与方案倾向是下游硬依赖 —— 出库提货人、Builder 告知、SM 电工签字、SM2 带线清单全靠它，没填的标黄。`)}
  ${helpNote(`⑤ 财务注释/工程注释（列组开关里）：售前填完对方必读（角标显示 已读✓/未读）；佣金永远跟关系人同组。`)}
+ ${helpNote(`⑥ 售前的提醒全部来自这六步本身（不来自外部交接）：前六步任一步停留达到阈值（默认 3 天，
+   左栏「设置」里售前自己改）就开始<b>每天提醒一次</b>，直到推进到下一步或勾流失。「停留」列变橙 = 已在提醒中。`)}
 
  <!-- ── 立项引导弹层（5 步） ── -->
  <div class="wizback" id="wizback" onclick="wizClose()"></div>
@@ -1553,6 +1565,42 @@ ${ops([
   </div>
  </div>`;
 },
+
+/* ───────── 售前 · 设置（用户定：提醒阈值由售前自行定义） ───────── */
+'presales/设置':()=>`
+<h2>售前设置</h2>
+<div class="page-sub">只管售前自己的提醒规则 · 改动全公司售前生效 · 全部进审计日志</div>
+${ops([
+ ['修改提醒阈值（天）','只有售前（和管理员）能改 —— 与加班倍数归财务同一套按键权限机制','改完即刻生效：大表「停留」列的橙色线、每天提醒的起点都跟着变'],
+])}
+${helpNote(`售前的所有提醒都不来自外部，只来自前六步流程本身：任何项目在某一步停留达到阈值天数，
+  就开始<b>每天提醒一次</b>（右上角 🔔），直到推进到下一步或勾「已流失」。`)}
+${helpNote(`阈值默认 3 天。改成 5，就是停留满 5 天才开始每天提醒。第⑦勾（已流失）与「已签约」是终态，不提醒。`)}
+<div class="panel" style="max-width:560px">
+  <div class="panel-head">提醒规则</div>
+  <div class="panel-body">
+    <div class="field"><label>前六步 · 停留提醒阈值（天）</label>
+      <div style="display:flex;gap:var(--sp-3);align-items:center">
+        <input class="mono" style="width:90px" value="${preRemindDays}"
+          onchange="preRemindDays=Math.max(1,parseInt(this.value)||3);renderAll()">
+        <span class="muted" style="font-size:var(--fs-sm)">停留达到这个天数 → 开始提醒</span>
+      </div>
+      <div class="hint">当前：任一步停留满 <b>${preRemindDays} 天</b>开始提醒 · 大表「停留」列同步变橙</div></div>
+    <div class="field"><label>提醒频率</label>
+      <input value="每天一次（到达阈值后，直到推进或流失）" readonly>
+      <div class="hint">频率固定，不做成可调 —— 一天多次会被当骚扰，几天一次会被忘掉</div></div>
+    <div class="field"><label>不提醒的状态</label>
+      <input value="已签约 · 已流失（终态）" readonly></div>
+  </div>
+</div>
+<div class="panel" style="max-width:560px">
+  <div class="panel-head">改动留痕（演示）</div>
+  <div class="panel-body">
+    <table><thead><tr><th>时间</th><th>谁改的</th><th>改了什么</th></tr></thead>
+      <tbody><tr><td class="muted mono">2026-07-30 09:12</td><td>小林 · 售前</td>
+        <td>提醒阈值 5 天 → 3 天</td></tr></tbody></table>
+  </div>
+</div>`,
 
 /* ───────── (旧)售前 · 项目立项 —— 已并入「售前大表」引导弹层，保留作字段参考，不在导航 ───────── */
 'presales/项目立项':()=>`
