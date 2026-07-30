@@ -301,6 +301,7 @@ const PROJECTS=[
 ];
 let pj=0;   // 当前项目
 let me='finance', tab='fin', page='总览';
+let pjFilter=null; // 项目列表状态筛选：null=用本部门默认（DEPT_FILTER）
 const can = k => WHO[me].see.includes(k);
 /* 金额遮罩：看不到就是 — —，绝不显示 0 */
 const money = (v,k) => can(k) ? `<span class="num">${v}</span>` : `<span class="masked">— —</span>`;
@@ -343,9 +344,9 @@ function loginAs(w){
 }
 function switchWho(w){ me=w; tab=WHO[w].depts.includes(tab)?tab:(w==='admin'?'decision':WHO[w].depts[0]);
   if(tab==='decision'&&WHO[w].tier!==1) tab=WHO[w].depts[0];
-  page=DEPT[tab].pages[0]; renderAll(); }
+  page=DEPT[tab].pages[0]; pjFilter=null; renderAll(); }
 function pickPj(i){ pj=+i; renderAll(); }
-function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; renderAll(); }
+function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; renderAll(); }
 function toggleDrawer(){
   document.getElementById('drawer').classList.toggle('open');
   document.getElementById('backdrop').classList.toggle('open');
@@ -432,6 +433,11 @@ const PAGES={
 'fin/S4结算':()=>`
 <h2>S4 结算明细</h2>
 <div class="page-sub">每一条都能追到来源 · 项目见上方上下文条</div>
+${ops([
+ ['结算未退料','S2 出库时单价已定格 —— 金额 = 出库单价 × 未退数量，不重新询价','库管销未退台账 · Builder 收结算告知（此前的发放告知就是凭证）'],
+ ['开 S4 Invoice','尚有未退料未结算时禁用 · 需客户金额可见权限','客户收 Invoice · 售前与工程管理收「S4 已开票」· 应收金额此刻定格'],
+ ['变更计费勾选','变更必须先完成估价（待估价的进不了结算）','结算合计即时重算 —— 不计费行仍然显示（灰色+✗），客户问起有交代'],
+])}
 ${can('customer')?`
 <div class="warn-bar">
   <span>⚠</span>
@@ -485,6 +491,9 @@ ${can('customer')?`
 'wh/出库':()=>`
 <h2>物料出库</h2>
 <div class="page-sub">★ 物料在这一刻才落到具体项目</div>
+${ops([
+ ['确认出库','项目 S2 未结清不可选 · 出库数超可用库存直接拒绝 · 提货人只能选我方人员或本项目参建方','①提货人收中英对照清单短信（回 YES 确认）②Builder 收发放告知（未退料责任凭证）③未退料入台账 · 出库单价此刻定格'],
+])}
 <div class="split">
   <div class="panel">
     <div class="panel-head">新建出库单</div>
@@ -551,6 +560,10 @@ KNX四联面板 (黑) ×6
 'mt/业主订阅':()=>`
 <h2>业主订阅</h2>
 <div class="page-sub">交付过程中签署 · 五档（第 5 档 = 不订阅）· <b>订阅收支不计入利润率</b></div>
+${ops([
+ ['新签 / 续费订阅','只能建在已交付项目上 · 1~4 档必须填年费，第 5 档不得填','财务收「订阅待开票」· 生效数与年化即时刷新'],
+ ['退订登记','—','历史已收仍计入累计，但不再计年化与活跃数'],
+])}
 <div class="cards">
   <div class="card"><div class="card-label">生效中</div>
     <div class="card-value" style="color:var(--healthy)">12</div>
@@ -598,6 +611,9 @@ KNX四联面板 (黑) ×6
 'eng/派工排班':()=>`
 <h2>派工排班</h2>
 <div class="page-sub">四类任务：Site Meeting · 安装调试 · 交付 · 技术维护（块上数字 = 计划时长，"计划超时"那条线的分母）</div>
+${ops([
+ ['拖动色块 · 派工/改期','SM4 未完成不能派安装 · S4 未结清不能排交付 · 未交付不能派维护 —— 报错原样透传','被派人收任务短信 · 块上计划时长成为「计划超时」的分母'],
+])}
 <div class="panel sched">
   <div class="panel-head">本周
     <span class="pill p-cyan">SM</span><span class="pill p-green">安装</span>
@@ -826,19 +842,26 @@ KNX四联面板 (黑) ×6
   ['报销待审批','KX-2026-0142','Cherrybrook','EXP-001 · 小陈 · parking A$18.50','审批（不能自己批自己）','财务',80,72,true],
   ['报销待审批','公司级','','EXP-002 · 小陈 · tool A$260.00','公司通用工具·多项目共用','财务',20,72,false],
  ].sort((a,b)=>(b[8]-a[8])||b[6]-a[6]);
- return `<h2>悬而未决</h2>
- <div class="page-sub">所有挂起／待处理的事一张表 ·
-   <b>每行都说得清是哪个项目</b>，或明确标「公司级」—— 绝不留空白
+ /* ★ 手术①：这页不再是待办的第三份副本 —— 只升级异常。
+    升级线：超 SLA ｜ 无从追溯 ｜ 卡满一周(168h)。正常队列住在各部门 🔔 待办中心 */
+ const esc=T.map(t=>({t,why:t[8]?`超 SLA ${t[6]-t[7]}h`
+                        :t[1]==='无从追溯'?'★ 无从追溯'
+                        :t[6]>=168?`已卡 ${Math.round(t[6]/24)} 天`:null}))
+            .filter(x=>x.why);
+ const rest=T.length-esc.length;
+ return `<h2>悬而未决 <span class="pill p-red">升级看板</span></h2>
+ <div class="page-sub">只收<b>需要管理层出面</b>的异常：超 SLA · 无从追溯 · 卡满一周 ——
+   正常队列在各部门 🔔 待办中心，这里<b>不是待办副本</b>
    · 对应 <span class="mono">v_open_tasks</span></div>
  <div class="warn-bar err">
-   <span>⛔</span><span class="grow">共 ${T.length} 项待处理，其中
-     <b>${T.filter(x=>x[8]).length} 项已超 SLA</b>；
-     <b style="color:var(--warning)">1 项无从追溯项目</b>，需人工确认</span></div>
+   <span>⛔</span><span class="grow">开放事项 ${T.length} 项，<b>${esc.length} 项达到升级线</b>
+     （超 SLA ${T.filter(x=>x[8]).length} · 无从追溯 1）；
+     其余 ${rest} 项在正常 SLA 内，由各部门自行推进，不在此显示</span></div>
  <div class="panel">
    <table>
      <thead><tr><th>类型</th><th>项目 · 地址</th><th>事项</th><th>要做什么</th>
-       <th>归谁</th><th style="text-align:right">等了</th><th style="text-align:right">SLA</th><th></th></tr></thead>
-     <tbody>${T.map(t=>{
+       <th>归谁</th><th>为什么升级</th><th style="text-align:right">等了</th></tr></thead>
+     <tbody>${esc.map(({t,why})=>{
        const isCoy = t[1]==='公司级', isLost = t[1]==='无从追溯';
        return `<tr>
         <td>${t[0]}</td>
@@ -848,9 +871,8 @@ KNX四联面板 (黑) ×6
         <td>${t[3]}</td>
         <td class="hint">${t[4]}</td>
         <td class="muted">${t[5]}</td>
+        <td><span class="pill ${isLost?'p-red':t[8]?'p-red':'p-amber'}">${why}</span></td>
         <td class="num">${t[6]}h</td>
-        <td class="num muted">${t[7]}h</td>
-        <td>${t[8]?'<span class="pill p-red">超期</span>':'<span class="pill p-grey">正常</span>'}</td>
        </tr>`;}).join('')}</tbody>
    </table>
    <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
@@ -860,7 +882,9 @@ KNX四联面板 (黑) ×6
      ② 跨项目（每日上报／日结／倒休）→ 带出<b>当天涉及哪些项目</b>；
      ③ 本该有项目却可空（问题上报）→ 加约束，非公司级<b>必须填项目</b>。<br>
      那条「无从追溯」是断言 <span class="mono">INV-UI-04</span> 抓出来的：
-     当天既无打卡也无派工，负责人补录时无从下手 —— 系统不猜，明确告诉你要人工确认。</span>
+     当天既无打卡也无派工，负责人补录时无从下手 —— 系统不猜，明确告诉你要人工确认。<br>
+     <b>为什么不放全部待办：</b>同一批待办已在 🔔 待办中心一处维护，这页再抄一遍只会两处对不上；
+     管理层要的不是队列，是<b>队列里卡死的那几件</b>。</span>
    </div>
  </div>`;
 },
@@ -1069,6 +1093,10 @@ KNX四联面板 (黑) ×6
 'presales/项目立项':()=>`
 <h2>项目立项</h2>
 <div class="page-sub">一切的地基 · 分组填写，别做成一长条</div>
+${ops([
+ ['保存建档','乐观锁：version 冲突拒绝「项目已被他人修改，请刷新重试」· 施工阶段必填','无跨部门通知 —— 建档即出现在全公司项目列表'],
+ ['推进七步（①~⑤）','只能按顺序推进 · 第⑦步财务自动写，售前不可填','第⑥步在「签约」页 —— 那一步才触发财务'],
+])}
 <div class="split">
   <div>
     <div class="panel">
@@ -1159,6 +1187,10 @@ KNX四联面板 (黑) ×6
 'presales/签约':()=>`
 <h2>签约</h2>
 <div class="page-sub">★第六步签字 = 方案定版，整条链从这里开始动</div>
+${ops([
+ ['确认第六步已签字','需上传签署页扫描件 · 未签字不能置「已签署报价」，也进不了施工/交付/维护','★自动短信通知财务开 S1 定金 Invoice（SLA 24h）—— 整条业务链的第一条通知'],
+ ['录入签约价','需客户金额可见权限 · 定金列只读（财务写）· 预测工时别漏（人工消耗率的分母）','S1~S4 按 10/40/40/10 以此为基数生成收款节点'],
+])}
 <div class="panel">
   <div class="panel-head">售前七步</div>
   <div class="panel-body">
@@ -1299,22 +1331,33 @@ const PJMONEY={
  'KX-2026-0155':{v:'300,000',r:'0',      m:null,b:'p-grey'},
  'KX-2026-0201':{v:'—',      r:'0',      m:null,b:'p-grey'},
 };
+/* ★ 手术②：项目列表全公司一份 —— 部门只决定默认筛选 + 默认那一列 */
+const DEPT_FILTER={presales:'接洽当中',mt:'项目维护中'}; /* 其余部门默认「全部」 */
+const PJ_STATUSES=['全部','接洽当中','留标','项目交付','项目维护中','已烂尾'];
 function projectList(d){
   const col=DEPT_COL[d];
-  return `<h2>项目列表</h2>
-  <div class="page-sub">★ 每个部门都管<b>全公司项目</b>。编号与地址人人可见；金额按各自权限显示
-    · 对应 <span class="mono">v_project_directory</span></div>
+  const dft=DEPT_FILTER[d]||'全部';
+  const eff=pjFilter||dft;
+  const rows=PROJECTS.filter(p=>eff==='全部'||p.status===eff);
+  const canNew=WHO[me].tier===1||WHO[me].depts.includes('presales');
+  return `<h2>项目列表 <span class="pill p-cyan">全公司一份</span></h2>
+  <div class="page-sub">★ 六个部门共用<b>同一张列表</b> —— 部门只决定<b>默认筛选</b>和<b>默认那一列</b>，其余完全相同。
+    编号与地址人人可见；金额按各自权限显示 · 对应 <span class="mono">v_project_directory</span></div>
+  ${canNew?ops([['+ 新建项目（售前）','无业务门禁 · 立项即建档，编号自动 KX-2026-XXXX','建档后即出现在这张全公司列表，各部门按默认筛选看到']]):''}
   <div class="panel">
-    <div class="panel-head">全部项目 6 个
+    <div class="panel-head" style="gap:var(--sp-2);flex-wrap:wrap">
+      ${PJ_STATUSES.map(s=>`<button class="btn${eff===s?' btn-primary':''}" onclick="pjFilter='${s}';renderAll()">${s}</button>`).join('')}
+      <span class="muted" style="font-weight:400">显示 ${rows.length} / ${PROJECTS.length} · 本部门默认「${dft}」</span>
       <input class="search" placeholder="搜地址或编号…"
-        style="width:200px;margin-left:auto;padding:5px var(--sp-2)"></div>
+        style="width:160px;margin-left:auto;padding:5px var(--sp-2)"></div>
     <table>
       <thead><tr>
         <th>编号</th><th>项目 · 地址</th><th>业主 / Builder / 电工</th><th>状态</th>
-        <th style="text-align:right">停留</th><th>${col.h}</th>
+        <th style="text-align:right">停留</th><th>${col.h}<div class="hint" style="font-weight:400">本部门默认列</div></th>
         <th style="text-align:right">合同额</th><th style="text-align:right">已收</th>
         <th style="text-align:right">利润率</th><th></th></tr></thead>
-      <tbody>${PROJECTS.map((p,i)=>{
+      <tbody>${rows.map(p=>{
+        const i=PROJECTS.indexOf(p);
         const x=PJX[p.code]||{}, mo=PJMONEY[p.code]||{};
         const stall=p.code==='KX-2026-0180'?30:(p.code==='KX-2026-0160'?10:(p.code==='KX-2026-0121'?210:0));
         const over=(p.code==='KX-2026-0180');
@@ -1330,7 +1373,7 @@ function projectList(d){
           <td>${mo.m? (can('margin')?`<span class="pill ${mo.b}">${mo.m}</span>`:'<span class="masked">— —</span>')
                     : '<span class="masked">不显示</span>'}</td>
           <td><button class="btn" onclick="pickPj(${i});go('${d}','${DEPT[d].pages[2]}')">进入 →</button></td>
-        </tr>`;}).join('')}</tbody>
+        </tr>`;}).join('')||`<tr><td colspan="10" class="muted" style="padding:var(--sp-4)">「${eff}」状态下暂无项目</td></tr>`}</tbody>
     </table>
     <div class="panel-body" style="border-top:1px solid var(--border);font-size:var(--fs-xs)">
       <span class="muted">读全部、写本部门 —— 下游能查上游的流水，卡在哪儿一目了然。
@@ -1339,26 +1382,77 @@ function projectList(d){
     </div>
   </div>`;
 }
+/* ★ 手术③：每页明确列出——能做哪些操作 · 被什么门禁卡 · 操作完触发谁 */
+function ops(rows){
+  return `<div class="panel">
+    <div class="panel-head">本页操作 <span class="muted" style="font-weight:400">操作 · 被什么门禁卡 · 操作完触发谁（静默发送等于没发）</span></div>
+    <table><thead><tr><th style="width:190px">操作</th><th>被什么门禁卡</th><th>操作完触发谁</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr><td><b>${r[0]}</b></td><td class="hint">${r[1]}</td><td class="hint">${r[2]}</td></tr>`).join('')}</tbody></table>
+  </div>`;
+}
+
+/* ★ 手术①：总览不再是待办副本 —— 回答「本部门此刻卡在哪」
+   每行：卡点 · 卡在哪/影响什么 · 卡了多久 · 去哪处理
+   pj: 项目编号 ｜ ''=公司级 ｜ '?'=无从追溯（绝不留空白） */
+const STUCK={
+ fin:[
+  {pj:'KX-2026-0142',what:'变更待估价 3 条',why:'S4 开票前必须估完 —— 不估完 S4 Invoice 开不出',h:60,p:'变更估价'},
+  {pj:'KX-2026-0142',what:'未退料 A$2,013.83 未结算',why:'「开 S4 Invoice」按钮被禁用，直接开会少收这笔',h:52,p:'S4结算'},
+  {pj:'KX-2026-0160',what:'超期应收 A$214K · 业主拒付',why:'仅收 S1 · 已停工 —— 催账还是停服需要决策',h:'',p:'催账与停服'},
+  {pj:'',what:'日结挂起 2 天未补录',why:'月度封账（21 日）被卡，需负责人补录并填说明',h:'',p:'工资'},
+ ],
+ eng:[
+  {pj:'KX-2026-0180',what:'交付后停留 30 天未移交运维',why:'状态停留超阈值 —— 运维接管与订阅都没启动',h:720,p:'交付'},
+  {pj:'KX-2026-0142',what:'安装剩余「二楼地暖联动」挂起',why:'等空调队（HVAC 分包）——「确认安装完工」被卡',h:480,p:'安装调试'},
+  {pj:'?',what:'7/29 小陈无打卡也无派工',why:'系统不猜 —— 需人工确认当天去向后才能补日结',h:48,p:'每日上报'},
+  {pj:'',what:'盘点待审批 · 盘亏 A$255.60',why:'超审批线 A$200，盘点人不能自批',h:26,t:'wh',p:'盘点'},
+ ],
+ presales:[
+  {pj:'KX-2026-0155',what:'留标 · 讲解修改后无反馈',why:'停留超阈值 45 天 —— 继续跟进或确认归档',h:'',p:'项目列表'},
+  {pj:'KX-2026-0201',what:'Draft 报价讲解后未定版',why:'超 SLA 48h —— 修改后定版才能走到第六步',h:52,p:'报价录入'},
+  {pj:'KX-2026-0201',what:'报价缺预测人工工时',why:'人工消耗率的分母 —— 不填签约后消耗%算不出',h:'',p:'报价录入'},
+ ],
+ proc:[
+  {pj:'',what:'C1 低于红线 5 项',why:'定期备货 —— 待纳入下次集中采购单',h:12,p:'补货建议'},
+  {pj:'KX-2026-0142',what:'RMA 在供应商处 40 天未返还',why:'RMA-20260601-001 · 超期 —— 催换修返还或启动索赔',h:960,p:'RMA索赔'},
+  {pj:'',what:'汇率 CNY 已过新鲜度',why:'is_stale —— 采购成本换算失真，需手工补录',h:'',p:'汇率'},
+ ],
+ wh:[
+  {pj:'KX-2026-0142',what:'未退料 13 件在 Tony 手里',why:'S4 结算被卡 —— 催退库或交财务结算计入变更',h:52,p:'物料在谁手里'},
+  {pj:'KX-2026-0142',what:'出库单提货未确认',why:'OUT-2026-0142-01 短信超 72h 未回 YES —— 需人工确认',h:80,p:'出库'},
+  {pj:'',what:'2 单出库等 S2 结清',why:'门禁卡住：S2 物料款未结清不能出库放货',h:30,p:'出库'},
+  {pj:'',what:'已划掉物料仍有存货',why:'旧款三联面板 ×12 —— 出清或退货，别让它躺账上',h:'',t:'proc',p:'物料主表'},
+ ],
+ mt:[
+  {pj:'KX-2026-0121',what:'维护单未结案 · 缺故障归因',why:'影音室没声音 —— 归因没填，定价开票走不了',h:200,p:'维护单跟踪'},
+  {pj:'KX-2026-0121',what:'订阅已逾期 59 天',why:'催续费，或按规则走停服流程',h:'',p:'业主订阅'},
+  {pj:'KX-2026-0180',what:'交付后尚未接管',why:'免责维保钟已经在走 —— 尽快启动接管动作',h:14,p:'维保状态'},
+  {pj:'',what:'待派工 3 单',why:'最久已等 14h · SLA 24h 内要上门',h:14,p:'派工与上门'},
+ ],
+};
 function overview(name,cards){
+  const stuck=STUCK[tab]||[];
   return `<h2>${name} · 总览</h2>
-  <div class="page-sub">截至 2026-07-30 · 本部门待办 ${myTodos().length} 项</div>
+  <div class="page-sub">本部门此刻卡在哪 —— 异常与卡点，<b>不是待办副本</b>。
+    待办只有一处：右上角 🔔 待办中心（本部门 ${myTodos().length} 项）</div>
   <div class="cards">${cards.map(c=>`
     <div class="card"><div class="card-label">${c[0]}</div>
       <div class="card-value">${c[2]?(can(c[2])?c[1]:'— —'):c[1]}</div>
       <div class="card-foot">${c[3]}</div></div>`).join('')}</div>
   <div class="panel">
-    <div class="panel-head">我的待办 <span class="muted" style="font-weight:400">超期置顶</span>
-      <button class="btn" style="margin-left:auto" onclick="toggleDrawer()">全部 →</button></div>
-    <table><thead><tr><th>项目编号</th><th>项目地址</th><th>事件</th><th>谁交来</th><th>我要做什么</th>
-      <th style="text-align:right">等了</th><th style="text-align:right">SLA</th><th></th></tr></thead>
-    <tbody>${myTodos().slice(0,5).map(t=>`<tr>
-      <td>${t.pj?`<b class="mono">${t.pj}</b>`:'<span class="pill p-grey">公司级</span>'}</td>
-      <td class="hint">${t.pj?'📍 '+pjAddr(t.pj):'不属于单个项目'}</td>
-      <td>${t.ev}</td>
-      <td class="muted">${t.from}</td><td>${t.act}</td>
-      <td class="num">${t.h}h</td><td class="num muted">${t.sla}h</td>
-      <td>${t.h>t.sla?`<span class="pill p-red">超期</span>`:`<span class="pill p-grey">正常</span>`}</td>
-    </tr>`).join('')||`<tr><td colspan="8" class="muted">暂无待办</td></tr>`}</tbody></table>
+    <div class="panel-head">卡点与异常 <span class="muted" style="font-weight:400">每条写明卡在哪 · 影响什么 · 去哪处理</span>
+      <button class="btn" style="margin-left:auto" onclick="toggleDrawer()">🔔 待办中心 →</button></div>
+    <table><thead><tr><th>项目编号</th><th>项目地址</th><th>卡点</th><th>卡在哪 / 影响什么</th>
+      <th style="text-align:right">卡了</th><th></th></tr></thead>
+    <tbody>${stuck.map(s=>`<tr>
+      <td>${s.pj==='?'?'<span class="pill p-red">★ 无从追溯</span>'
+           :s.pj?`<b class="mono">${s.pj}</b>`:'<span class="pill p-grey">公司级</span>'}</td>
+      <td class="hint">${s.pj&&s.pj!=='?'?'📍 '+pjAddr(s.pj):s.pj==='?'?'需人工确认':'不属于单个项目'}</td>
+      <td><b>${s.what}</b></td>
+      <td class="hint">${s.why}</td>
+      <td class="num">${s.h?s.h+'h':'—'}</td>
+      <td><button class="btn" onclick="go('${s.t||tab}','${s.p}')">去处理 →</button></td>
+    </tr>`).join('')||`<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">此刻没有卡点 —— 待办去 🔔 待办中心看</td></tr>`}</tbody></table>
   </div>`;
 }
 </script>
