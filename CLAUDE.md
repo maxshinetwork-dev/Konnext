@@ -76,9 +76,16 @@ docs/
   KONNEXT_UI界面清单与字段布局.md ← UI 规格
   KONNEXT_上线清单.md            ← 部署步骤与验收标准
   KONNEXT_UI原型.html            ← 可点击原型（单文件）
-app/                            ← 待建：Next.js
-  (api)/                        ← 后端：认证 + 转发
-  (web)/                        ← 前端：React
+app/                            ← Next.js 15 应用（阶段1 API 层已就绪）
+  src/lib/db.ts                 ← ★数据访问唯一入口：withAccount =
+                                   BEGIN → SET LOCAL ROLE konnext_app →
+                                   set_config(app.account_id) → COMMIT
+                                   （owner 连接会绕过 RLS，业务绝不裸查）
+  src/lib/{session,otp,errors}  ← 无状态加密会话 / OTP三通道 / P0001原句透传
+  src/app/api/                  ← auth三步·me·todos·dev/otp·health
+  src/app/(web)/                ← 页面：待浅色皮肤过审后按原型移植
+  scripts/rls-smoke.mjs         ← 部署门禁：RLS 真咬冒烟（npm run rls-smoke）
+db/deploy/10_app_role.sql       ← konnext_app 降权角色（每个库都要跑）
 ```
 
 ---
