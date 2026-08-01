@@ -532,6 +532,27 @@ const { chromium } = require('playwright');
     return JSON.stringify({n0,n1,one});});
   const nk=JSON.parse(nodeChk);
   ok(nk.n0===5&&nk.n1===1&&nk.one,`节点分布过滤失效（全部应5行/S1请款中应1行，实际 ${nk.n0}/${nk.n1}）`);
+  // 二十九轮：去处理 → 直接过滤出该项目（不要全列出来让人找）
+  const goChk29=await page.evaluate(()=>{go('fin','财务节点');
+    goPj('fin','项目收款S1-S3','KX-2026-0203');
+    const a={page,rows:document.querySelectorAll('#main .bigtable tbody tr').length,
+      q:document.getElementById('finq')?document.getElementById('finq').value:finQ};
+    goPj('fin','尾款结算S4与Var','KX-2026-0142');
+    const h4=document.getElementById('main').innerHTML;
+    const b={page,q:finQ,only:h4.includes('KX-2026-0142')&&!h4.includes('KX-2026-0188')&&!h4.includes('KX-2026-0203')};
+    goPj('fin','催账和停服','KX-2026-0160');
+    const c={page,rows:document.querySelectorAll('#main table:not(#nodetbl) tbody tr').length};
+    const cOk=document.getElementById('main').innerHTML.includes('KX-2026-0160')
+      &&!document.getElementById('main').innerHTML.includes('MT-0121-11');
+    go('fin','催账和停服');
+    const cAll=document.querySelectorAll('#main table tbody tr').length;
+    return JSON.stringify({a,b,c:{...c,cOk},cAll});});
+  const g29=JSON.parse(goChk29);
+  ok(g29.a.page==='项目收款S1-S3'&&g29.a.rows===1&&g29.a.q==='KX-2026-0203',
+     `收款页去处理应过滤到 0203 单行，实际 ${g29.a.rows} 行`);
+  ok(g29.b.page==='尾款结算S4与Var'&&g29.b.only,'S4 去处理应只剩 0142（不得出现其他项目）');
+  ok(g29.c.cOk,'催账去处理应只剩 0160（维护单 0121 应被滤掉）');
+  ok(g29.cAll>=3,'清空过滤后催账页应恢复全部单据');
   const cmChk=await page.evaluate(()=>{go('fin','成本与利润率');
     return document.getElementById('main').innerHTML.includes('<b>张宅</b>');});
   ok(cmChk,'成本利润率页昵称未按口径');

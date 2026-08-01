@@ -1021,7 +1021,10 @@ function switchWho(w){ me=w; tab=WHO[w].depts.includes(tab)?tab:(w==='admin'?'de
   if(tab==='decision'&&WHO[w].tier!==1) tab=WHO[w].depts[0];
   page=DEPT[tab].pages[0]; pjFilter=null; renderAll(); }
 function pickPj(i){ pj=+i; renderAll(); }
-function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; stFilter='全部'; statPeriod='month'; logQ=''; logDeptF='全部'; nodeF='全部'; renderAll(); }
+function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; stFilter='全部'; statPeriod='month'; logQ=''; logDeptF='全部'; nodeF='全部'; finQ=''; renderAll(); }
+/* 去处理 → 直接过滤出该项目（二十九轮用户定：不要全列出来再让人找） */
+function goPj(t,p,code){ go(t,p);
+  if(code&&code!=='?'){ finQ=code; pjQ=code; bigQ=code; renderAll(); } }
 /* 逐字刷新：重渲染后把光标还给搜索框（否则打一个字就失焦） */
 function keepFocus(id){ renderAll(); const e=document.getElementById(id);
   if(e){ e.focus(); const n=e.value.length; e.setSelectionRange(n,n); } }
@@ -2780,7 +2783,7 @@ ${ops([
       <td><span class="pill ${label.includes('等')?'p-amber':label.includes('S4')?'p-cyan':label.includes('请款中')?'p-grey':'p-grey'}">${label}</span></td>
       <td class="num">${can('customer')?A$(msDue(f,m)):'— —'}</td>
       <td class="num">${can('customer')?A$(msPaid(m)):'— —'}</td>
-      <td><button class="btn" onclick="go('fin','${goP}')">去处理 →</button></td></tr>`;}).join('')
+      <td><button class="btn" title="跳过去并只显示这个项目" onclick="goPj('fin','${goP}','${f.code}')">去处理 →</button></td></tr>`;}).join('')
      ||`<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">该阶段没有项目</td></tr>`}</tbody></table>
   </div></div>
  <div class="panel">
@@ -2794,7 +2797,7 @@ ${ops([
     <td>${s.pj&&s.pj!=='?'?`<b>${pjNick(s.pj)}</b><div class="hint">📍 ${pjAddr(s.pj)}</div>`:`<span class="hint">${s.pj==='?'?'需人工确认':'不属于单个项目'}</span>`}</td>
     <td><b>${s.what}</b></td><td class="hint">${s.why}</td>
     <td class="num">${s.h?s.h+'h':'—'}</td>
-    <td><button class="btn" onclick="go('${s.t||tab}','${s.p}')">去处理 →</button></td></tr>`).join('')}
+    <td><button class="btn" title="跳过去并只显示这个项目" onclick="goPj('${s.t||tab}','${s.p}','${s.pj}')">去处理 →</button></td></tr>`).join('')}
   </tbody></table></div>`;
 },
 
@@ -2851,8 +2854,12 @@ ${ops([
 },
 
 'fin/催账和停服':()=>{
- const rowsC=FINPAY.flatMap(f=>f.ms.filter(m=>m.inv&&!m.settled).map(m=>({kind:'合同款',f,m})));
- const rowsM=MCASES.filter(c=>c.st==='已开票').map(c=>({kind:'维护单',c}));
+ const _fq=finQ.trim().toLowerCase();
+ const _hit=code=>{ if(!_fq) return true; const pj=PROJECTS.find(p=>p.code===code)||{};
+   return (code+' '+(pj.nick||'')+' '+(pj.name||'')).toLowerCase().includes(_fq); };
+ const rowsC=FINPAY.flatMap(f=>f.ms.filter(m=>m.inv&&!m.settled).map(m=>({kind:'合同款',f,m})))
+   .filter(x=>_hit(x.f.code));
+ const rowsM=MCASES.filter(c=>c.st==='已开票').map(c=>({kind:'维护单',c})).filter(x=>_hit(x.c.code));
  const total=rowsC.reduce((a,x)=>a+msDue(x.f,x.m)-msPaid(x.m),0)+rowsM.reduce((a,x)=>a+x.c.amt,0);
  return `<h2>催账和停服</h2>
  <div class="page-sub">所有正在收款过程中的项目与维护单一屏盯住 · 超期即入待办每天提醒（同一条更新不累积）·
@@ -2871,6 +2878,11 @@ ${ops([
   <div class="card"><div class="card-label">在收总额</div><div class="card-value">${can('customer')?A$(total):'— —'}</div><div class="card-foot">合同款 ${rowsC.length} 笔 · 维护 ${rowsM.length} 笔</div></div>
   <div class="card"><div class="card-label">超期笔数</div><div class="card-value">${rowsC.filter(x=>daysSince(x.m.inv)>finSet.overdueDays).length}</div><div class="card-foot">超 ${finSet.overdueDays} 天（设置里改）</div></div>
   <div class="card"><div class="card-label">停服项目</div><div class="card-value">${FINPAY.filter(f=>f.susp).length}</div><div class="card-foot">拒付 · 项目级全面停服</div></div>
+ </div>
+ <div style="display:flex;gap:var(--sp-2);margin:var(--sp-3) 0;align-items:center">
+   <input id="finq5" placeholder="🔍 搜编号 / 昵称…" style="width:220px" value="${finQ}"
+     oninput="finQ=this.value;keepFocus('finq5')">
+   <span class="muted" style="font-size:var(--fs-xs)">${finQ?'已过滤 · 清空搜索看全部':'全部在收单据'}</span>
  </div>
  <table><thead><tr><th>类型</th><th>项目编号</th><th>立项时间</th><th>项目 · 地址</th><th>单据</th><th style="text-align:right">应收</th>
   <th style="text-align:right">还差</th><th style="text-align:right">本期超期</th><th style="text-align:right">账龄</th>
@@ -3271,7 +3283,9 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
 },
 
 'fin/尾款结算S4与Var':()=>{
- const rows=FINPAY;
+ const rows=FINPAY.filter(f=>{const q=finQ.trim().toLowerCase(); if(!q) return true;
+   const pj=PROJECTS.find(p=>p.code===f.code)||{};
+   return (f.code+' '+(pj.nick||'')+' '+(pj.name||'')+' '+f.payer).toLowerCase().includes(q);});
  return `<h2>尾款结算 S4 与 Variation</h2>
  <div class="page-sub">项目运转中变量一路<b>积累</b>，进 S4 时一眼看清「S4 = 尾款 + 变更 + 未退料」由什么组成 ·
    付款人信息就在手边，最短时间去外部财务系统发 Invoice · 说明看左下「？ 帮助」</div>
@@ -3284,6 +3298,11 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
    「标记已请款」那一刻<b>定格</b>；要改只能 v+1 开新版重发。不计费的行（移位整改）也列出来（灰✗），客户问起有交代。`)}
  ${helpNote(`变更两个数并排：<b>系统算价</b>（物料售卖价=成本÷(1−毛利率)，人工不单列）与<b>财务定价</b>（外部手工计算填回的真实数）——
    财务可以改，但必须填依据，谁改的何时改的全留痕。`)}
+ <div style="display:flex;gap:var(--sp-2);margin:var(--sp-3) 0;align-items:center">
+   <input id="finq4" placeholder="🔍 搜编号 / 昵称 / 付款人…" style="width:220px" value="${finQ}"
+     oninput="finQ=this.value;keepFocus('finq4')">
+   <span class="muted" style="font-size:var(--fs-xs)">显示 ${rows.length} / ${FINPAY.length}${finQ?' · 已过滤，清空搜索看全部':''}</span>
+ </div>
  ${helpNote(`未退料从哪来：<b>不是财务手填</b> —— 库管的出库/退库台账现算（S2 出库时单价已定格，
    金额=出库单价×领走没退回的数量）。有未退料时本行「未退料」列出现金额和【结算未退料】按钮，
    点一下按出库价转成正式变更计入 S4；为 0 或没有则显示「—」，不挡 S4 请款。库管线上线后数字自动出现。`)}
@@ -3550,7 +3569,7 @@ function overview(name,cards){
       <td><b>${s.what}</b></td>
       <td class="hint">${s.why}</td>
       <td class="num">${s.h?s.h+'h':'—'}</td>
-      <td><button class="btn" onclick="go('${s.t||tab}','${s.p}')">去处理 →</button></td>
+      <td><button class="btn" title="跳过去并只显示这个项目" onclick="goPj('${s.t||tab}','${s.p}','${s.pj}')">去处理 →</button></td>
     </tr>`).join('')||`<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">此刻没有卡点 —— 待办去 🔔 待办中心看</td></tr>`}</tbody></table>
   </div>`;
 }
