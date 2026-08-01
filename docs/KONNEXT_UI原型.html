@@ -470,6 +470,7 @@ const STAGES=['接洽中','设计中','报价中','修订中','待签约','已�
    计入 周/月/季/年 各档与当月柱（演示口径；正式系统按每勾定格日期精确落桶） */
 const BASE_SIGNED=BIGPD.filter(p=>!p.lost&&p.step>=6).length;
 const BASE_LOST=BIGPD.filter(p=>p.lost).length;
+const BASE_TOTAL=BIGPD.length;   // 立项联动基线：演示里新建档的项目按「今天立项」计入图表
 
 const pjLabel = code => { const x=PROJECTS.find(p=>p.code===code);
   return x? `${x.code.slice(-4)} ${x.suburb}` : code; };
@@ -527,8 +528,19 @@ function wizOpen(){ wizN=1; document.getElementById('wizback').classList.add('op
   document.getElementById('wizbox').classList.add('open'); wizPaint(); }
 function wizClose(){ document.getElementById('wizback').classList.remove('open');
   document.getElementById('wizbox').classList.remove('open'); }
-function wizNext(){ if(wizN===WIZ_STEPS){ wizClose();
-    alert('已建档（演示）：新项目会出现在售前大表和全公司项目列表里，编号自动生成'); return; }
+function wizNext(){ if(wizN===WIZ_STEPS){
+    const v=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
+    const code='KX-2026-'+String(Math.max(...BIGPD.map(p=>parseInt(p.code.slice(-4))))+1).padStart(4,'0');
+    const lo=v('wizlo'),hi=v('wizhi');
+    BIGPD.unshift({code,nick:v('wiznick')||'新项目',street:v('wizstreet')||'—',
+      city:v('wizcity')||'—',state:(document.getElementById('wizstate')||{value:'NSW'}).value,
+      step:1,lost:false,stay:0,d:['今天'],est:(lo||hi)?`${lo||'?'}–${hi||'?'}`:'',
+      o1:'',o1n:'',o1p:'',o1e:'',o1r:'',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
+      rel:'',reln:'',relp:'',rele:'',relr:'',ct:'',cv:'',use:'',ht:'',stage:'',
+      pp:0,hm:0,so:false,fl:false,qno:'',hrs:'',price:'',dep:'',noteF:'',noteFr:'',noteE:'',noteEr:''});
+    wizClose(); renderAll();
+    alert('已建档 '+code+'（演示）：新项目已出现在项目列表第一行，状态=接洽中，停留从今天起算；图表已同步 +1');
+    return; }
   wizN++; wizPaint(); }
 function wizPrev(){ if(wizN>1){ wizN--; wizPaint(); } }
 /* ── 「修改」抽屉：子表全部可编辑、列表行可增删（演示数据取王宅） ── */
@@ -1580,12 +1592,13 @@ ${ops([
   </div>
   <div class="wizbody">
    <div id="wizs1">
-    <div class="field"><label>项目编号（自动生成）</label><input value="KX-2026-0211" readonly class="mono"></div>
-    <div class="field"><label>客户项目昵称（大表黑体显示）</label><input placeholder="如：吴宅"></div>
-    <div class="field"><label>街道</label><input placeholder="手填"></div>
+    <div class="field"><label>项目编号（自动生成）</label>
+      <input value="KX-2026-${String(Math.max(...BIGPD.map(p=>parseInt(p.code.slice(-4))))+1).padStart(4,'0')}" readonly class="mono"></div>
+    <div class="field"><label>客户项目昵称（大表黑体显示）</label><input id="wiznick" placeholder="如：吴宅"></div>
+    <div class="field"><label>街道</label><input id="wizstreet" placeholder="手填"></div>
     <div class="split" style="gap:var(--sp-3)">
-      <div class="field"><label>City / Suburb</label><input placeholder="手填"></div>
-      <div class="field"><label>State</label><select><option>NSW</option><option>VIC</option><option>QLD</option>
+      <div class="field"><label>City / Suburb</label><input id="wizcity" placeholder="手填"></div>
+      <div class="field"><label>State</label><select id="wizstate"><option>NSW</option><option>VIC</option><option>QLD</option>
         <option>SA</option><option>WA</option><option>TAS</option><option>ACT</option><option>NT</option></select></div>
     </div>
     <div class="hint">坐标自动生成——给地图，也当考勤围栏圆心</div>
@@ -1673,8 +1686,8 @@ ${ops([
     </div>
     <div class="field"><label>预测报价（范围 · AUD）</label>
       <div class="split" style="gap:var(--sp-3)">
-        <input placeholder="低值 · 如 250,000" class="mono">
-        <input placeholder="高值 · 如 300,000" class="mono">
+        <input id="wizlo" placeholder="低值 · 如 250k" class="mono">
+        <input id="wizhi" placeholder="高值 · 如 300k" class="mono">
       </div>
       <div class="hint">立项只填<b>预测范围</b>。报价单号、预测工时、签约定价都在「待签约」阶段一并填。</div></div>
     <div class="field"><label>初始状态（自动）</label><input value="接洽中 · 今日起算停留" readonly></div>
@@ -1740,9 +1753,11 @@ ${ops([
  /* 联动：勾改动的差值（对基线）按「发生在今天」计入所选时间档 */
  const dS=BIGPD.filter(p=>!p.lost&&p.step>=6).length-BASE_SIGNED;
  const dL=BIGPD.filter(p=>p.lost).length-BASE_LOST;
+ const dO=BIGPD.length-BASE_TOTAL;   // 演示里新建档的都算「今天立项」
  const st0=PRE_STATS[statPeriod];
  const st={label:st0.label,full:st0.full,opened:st0.opened,
    signed:Math.max(0,st0.signed+dS),lost:Math.max(0,st0.lost+dL)};
+ st.opened=st0.opened+dO;
  const pend=Math.max(0,st.opened-st.signed-st.lost);
  const H=170,W=64,bx=58,base=196,hOf=n=>st.opened?Math.round(n/st.opened*H):0;
  const hS=hOf(st.signed),hL=hOf(st.lost),hP=H-hS-hL;
@@ -1757,7 +1772,7 @@ ${ops([
   {m:'25-11',o:3,s:2,l:0},{m:'25-12',o:2,s:1,l:1},{m:'26-01',o:3,s:1,l:0},
   {m:'26-02',o:2,s:1,l:1},{m:'26-03',o:3,s:1,l:0},{m:'26-04',o:3,s:1,l:1},
   {m:'26-05',o:2,s:0,l:1},{m:'26-06',o:3,s:1,l:0},
-  {m:'26-07',o:4,s:Math.max(0,1+dS),l:Math.max(0,1+dL)}];   /* 当月柱同步勾的改动 */
+  {m:'26-07',o:4+dO,s:Math.max(0,1+dS),l:Math.max(0,1+dL)}];   /* 当月柱同步勾与新立项 */
  const mMax=Math.max(...MONTHS.map(x=>x.o)), mH=150, mBase=180, mW=24, mPitch=45, mX0=34;
  const mh=n=>n?Math.max(Math.round(n/mMax*mH),3):0;
  const mbars=MONTHS.map((x,i)=>{
