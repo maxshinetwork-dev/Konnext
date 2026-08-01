@@ -378,15 +378,19 @@ const { chromium } = require('playwright');
   ok(rq.inv&&rq.log==='标记 S3 已请款'&&rq.frozen,'标记请款未定格/未入日志');
   const settleChk=await page.evaluate(()=>{
     const f=finOf('KX-2026-0203'), m=f.ms[0];
-    finSettle('KX-2026-0203',0);                                        // 不足额 → prompt 自动取消 → 应被拦
-    const blocked=!m.settled;
+    finSettle('KX-2026-0203',0);                       // 不足额 → uiPrompt 弹层，未结清
+    const blocked=!m.settled&&document.getElementById('uibox').style.display==='block';
+    document.getElementById('uiinput').value='客户申请减免尾差'; uiOk();
+    const gapOk=m.settled&&m.gapWhy==='客户申请减免尾差'&&m.gap>0;
+    m.settled=false; m.settledAt=undefined; m.gap=undefined; m.gapWhy=undefined;
     m.recv.push({amt:28000,how:'走账',gst:2800,at:'2026/08/01',by:'王姐'});
-    finSettle('KX-2026-0203',0);                                        // 足额 → 直接结清
+    finSettle('KX-2026-0203',0);                       // 足额 → 直接结清
     const done=m.settled&&OPLOG.some(r=>r.action==='S1 点结清');
     m.recv.pop(); m.settled=false; m.settledAt=undefined; renderAll();
-    return JSON.stringify({blocked,done});});
+    return JSON.stringify({blocked,gapOk,done});});
   const sc2=JSON.parse(settleChk);
-  ok(sc2.blocked,'不足额结清未被「必须填原因」拦住');
+  ok(sc2.blocked,'不足额结清未弹原因输入层');
+  ok(sc2.gapOk,'填原因后差额定格结清未生效');
   ok(sc2.done,'足额点结清未生效/未入日志');
   // S4 与 Var：门禁 → 估价 → 未退料 → 请款定格
   const s4Chk=await page.evaluate(()=>{
@@ -418,9 +422,15 @@ const { chromium } = require('playwright');
   fh=await page.evaluate(()=>document.getElementById('main').innerHTML);
   ok(fh.includes('账龄')&&fh.includes('改版抹不掉')&&fh.includes('拒付停服'),'催账页缺账龄双口径/停服入口');
   ok(/天<\/b>/.test(fh),'0160 超期天数未标红');
-  const susChk=await page.evaluate(()=>{finSuspend('KX-2026-0160');     // confirm 自动取消 → 不应停服
-    return !finOf('KX-2026-0160').susp;});
-  ok(susChk,'停服未经确认就生效（confirm 应拦）');
+  const susChk=await page.evaluate(()=>{finSuspend('KX-2026-0160');
+    const pend=!finOf('KX-2026-0160').susp&&document.getElementById('uibox').style.display==='block';
+    uiOk();
+    const did=finOf('KX-2026-0160').susp===true;
+    const f=finOf('KX-2026-0160'); f.susp=false; f.suspAt=undefined; renderAll();
+    return JSON.stringify({pend,did});});
+  const sk2=JSON.parse(susChk);
+  ok(sk2.pend,'停服未经确认就生效（应先弹确认层）');
+  ok(sk2.did,'确认后停服未生效');
   // 运维支持：定价开票
   const mtChk=await page.evaluate(()=>{go('fin','运维财务支持');
     document.getElementById('mt-amt-MT-0180-03').value='400';
@@ -556,32 +566,62 @@ const { chromium } = require('playwright');
   const tc=JSON.parse(trioChk);
   ok(tc.a,'操作日志缺昵称+完整地址');
   ok(tc.b,'催账和停服缺昵称+完整地址');
-  // 二十七轮：催款分级 + 模版 + 烂尾不催款
+  // 二十七/二十八轮：催款分级 + 双语无昵称模版 + 弹窗发送 + 烂尾不催款
   const rm27=await page.evaluate(()=>{go('fin','催账和停服');
     const h=document.getElementById('main').innerHTML;
     const f=finOf('KX-2026-0160'), m=f.ms[1];
-    const sms=tplRender(REMIND_TPL.final.sms,f,m);
-    const nml=tplRender(REMIND_TPL.normal.sms,f,m);
-    finRemind('KX-2026-0160',1,'final');            // 烂尾 → alert 拦，remind 不增
+    const sms=tplRender(REMIND_TPL.final.zh.sms,f,m,'zh');
+    const en=tplRender(REMIND_TPL.final.en.sms,f,m,'en');
+    finRemindOpen('KX-2026-0160',1,'final');           // 烂尾 → toast 拦，弹窗不开
+    const stalledBlock=m.remind.length===2&&document.getElementById('rmbox').style.display!=='block';
     return JSON.stringify({
       lvl:h.includes('最终催款')&&h.includes('烂尾 · 不催款'),
-      tpl:h.includes('催款模版')&&h.includes('{付款人}')&&h.includes('常规催款模版')&&h.includes('最终催款模版'),
-      prev:h.includes('实时预览'),
-      render:sms.includes('张宅')&&sms.includes('超期 168 天')&&sms.includes('第 3 次')
-        &&nml.includes('31 Blaxland Rd')&&nml.includes('A$160,000'),
-      stalledBlock:f.ms[1].remind.length===2});});
+      hint:h.includes('「设置」'),
+      render:!sms.includes('张宅')&&sms.includes('31 Blaxland Rd')&&sms.includes('超期 168 天')&&sms.includes('第 3 次'),
+      renderEn:en.includes('Materials Payment')&&en.includes('168 days overdue')&&!en.includes('张宅'),
+      stalledBlock});});
   const r27=JSON.parse(rm27);
   ok(r27.lvl,'催账页缺最终催款按钮/烂尾不催款标');
-  ok(r27.tpl&&r27.prev,'催款模版编辑器/变量图例/预览缺失');
-  ok(r27.render,'模版变量渲染不对（昵称/地址/超期/次数）');
+  ok(r27.hint,'催账页缺模版指路（设置）');
+  ok(r27.render,'中文模版渲染不对（应无昵称、含完整地址/超期/次数）');
+  ok(r27.renderEn,'英文模版渲染不对（节点英文名/超期/无昵称）');
   ok(r27.stalledBlock,'烂尾项目催款未被拦截');
-  const tplSave=await page.evaluate(()=>{
+  // 催款弹窗全流程：渠道/语言/发送人/可改/发送/未回复照样再催
+  const rmFlow=await page.evaluate(()=>{go('fin','项目收款S1-S3');
+    const f=finOf('KX-2026-0203'), m=f.ms[0], n0=m.remind.length;
+    finRemindOpen('KX-2026-0203',0);
+    const boxOpen=document.getElementById('rmbox').style.display==='block';
+    const h=document.getElementById('rmbox').innerHTML;
+    const hasAll=h.includes('只发短信')&&h.includes('English')&&h.includes('rm-sender')
+      &&h.includes('不回也不影响任何进展')&&h.includes('发出即视为送达');
+    const noNick=!h.includes('罗宅');
+    RMD.lang='en'; remindPaint();
+    const enBox=document.getElementById('rm-sms').value.includes('Reply Y once paid');
+    RMD.lang='zh'; remindPaint();
+    finRemindSend();
+    const sent1=m.remind.length===n0+1&&m.remind[m.remind.length-1].how==='短信+邮件';
+    finRemindOpen('KX-2026-0203',0); finRemindSend();  // 收件人没回 Y 照样可再催
+    const sent2=m.remind.length===n0+2;
+    const logOk=OPLOG[0].detail.includes('发送人');
+    m.remind.splice(n0); NOTIF.splice(0,3); renderAll();
+    return JSON.stringify({boxOpen,hasAll,noNick,enBox,sent1,sent2,logOk});});
+  const rf=JSON.parse(rmFlow);
+  ok(rf.boxOpen&&rf.hasAll,'催款弹窗缺渠道/语言/发送人/回执说明');
+  ok(rf.noNick,'催款弹窗内容出现了项目昵称（对外应只用地址）');
+  ok(rf.enBox,'英文模版切换未生效');
+  ok(rf.sent1&&rf.sent2,'弹窗发送未生效/未回复被当作再催前提');
+  ok(rf.logOk,'催款日志缺发送人');
+  const tplSave=await page.evaluate(()=>{tplTab='normal';tplLang='zh';go('fin','设置');
+    const h=document.getElementById('main').innerHTML;
+    const ui=h.includes('催款模版')&&h.includes('{付款人}')&&h.includes('实时预览')&&h.includes('English');
+    const bak=REMIND_TPL.normal.zh.sms;
     document.getElementById('tpl-sms').value='测试模版 {付款人}';
     finTplSave();
-    const okSave=REMIND_TPL.normal.sms==='测试模版 {付款人}'&&OPLOG[0].action==='保存催款模版';
-    REMIND_TPL.normal.sms='【KONNEXT】{付款人}您好，{项目昵称}（{项目地址}）{节点} {节点名}尚有 {还差金额} 未到账（Invoice {Invoice号} · {Invoice日期} 开出）。请您安排支付，如已付款请回 YES。—— 第 {催款次数} 次提醒';
-    renderAll(); return okSave;});
-  ok(tplSave,'保存模版未生效/未留痕');
+    const okSave=REMIND_TPL.normal.zh.sms==='测试模版 {付款人}'&&OPLOG[0].action==='保存催款模版';
+    REMIND_TPL.normal.zh.sms=bak; renderAll(); return JSON.stringify({ui,okSave});});
+  const ts2=JSON.parse(tplSave);
+  ok(ts2.ui,'设置页缺催款模版编辑器（双级双语/变量/预览）');
+  ok(ts2.okSave,'保存模版未生效/未留痕');
   const s4rm=await page.evaluate(()=>{go('fin','项目收款S1-S3');
     const h1=document.getElementById('main').innerHTML;
     return h1.includes('>催款<')&&!h1.includes('最终催款');});

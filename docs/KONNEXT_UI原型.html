@@ -305,6 +305,22 @@ tbody tr:hover{background:var(--bg-elevated)}
 </div>
 
 <div class="backdrop" id="backdrop" onclick="toggleDrawer()"></div>
+<div id="toasts" style="position:fixed;right:16px;bottom:16px;z-index:99;display:flex;flex-direction:column;gap:8px;max-width:420px"></div>
+<div id="uiback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:90"></div>
+<div id="uibox" style="display:none;position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:91;
+  background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
+  width:min(460px,92vw);padding:18px 20px">
+  <div id="uimsg" style="font-size:var(--fs-sm);line-height:1.8;white-space:pre-wrap"></div>
+  <input id="uiinput" style="display:none;width:100%;margin-top:10px">
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+    <button class="btn" onclick="uiCancel()">取消</button>
+    <button class="btn btn-primary" id="uiokbtn" onclick="uiOk()">确定</button>
+  </div>
+</div>
+<div id="rmback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:88" onclick="remindClose()"></div>
+<div id="rmbox" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:89;
+  background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
+  width:min(680px,94vw);max-height:88vh;overflow-y:auto;padding:18px 20px" ></div>
 <aside class="drawer" id="drawer">
   <div class="drawer-head">
     <b style="flex:1">待办中心</b>
@@ -670,19 +686,19 @@ function finSetPayer(code){ const f=finOf(code); const e=document.getElementById
   renderAll(); }
 /* 标记已请款：外部财务系统开出 Invoice 之后在这里标记 —— 应收金额此刻定格 */
 function finReq(code,si){ const f=finOf(code),m=f.ms[si];
-  if(m.s==='S2'&&!f.sm3){ alert('门禁：SM3 未完成，不能发起 S2 物料款'); return; }
-  if(m.s==='S3'&&!f.sm4){ alert('门禁：SM4 未完成，不能发起 S3 人工款'); return; }
-  if(msDue(f,m)<=0){ alert('门禁：应收金额为空，不能发出 Invoice'); return; }
+  if(m.s==='S2'&&!f.sm3){ uiAlert('门禁：SM3 未完成，不能发起 S2 物料款'); return; }
+  if(m.s==='S3'&&!f.sm4){ uiAlert('门禁：SM4 未完成，不能发起 S3 人工款'); return; }
+  if(msDue(f,m)<=0){ uiAlert('门禁：应收金额为空，不能发出 Invoice'); return; }
   m.ver=(m.ver||0)+1; m.inv=todayS(); if(!m.firstInv) m.firstInv=m.inv;
   const due=A$(msDue(f,m));
   opLog(code,'标记 '+m.s+' 已请款','应收 '+due+' 此刻定格（外部系统 Invoice v'+m.ver+'）',['fin','presales']);
   notifAdd(code,m.s+' Invoice 已开出（外部系统）· 应收 '+due,
     [{who:'付款人 '+f.payer,how:'短信',ok:false},{who:'售前 小林',how:'待办',ok:false}]);
-  alert('已标记 '+m.s+' 请款 · 应收 '+due+' 定格（要改金额须 v'+(m.ver+1)+' 重开）\n已通知：付款人 '+f.payer+'（短信）· 售前');
+  uiAlert('已标记 '+m.s+' 请款 · 应收 '+due+' 定格（要改金额须 v'+(m.ver+1)+' 重开）\n已通知：付款人 '+f.payer+'（短信）· 售前');
   renderAll(); }
 function finRecv(code,si){ const f=finOf(code),m=f.ms[si];
   const a=document.getElementById('rc-amt-'+code+'-'+m.s), h=document.getElementById('rc-how-'+code+'-'+m.s);
-  const amt=parseFloat(a&&a.value); if(!amt||amt<=0){ alert('请填收款金额'); return; }
+  const amt=parseFloat(a&&a.value); if(!amt||amt<=0){ uiAlert('请填收款金额'); return; }
   const how=h?h.value:'走账', gst=Math.round(amt*(how==='走账'?finSet.gstBank:finSet.gstCash))/100*1;
   const g=Math.round(amt*(how==='走账'?finSet.gstBank:finSet.gstCash)/100*100)/100;
   m.recv.push({amt,how,gst:g,at:todayS(),by:WHO[me].name});
@@ -691,8 +707,13 @@ function finRecv(code,si){ const f=finOf(code),m=f.ms[si];
   FINOPEN[code]=true; renderAll(); }
 function finSettle(code,si){ const f=finOf(code),m=f.ms[si];
   const due=msDue(f,m),paid=msPaid(m),gap=Math.round((due-paid)*100)/100;
-  if(gap>0){ const why=prompt('门禁：还差 '+A$(gap)+' 未收到，不足额结清必须填写原因(留痕)：');
-    if(!why||!why.trim()) return; m.gap=gap; m.gapWhy=why.trim(); }
+  if(gap>0){ uiPrompt('门禁：还差 '+A$(gap)+' 未收到，不足额结清必须填写原因（留痕，批准当时的差额定格）：',
+      why=>{ if(!why||!String(why).trim()) return;
+        m.gap=gap; m.gapWhy=String(why).trim(); finSettleDo(code,si); });
+    return; }
+  finSettleDo(code,si); }
+function finSettleDo(code,si){ const f=finOf(code),m=f.ms[si];
+  const due=msDue(f,m),paid=msPaid(m),gap=m.gap||0;
   m.settled=true; m.settledAt=todayS();
   let ntf='';
   if(m.s==='S1'){ ntf='工程管理（可安排 SM1 进场）· 售前（大表定金列亮绿）';
@@ -702,86 +723,143 @@ function finSettle(code,si){ const f=finOf(code),m=f.ms[si];
   opLog(code,m.s+' 点结清',(gap>0?'不足额（差 '+A$(gap)+' · 已填原因，差额定格）':'足额')+' · 已收 '+A$(paid),
     ['fin','presales'].concat(m.s==='S2'?['proc','wh']:m.s!=='S4'?['eng']:[]));
   if(ntf){ notifAdd(code,m.s+' 已结清',ntf.split('·').map(x=>({who:x.trim(),how:'待办',ok:false})));
-    alert(m.s+' 已结清 ✓\n已通知：'+ntf); }
+    uiAlert(m.s+' 已结清 ✓\n已通知：'+ntf); }
   renderAll(); }
 /* ═══ 催款模版（二十七轮用户定）═══
    两级：normal=常规催款（收款S1-S3 / S4与Var 页内发）· final=最终催款（催账和停服页发，语气升级+停服警告）
    变量由系统自动抓取（也可手动改文字）；正式系统落 eng_setting 模版键（write_depts=finance），可按阶段扩展覆盖 */
-let tplTab='normal';
+let tplTab='normal', tplLang='zh';
 const STAGE_NAME={S1:'定金',S2:'物料款',S3:'人工款',S4:'尾款'};
+const STAGE_NAME_EN={S1:'Deposit',S2:'Materials Payment',S3:'Labour Payment',S4:'Final Payment'};
+/* 催款模版（二十八轮重构）：常规/最终 × 中/英 × 短信/邮件标题/邮件正文
+   ★不含项目昵称（用户定：对外催款一律用完整地址标识项目）
+   ★短信可回 Y 作确认；邮件发出即视为送达无需回复；都只是记录 —— 不回不影响任何进展 */
 const REMIND_TPL={
  normal:{
-  sms:'【KONNEXT】{付款人}您好，{项目昵称}（{项目地址}）{节点} {节点名}尚有 {还差金额} 未到账（Invoice {Invoice号} · {Invoice日期} 开出）。请您安排支付，如已付款请回 YES。—— 第 {催款次数} 次提醒',
-  emailTitle:'【KONNEXT 付款提醒】{项目编号} {项目昵称} · {节点} {节点名} · 还差 {还差金额}（第 {催款次数} 次）',
-  email:'{付款人}您好：\n\n您的项目 {项目昵称}（{项目地址}）的 {节点} {节点名}，应收 {应收金额}，已收 {已收金额}，尚有 {还差金额} 未到账。\nInvoice：{Invoice号}（{Invoice日期} 开出 · {版本}）。\n\n请您近期安排支付；如已付款请忽略本邮件并告知我们。\n\nKONNEXT 财务部 · {联系电话}'},
+  zh:{sms:'【KONNEXT】{付款人}您好，您位于 {项目地址} 的项目 {节点} {节点名}尚有 {还差金额} 未到账（Invoice {Invoice号} · {Invoice日期} 开出）。请您安排支付，如已付款请回 Y。—— 第 {催款次数} 次提醒',
+   emailTitle:'【KONNEXT 付款提醒】{项目编号} · {节点} {节点名} · 还差 {还差金额}（第 {催款次数} 次）',
+   email:'{付款人}您好：\n\n您位于 {项目地址} 的项目，{节点} {节点名}应收 {应收金额}，已收 {已收金额}，尚有 {还差金额} 未到账。\nInvoice：{Invoice号}（{Invoice日期} 开出 · {版本}）。\n\n请您近期安排支付；如已付款请忽略本邮件并告知我们。本邮件发出即视为送达，无需回复。\n\nKONNEXT 财务部 · {联系电话}'},
+  en:{sms:'KONNEXT: Dear {付款人}, invoice {Invoice号} ({Invoice日期}) for the {节点} {节点名} of your project at {项目地址} has an outstanding balance of {还差金额}. Please arrange payment at your earliest convenience. Reply Y once paid. - Reminder #{催款次数}',
+   emailTitle:'KONNEXT Payment Reminder - {项目编号} · {节点} {节点名} · {还差金额} outstanding (#{催款次数})',
+   email:'Dear {付款人},\n\nThis is a friendly reminder that invoice {Invoice号} ({Invoice日期} · {版本}) for the {节点} {节点名} of your project at {项目地址} shows an outstanding balance of {还差金额} (invoiced {应收金额}, received {已收金额}).\n\nPlease arrange payment at your earliest convenience. If you have already paid, kindly disregard this email. This email is deemed delivered upon sending; no reply is required.\n\nKONNEXT Accounts · {联系电话}'}},
  final:{
-  sms:'【KONNEXT · 最终催款】{付款人}您好，{项目昵称} {节点} {节点名} {还差金额} 已超期 {超期天数} 天（第 {催款次数} 次通知）。请于 7 日内付清，逾期将按合同暂停本项目全部服务。付款后请回 YES。',
-  emailTitle:'【KONNEXT 最终催款函】{项目编号} {项目昵称} · 超期 {超期天数} 天 · 请于 7 日内处理',
-  email:'{付款人}您好：\n\n这是关于项目 {项目昵称}（{项目地址}）{节点} {节点名}的最终催款通知（第 {催款次数} 次）。\n应收 {应收金额} · 已收 {已收金额} · 未付 {还差金额}，自 Invoice {Invoice号}（{Invoice日期}）发出已超期 {超期天数} 天。\n\n请于 7 日内付清。逾期未付，我们将按合同约定暂停本项目全部服务，由此产生的工期与费用影响由业主承担。\n\nKONNEXT 财务部 · {联系电话}'}};
-function tplRender(str,f,m){
-  const pj=PROJECTS.find(p=>p.code===f.code)||{};
+  zh:{sms:'【KONNEXT · 最终催款】{付款人}您好，您位于 {项目地址} 的项目 {节点} {节点名} {还差金额} 已超期 {超期天数} 天（第 {催款次数} 次通知）。请于 7 日内付清，逾期将按合同暂停本项目全部服务。付款后请回 Y。',
+   emailTitle:'【KONNEXT 最终催款函】{项目编号} · 超期 {超期天数} 天 · 请于 7 日内处理',
+   email:'{付款人}您好：\n\n这是关于您位于 {项目地址} 的项目 {节点} {节点名}的最终催款通知（第 {催款次数} 次）。\n应收 {应收金额} · 已收 {已收金额} · 未付 {还差金额}，自 Invoice {Invoice号}（{Invoice日期}）发出已超期 {超期天数} 天。\n\n请于 7 日内付清。逾期未付，我们将按合同约定暂停本项目全部服务，由此产生的工期与费用影响由业主承担。本邮件发出即视为送达。\n\nKONNEXT 财务部 · {联系电话}'},
+  en:{sms:'KONNEXT FINAL NOTICE: Dear {付款人}, {还差金额} for the {节点} {节点名} of your project at {项目地址} is {超期天数} days overdue (notice #{催款次数}). Please settle within 7 days, otherwise all services for this project will be suspended per contract. Reply Y once paid.',
+   emailTitle:'KONNEXT FINAL NOTICE - {项目编号} · {超期天数} days overdue · action required within 7 days',
+   email:'Dear {付款人},\n\nThis is the final notice (#{催款次数}) regarding the {节点} {节点名} of your project at {项目地址}.\nInvoiced {应收金额} · received {已收金额} · outstanding {还差金额}, now {超期天数} days overdue since invoice {Invoice号} ({Invoice日期}).\n\nPlease settle within 7 days. Failing this, all services for this project will be suspended in accordance with the contract, and any resulting delays and costs will be borne by the owner. This email is deemed delivered upon sending.\n\nKONNEXT Accounts · {联系电话}'}}};
+function tplRender(str,f,m,lang){
   const due=msDue(f,m),paid=msPaid(m);
   const over=m.inv?Math.max(daysSince(m.inv)-finSet.overdueDays,0):0;
   const map={'付款人':f.payer,'项目昵称':pjNick(f.code),'项目地址':pjAddr(f.code),'项目编号':f.code,
-    '节点':m.s,'节点名':STAGE_NAME[m.s]||'','应收金额':A$(due),'已收金额':A$(paid),
+    '节点':m.s,'节点名':(lang==='en'?STAGE_NAME_EN:STAGE_NAME)[m.s]||'','应收金额':A$(due),'已收金额':A$(paid),
     '还差金额':A$(Math.round((due-paid)*100)/100),'Invoice号':'INV-'+f.code.slice(-4)+'-'+m.s,
     'Invoice日期':m.inv||'—','版本':'v'+(m.ver||1),'超期天数':String(over),
     '催款次数':String(m.remind.length+1),'公司名':'KONNEXT','联系电话':'02 8000 0000'};
   return str.replace(/\{([^}]+)\}/g,(_,k)=>map[k]!==undefined?map[k]:'{'+k+'}'); }
-function finTplSave(){ const lv=tplTab;
+function finTplSave(){ const lv=tplTab,lg=tplLang;
   const s=document.getElementById('tpl-sms'),et=document.getElementById('tpl-etitle'),e=document.getElementById('tpl-email');
-  if(s) REMIND_TPL[lv].sms=s.value;
-  if(et) REMIND_TPL[lv].emailTitle=et.value;
-  if(e) REMIND_TPL[lv].email=e.value;
-  opLog('','保存催款模版','「'+(lv==='normal'?'常规催款':'最终催款')+'」短信/邮件模版已更新（全财务生效）',['fin']);
+  if(s) REMIND_TPL[lv][lg].sms=s.value;
+  if(et) REMIND_TPL[lv][lg].emailTitle=et.value;
+  if(e) REMIND_TPL[lv][lg].email=e.value;
+  opLog('','保存催款模版','「'+(lv==='normal'?'常规':'最终')+'催款 · '+(lg==='zh'?'中文':'English')+'」短信/邮件模版已更新（全财务生效）',['fin']);
   renderAll(); }
-function finRemind(code,si,level){ const f=finOf(code),m=f.ms[si]; level=level||'normal';
-  if(f.stalled){ alert('该项目已标注「烂尾」—— 不再关联催款；请走「拒付停服」与法务路径'); return; }
-  const text=tplRender(REMIND_TPL[level].sms,f,m);
-  if(!confirm((level==='final'?'【最终催款】':'【常规催款】')+'将按模版发出短信（模版在「催账和停服」页可改）：\n\n'+text)) return;
-  m.remind.push({at:todayS(),how:'短信',by:WHO[me].name,level});
-  const title=tplRender(REMIND_TPL[level].emailTitle,f,m);
-  notifAdd(code,(level==='final'?'最终催款':m.s+' 催款')+'（第 '+m.remind.length+' 次）· '+title,
-    [{who:'付款人 '+f.payer,how:'短信',ok:false}]);
-  opLog(code,(level==='final'?'最终催款':m.s+' 催款'),'第 '+m.remind.length+' 次 · 短信 → '+f.payer+'（'+f.payerPh+'）· '+(level==='final'?'含停服警告':'常规提醒'),['fin']);
-  alert((level==='final'?'最终催款':'催款')+'短信已发 '+f.payer+'（回 YES 记为已确认）'); renderAll(); }
+/* ═══ 催款弹窗（二十八轮用户定）：渠道（短信/邮件/都要）· 中英 · 内容可改（只影响本次）· 发送人 ═══ */
+let RMD={code:null,si:0,level:'normal',channel:'both',lang:'zh'};
+function finRemindOpen(code,si,level){ const f=finOf(code);
+  if(f.stalled){ uiAlert('该项目已标注「烂尾」—— 不再关联催款；请走「拒付停服」与法务路径'); return; }
+  RMD={code,si,level:level||'normal',channel:'both',lang:'zh'};
+  remindPaint();
+  document.getElementById('rmback').style.display='block';
+  document.getElementById('rmbox').style.display='block'; }
+function remindClose(){ document.getElementById('rmback').style.display='none';
+  document.getElementById('rmbox').style.display='none'; }
+function remindPaint(){ const f=finOf(RMD.code),m=f.ms[RMD.si];
+  const T=REMIND_TPL[RMD.level][RMD.lang];
+  const box=document.getElementById('rmbox');
+  box.innerHTML=`
+   <div style="display:flex;align-items:center;gap:10px">
+     <b style="font-size:var(--fs-md)">${RMD.level==='final'?'最终催款':'催款'} · ${RMD.code}</b>
+     <span class="hint">📍 ${pjAddr(RMD.code)} · ${m.s} 第 ${m.remind.length+1} 次</span>
+     <a style="margin-left:auto;cursor:pointer;color:var(--text-muted)" onclick="remindClose()">✕</a></div>
+   <div style="display:flex;gap:18px;margin:12px 0;flex-wrap:wrap;font-size:var(--fs-sm)">
+     <span>渠道：${[['sms','只发短信'],['email','只发邮件'],['both','短信+邮件']].map(([v,lb])=>
+       `<label style="margin-right:8px"><input type="radio" name="rmch" style="width:auto"${RMD.channel===v?' checked':''}
+         onchange="RMD.channel='${v}';remindPaint()"> ${lb}</label>`).join('')}</span>
+     <span>语言：${[['zh','中文'],['en','English']].map(([v,lb])=>
+       `<label style="margin-right:8px"><input type="radio" name="rmlg" style="width:auto"${RMD.lang===v?' checked':''}
+         onchange="RMD.lang='${v}';remindPaint()"> ${lb}</label>`).join('')}</span>
+     <span>发送人：<input id="rm-sender" style="width:130px" value="${WHO[me].name}（${WHO[me].role}）"></span>
+   </div>
+   ${RMD.channel!=='email'?`<div class="field"><label>短信正文（可改，只影响本次；默认模版在「设置」里）</label>
+     <textarea id="rm-sms" style="width:100%;min-height:76px;font-size:12px;line-height:1.6">${tplRender(T.sms,f,m,RMD.lang)}</textarea>
+     <div class="hint">收件人可回 <b>Y</b> 作确认 —— <b>不回也不影响任何进展</b>，随时可再次催款</div></div>`:''}
+   ${RMD.channel!=='sms'?`<div class="field"><label>邮件标题</label>
+     <input id="rm-etitle" style="width:100%;font-size:12px" value="${tplRender(T.emailTitle,f,m,RMD.lang)}">
+     </div>
+   <div class="field"><label>邮件正文</label>
+     <textarea id="rm-email" style="width:100%;min-height:130px;font-size:12px;line-height:1.6">${tplRender(T.email,f,m,RMD.lang)}</textarea>
+     <div class="hint">邮件发出即视为送达，无需回复</div></div>`:''}
+   <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px">
+     <button class="btn" onclick="remindClose()">取消</button>
+     <button class="btn btn-primary" onclick="finRemindSend()">确认发送</button>
+   </div>`; }
+function finRemindSend(){ const f=finOf(RMD.code),m=f.ms[RMD.si];
+  const sender=(document.getElementById('rm-sender')||{value:WHO[me].name}).value.trim()||WHO[me].name;
+  const how=RMD.channel==='both'?'短信+邮件':RMD.channel==='sms'?'短信':'邮件';
+  m.remind.push({at:todayS(),how,by:sender,level:RMD.level,lang:RMD.lang});
+  const to=[];
+  if(RMD.channel!=='email') to.push({who:'付款人 '+f.payer,how:'短信（可回 Y 确认，非必须）',ok:false});
+  if(RMD.channel!=='sms')  to.push({who:'付款人 '+f.payer,how:'邮件（发出即视为送达）',ok:true});
+  const title=RMD.channel==='sms'?tplRender(REMIND_TPL[RMD.level][RMD.lang].sms,f,m,RMD.lang).slice(0,40)+'…'
+    :(document.getElementById('rm-etitle')||{value:''}).value;
+  notifAdd(RMD.code,(RMD.level==='final'?'最终催款':m.s+' 催款')+'（第 '+m.remind.length+' 次 · '+how+' · '+(RMD.lang==='zh'?'中文':'EN')+'）',to);
+  opLog(RMD.code,(RMD.level==='final'?'最终催款':m.s+' 催款'),
+    '第 '+m.remind.length+' 次 · '+how+' · '+(RMD.lang==='zh'?'中文':'English')+' · 发送人 '+sender+
+    (RMD.level==='final'?' · 含 7 日停服警告':''),['fin']);
+  remindClose();
+  uiAlert('已发出（'+how+'）✓\n短信可回 Y 作确认；邮件视为送达 —— 都只是记录，不回不影响任何进展，可随时再催');
+  renderAll(); }
 function finVarSave(code,vid){ const f=finOf(code),v=f.vars.find(x=>x.id===vid);
-  if(f.ms[3].inv){ alert('门禁：S4 发票已于 '+f.ms[3].inv+' 发出，其中已含变更金额；要改请 S4 开新版本重发'); return; }
-  if(!v.billable){ alert('门禁：移位是电工装错位置，属整改不计费 —— 变更结算金额填了直接拒'); return; }
+  if(f.ms[3].inv){ uiAlert('门禁：S4 发票已于 '+f.ms[3].inv+' 发出，其中已含变更金额；要改请 S4 开新版本重发'); return; }
+  if(!v.billable){ uiAlert('门禁：移位是电工装错位置，属整改不计费 —— 变更结算金额填了直接拒'); return; }
   const a=document.getElementById('var-amt-'+code+'-'+vid), n=document.getElementById('var-note-'+code+'-'+vid);
-  const amt=parseFloat(a&&a.value); if(isNaN(amt)){ alert('请填结算金额（外部手工计算后填回）'); return; }
-  const note=(n&&n.value.trim())||''; if(!note){ alert('门禁：变更结算金额要直接叠进 S4 跟客户结账，必须记录计算依据'); return; }
+  const amt=parseFloat(a&&a.value); if(isNaN(amt)){ uiAlert('请填结算金额（外部手工计算后填回）'); return; }
+  const note=(n&&n.value.trim())||''; if(!note){ uiAlert('门禁：变更结算金额要直接叠进 S4 跟客户结账，必须记录计算依据'); return; }
   const old=v.amt; v.amt=amt; v.by=WHO[me].name; v.at=todayS(); v.note=note;
   opLog(code,'变更估价','「'+v.desc+'」'+(old==null?'（待估价）':A$(old))+' → '+A$(amt)+' · 依据：'+note,['fin','eng']);
   s4Open[code]=true; renderAll(); }
 function finSettleUnret(code){ const f=finOf(code);
-  if(f.ms[3].inv){ alert('门禁：S4 发票已发出，不能再追加未退料变更。要追加请 S4 开新版本重发'); return; }
+  if(f.ms[3].inv){ uiAlert('门禁：S4 发票已发出，不能再追加未退料变更。要追加请 S4 开新版本重发'); return; }
   if(!f.unret) return;
   f.vars.push({id:Math.max(0,...f.vars.map(v=>v.id))+1,src:'未退料',type:'加',
     desc:'未退料结算（S2 出库单价 × 未退数量，不重新询价）',sys:f.unret,amt:f.unret,billable:true,
     ref:'出库台账',by:WHO[me].name,at:todayS(),note:'出库单价定格值'});
   opLog(code,'结算未退料',A$(f.unret)+' 按出库价转入 S4 变更 · 库管销台账 · Builder 收结算告知',['fin','wh','eng']);
-  alert('未退料 '+A$(f.unret)+' 已转入 S4 结算 ✓\n已通知：库管（销未退台账）· Builder（结算告知）');
+  uiAlert('未退料 '+A$(f.unret)+' 已转入 S4 结算 ✓\n已通知：库管（销未退台账）· Builder（结算告知）');
   f.unret=0; s4Open[code]=true; renderAll(); }
 function finS4Req(code){ const f=finOf(code),m=f.ms[3];
   const pend=f.vars.filter(v=>v.billable&&v.amt==null).length;
-  if(pend){ alert('门禁：尚有 '+pend+' 条变更待估价 —— 在本行「明细 ▸」里逐条估价（填金额+依据）后才能进 S4 结算'); return; }
-  if(f.unret){ alert('门禁：尚有未退料 '+A$(f.unret)+' 未结算，直接开票会少收这笔 ——\n点本行「未退料」列的【结算未退料】按钮，按出库价转入变更即可（数字来自库管台账，财务不手填）'); return; }
+  if(pend){ uiAlert('门禁：尚有 '+pend+' 条变更待估价 —— 在本行「明细 ▸」里逐条估价（填金额+依据）后才能进 S4 结算'); return; }
+  if(f.unret){ uiAlert('门禁：尚有未退料 '+A$(f.unret)+' 未结算，直接开票会少收这笔 ——\n点本行「未退料」列的【结算未退料】按钮，按出库价转入变更即可（数字来自库管台账，财务不手填）'); return; }
   m.ver=(m.ver||0)+1; m.inv=todayS(); if(!m.firstInv) m.firstInv=m.inv;
   opLog(code,'标记 S4 已请款','应收 '+A$(msDue(f,m))+' 定格（尾款+变更+未退料 · 外部 Invoice v'+m.ver+'）',
     ['fin','presales','eng']);
   notifAdd(code,'S4 Invoice 已开出 · 应收 '+A$(msDue(f,m)),
-    [{who:'付款人 '+f.payer,how:'短信',ok:false},{who:'售前 小林',how:'待办',ok:false},{who:'工程管理 陈工',how:'待办',ok:false}]);
-  alert('S4 已标记请款 · 应收 '+A$(msDue(f,m))+' 定格 ✓\n已通知：付款人（短信）· 售前 · 工程管理'); renderAll(); }
-function finSuspend(code){ const f=finOf(code);
-  if(!confirm('拒付停服 = 项目级全面停服（不是停单张单）：任何新任务都派不出去，'+finSet.suspendDays+' 天后提醒停用服务器。确定？')) return;
+    [{who:'付款人 '+f.payer,how:'短信（可回 Y 确认，非必须）',ok:false},{who:'售前 小林',how:'待办',ok:false},{who:'工程管理 陈工',how:'待办',ok:false}]);
+  uiAlert('S4 已标记请款 · 应收 '+A$(msDue(f,m))+' 定格 ✓\n已通知：付款人（短信）· 售前 · 工程管理'); renderAll(); }
+function finSuspend(code){
+  uiConfirm('拒付停服 = 项目级全面停服（不是停单张单）：任何新任务都派不出去，'+finSet.suspendDays+' 天后提醒停用服务器。确定？',
+    ()=>finSuspendDo(code)); }
+function finSuspendDo(code){ const f=finOf(code);
   f.susp=true; f.suspAt=todayS();
   opLog(code,'标记拒付 · 项目级停服','全面停服自 '+f.suspAt+' · '+finSet.suspendDays+' 天后提醒停用服务器',
     ['fin','presales','eng','proc','wh','mt']);
-  alert('已停服 ✓ 已通知全部门：该项目任何新任务派不出\n（声明由市场发布，'+finSet.suspendDays+' 天后系统提醒停用服务器）');
+  uiAlert('已停服 ✓ 已通知全部门：该项目任何新任务派不出\n（声明由市场发布，'+finSet.suspendDays+' 天后系统提醒停用服务器）');
   renderAll(); }
 function finSetVal(k,label,v){ const nv=parseFloat(v); if(isNaN(nv)){ renderAll(); return; }
-  if(k.indexOf('otRates')===0&&nv<1){ alert('门禁：加班倍数不许设成低于 1'); renderAll(); return; }
+  if(k.indexOf('otRates')===0&&nv<1){ uiAlert('门禁：加班倍数不许设成低于 1'); renderAll(); return; }
   const path=k.split('.'); let old;
   if(path.length===2){ old=finSet[path[0]][path[1]]; finSet[path[0]][path[1]]=nv; }
   else{ old=finSet[k]; finSet[k]=nv; }
@@ -809,10 +887,10 @@ const mtParts=c=>Math.round(c.parts.reduce((a,p)=>a+p.cost*1,0)*100)/100;
 const mtCost=c=>Math.round((mtLabor(c)+mtParts(c))*100)/100;
 function mtPrice(id){ const c=MCASES.find(x=>x.id===id);
   const a=document.getElementById('mt-amt-'+id); const amt=parseFloat(a&&a.value);
-  if(isNaN(amt)){ alert('请按 归因+时长 定价（口头预估仅参考，不参与计费）'); return; }
+  if(isNaN(amt)){ uiAlert('请按 归因+时长 定价（口头预估仅参考，不参与计费）'); return; }
   c.amt=amt; c.st='已开票'; c.inv=todayS(); c.paid=0;
   opLog(c.code,'维护单定价开票',c.id+' · '+A$(amt)+'（归因：'+c.causeCn+'）· 外部系统开出后标记',['fin','mt']);
-  alert('已标记开票 '+A$(amt)+' ✓ 已通知：付款人（短信）· 运维'); renderAll(); }
+  uiAlert('已标记开票 '+A$(amt)+' ✓ 已通知：付款人（短信）· 运维'); renderAll(); }
 function mtRecv(id){ const c=MCASES.find(x=>x.id===id);
   c.paid=c.amt; c.st='已结案';
   opLog(c.code,'维护单收款结案',c.id+' · 收 '+A$(c.amt),['fin','mt']); renderAll(); }
@@ -828,16 +906,16 @@ const EXP=[
 ];
 const EXPCOST={'KX-2026-0142':171500,'KX-2026-0188':182000,'KX-2026-0180':122500};   // 演示成本基数(材料+人工)
 function expOk(id){ const e=EXP.find(x=>x.id===id);
-  if(e.who===WHO[me].name){ alert('门禁：不能自己审批自己的报销（'+e.who+'）'); return; }
-  if(!e.rc){ alert('门禁：报销必须上传收据照片'); return; }
-  if(e.pj==='?'){ alert('无从追溯 —— 需先人工确认归属（改为具体项目或公司级+原因），系统不猜'); return; }
+  if(e.who===WHO[me].name){ uiAlert('门禁：不能自己审批自己的报销（'+e.who+'）'); return; }
+  if(!e.rc){ uiAlert('门禁：报销必须上传收据照片'); return; }
+  if(e.pj==='?'){ uiAlert('无从追溯 —— 需先人工确认归属（改为具体项目或公司级+原因），系统不猜'); return; }
   e.st='已批准'; e.by=WHO[me].name;
   opLog(e.pj,'批准报销',e.id+' · '+e.who+' · '+e.cat+' '+A$(e.amt)+(e.pj?' → 计入项目成本':' → 公司级'),['fin']);
   renderAll(); }
-function expNo(id){ const e=EXP.find(x=>x.id===id);
-  const why=prompt('驳回原因（留痕）：'); if(!why) return;
-  e.st='已驳回'; e.by=WHO[me].name; e.note=why;
-  opLog(e.pj,'驳回报销',e.id+' · '+e.who+' · '+A$(e.amt)+' · '+why,['fin']); renderAll(); }
+function expNo(id){ uiPrompt('驳回原因（留痕）：',why=>{ if(!why||!String(why).trim()) return;
+  const e=EXP.find(x=>x.id===id);
+  e.st='已驳回'; e.by=WHO[me].name; e.note=String(why).trim();
+  opLog(e.pj,'驳回报销',e.id+' · '+e.who+' · '+A$(e.amt)+' · '+e.note,['fin']); renderAll(); }); }
 /* 工资演示（真发工资在外部系统——这里只整理总结） */
 const STAFF=[
  {name:'小陈', sys:'月薪',   base:'A$5,800/月', costHr:34.9, ot:'加班→倒休', toil:12.5},
@@ -963,6 +1041,30 @@ function optAdd(list,inputId){ const e=document.getElementById(inputId); const v
 function optDel(list,i){ const v=list[i]; list.splice(i,1);
   opLog('','删除'+(OPT_LABEL.get(list)||'')+'选项','「'+v+'」移除 —— 已填过它的历史数据不受影响',['presales']);
   renderAll(); }
+/* ═══ 页内提示与确认（二十八轮：Artifact 沙箱屏蔽原生 alert/confirm/prompt —— 全部自制）═══ */
+function uiAlert(msg){ const box=document.getElementById('toasts'); if(!box) return;
+  const d=document.createElement('div');
+  d.style.cssText='background:#243447;color:#f5f8fa;font-size:12.5px;line-height:1.7;padding:10px 14px;'+
+    'border-radius:8px;box-shadow:0 8px 24px rgba(16,24,40,.3);white-space:pre-wrap';
+  d.textContent=msg; box.appendChild(d);
+  setTimeout(()=>{d.style.transition='opacity .4s';d.style.opacity='0';setTimeout(()=>d.remove(),450);},4200); }
+let uiCb=null;
+function uiConfirm(msg,cb){ uiCb=cb;
+  document.getElementById('uimsg').textContent=msg;
+  document.getElementById('uiinput').style.display='none';
+  document.getElementById('uiback').style.display='block';
+  document.getElementById('uibox').style.display='block'; }
+function uiPrompt(msg,cb){ uiCb=v=>cb(v);
+  document.getElementById('uimsg').textContent=msg;
+  const i=document.getElementById('uiinput'); i.style.display='block'; i.value='';
+  document.getElementById('uiback').style.display='block';
+  document.getElementById('uibox').style.display='block'; setTimeout(()=>i.focus(),50); }
+function uiOk(){ const i=document.getElementById('uiinput');
+  const val=i.style.display==='none'?true:i.value;
+  uiClose(); if(uiCb){const cb=uiCb; uiCb=null; cb(val);} }
+function uiCancel(){ uiClose(); uiCb=null; }
+function uiClose(){ document.getElementById('uiback').style.display='none';
+  document.getElementById('uibox').style.display='none'; }
 function toggleDrawer(){
   document.getElementById('drawer').classList.toggle('open');
   document.getElementById('backdrop').classList.toggle('open');
@@ -997,7 +1099,7 @@ function wizNext(){ if(wizN===WIZ_STEPS){
     OPENED[code]=today;
     opLog(code,'完成立项建档','5 步引导完成 · 状态=接洽中 · 立项时间='+today,['presales']);
     wizClose(); renderAll();
-    alert('已建档 '+code+'（演示）：新项目已出现在项目列表第一行，状态=接洽中，停留从今天起算；图表已同步 +1');
+    uiAlert('已建档 '+code+'（演示）：新项目已出现在项目列表第一行，状态=接洽中，停留从今天起算；图表已同步 +1');
     return; }
   wizN++; wizPaint(); }
 function wizPrev(){ if(wizN>1){ wizN--; wizPaint(); } }
@@ -1091,15 +1193,15 @@ function detClose(){ document.getElementById('detback').classList.remove('open')
 function preTick(code,i){
   const p=BIGPD.find(x=>x.code===code); if(!p) return;
   const s0=p.step;
-  if(p.lost){ alert('该项目已勾「已流失」（终态）——先点第⑦勾取消流失，才能改前六步'); return; }
+  if(p.lost){ uiAlert('该项目已勾「已流失」（终态）——先点第⑦勾取消流失，才能改前六步'); return; }
   const target=i+1;
   if(target===p.step){                       // 点当前勾 = 反选回退一步
-    if(p.step===1){ alert('「接洽中」是立项后的起始状态，不能取消'); return; }
-    if(p.step===6) alert('已撤回「已签约」（演示）——正式系统会通知财务并留痕');
+    if(p.step===1){ uiAlert('「接洽中」是立项后的起始状态，不能取消'); return; }
+    if(p.step===6) uiAlert('已撤回「已签约」（演示）——正式系统会通知财务并留痕');
     p.step=p.step-1;
   }else{
     p.step=target;                            // 前进，或直接点回更早的勾
-    if(target===6) alert('已勾「已签约」→ 自动通知财务开 S1 定金 Invoice（演示）');
+    if(target===6) uiAlert('已勾「已签约」→ 自动通知财务开 S1 定金 Invoice（演示）');
   }
   p.d=(p.d||[]).slice(0,p.step);
   for(let k=0;k<p.step;k++) if(!p.d[k]||p.d[k]==='··') p.d[k]='今天';
@@ -1112,14 +1214,14 @@ function preTick(code,i){
 }
 function preLost(code){
   const p=BIGPD.find(x=>x.code===code); if(!p) return;
-  if(!p.lost&&p.step>=6){ alert('已签约项目不走「流失」——如需作废走财务撤销流程（后续版本）'); return; }
+  if(!p.lost&&p.step>=6){ uiAlert('已签约项目不走「流失」——如需作废走财务撤销流程（后续版本）'); return; }
   p.lost=!p.lost;
   if(p.lost){ (p.d=p.d||[])[6]='今天'; p.stay='';
     opLog(code,'勾已流失',STAGES[p.step-1]+' → 已流失（终态归档，整行变灰）',['presales']);
-    alert('已勾「已流失」（=流标，终态归档）。点错的话再点一次第⑦勾即可取消'); }
+    uiAlert('已勾「已流失」（=流标，终态归档）。点错的话再点一次第⑦勾即可取消'); }
   else{ if(p.d) p.d[6]=undefined; p.stay=0;
     opLog(code,'取消已流失','回到第 '+p.step+' 步「'+STAGES[p.step-1]+'」· 停留从今天重新计时',['presales']);
-    alert('已取消「已流失」——项目回到第 '+p.step+' 步，停留从今天重新计时'); }
+    uiAlert('已取消「已流失」——项目回到第 '+p.step+' 步，停留从今天重新计时'); }
   todoWake(code);                             // 状态改变：该项目「已知悉/搁置」失效，通知重新启动
   renderAll();
 }
@@ -1185,7 +1287,7 @@ function renderAll(){
          <span class="addr">Builder ${p.builder}</span>
          <span class="addr">电工 ${p.elec}</span>
          <span class="grow"></span>
-         <button class="btn" onclick="alert('跳转到该项目全景：七步进度 / SM / 安装 / 交付 / 收款 / 维护 / 订阅')">项目全景 →</button>
+         <button class="btn" onclick="uiAlert('跳转到该项目全景：七步进度 / SM / 安装 / 交付 / 收款 / 维护 / 订阅')">项目全景 →</button>
        </div>`;
   document.getElementById('main').innerHTML=bar+`<div class="main-inner">${view()}</div>`;
 }
@@ -1381,7 +1483,7 @@ function preBigTable(rows){
        <td>${subCell(p,EX(p).floors,'楼层未填')}</td>`:''}
      ${bigCols.family?`<td class="gs">${subCell(p,EX(p).fam,'成员未录')}</td>`:''}
      ${bigCols.notes?`<td class="gs">${noteCell(p.code,'noteF',p.noteF,p.noteFr,'财务')}</td><td>${noteCell(p.code,'noteE',p.noteE,p.noteEr,'工程')}</td>`:''}
-     <td class="gs">${ro?`<button class="btn" onclick="alert('${p.lost?'已流失（流标）项目 · 归档只读':'已签约项目转入工程线，售前侧只读'}')">查看</button>`
+     <td class="gs">${ro?`<button class="btn" onclick="uiAlert('${p.lost?'已流失（流标）项目 · 归档只读':'已签约项目转入工程线，售前侧只读'}')">查看</button>`
             :`<button class="btn" onclick="detOpen('${p.code}','${p.nick}')">修改</button>`}</td>
     </tr>`;}).join('')||`<tr><td colspan="${gCount}" class="muted" style="padding:var(--sp-4)">该筛选下暂无项目</td></tr>`}</tbody>
  </table></div>`;
@@ -2158,12 +2260,12 @@ ${ops([
         <option>司机</option><option>清洁工</option><option>宠物</option><option>其他</option></select></td>
         <td><input class="mono" style="width:60px" placeholder="岁"></td>
         <td><input placeholder="如：轮椅出行"></td>
-        <td><button class="btn" onclick="alert('演示：立项时可连续加行；建档后在大表行内「修改」里随时增删')">＋ 再加一位</button></td></tr></tbody></table>
+        <td><button class="btn" onclick="uiAlert('演示：立项时可连续加行；建档后在大表行内「修改」里随时增删')">＋ 再加一位</button></td></tr></tbody></table>
     <div class="panel-head" style="padding:var(--sp-2) 0">参建方（★下游硬依赖：出库提货/Builder告知/SM签字）</div>
     <table><thead><tr><th>工种</th><th>公司</th><th>联系人</th><th>电话</th><th></th></tr></thead>
       <tbody><tr><td><select>${tradeOpts.map(t=>`<option>${t}</option>`).join('')}</select></td>
         <td><input placeholder="公司名"></td><td><input placeholder="姓名"></td>
-        <td><input placeholder="04xx…"></td><td><button class="btn" onclick="alert('演示：立项时可连续加行；建档后在大表行内「修改」里随时增删')">＋ 再加一方</button></td></tr></tbody></table>
+        <td><input placeholder="04xx…"></td><td><button class="btn" onclick="uiAlert('演示：立项时可连续加行；建档后在大表行内「修改」里随时增删')">＋ 再加一方</button></td></tr></tbody></table>
     <div class="hint">现在不全没关系，SM1 现场见到分包商还会往里采集 —— 但 Builder 和电工越早录越好</div>
    </div>
    <div id="wizs4" style="display:none">
@@ -2786,7 +2888,7 @@ ${ops([
    <td class="num" title="从第一版 Invoice 起算，改版重发抹不掉">${age} 天</td>
    <td style="font-size:11px">${m.remind.length?`${m.remind.length} 次 · ${m.remind[m.remind.length-1].at}<div class="hint">${m.remind[m.remind.length-1].how} · ${m.remind[m.remind.length-1].by}</div>`:'—'}</td>
    <td style="white-space:nowrap">${f.stalled?'<span class="pill p-red" title="已标注烂尾 —— 不再关联催款">烂尾 · 不催款</span> '
-     :`<button class="btn" style="border-color:var(--breach);color:var(--breach)" title="按「最终催款」模版发出（含停服警告）——本页催款即最终催款" onclick="finRemind('${f.code}',${si},'final')">最终催款</button> `}
+     :`<button class="btn" style="border-color:var(--breach);color:var(--breach)" title="按「最终催款」模版弹窗发出（含停服警告）——本页催款即最终催款" onclick="finRemindOpen('${f.code}',${si},'final')">最终催款</button> `}
      ${f.susp?'':`<button class="btn" style="color:var(--breach)" onclick="finSuspend('${f.code}')">拒付停服</button>`}</td>
   </tr>`;}).join('')}
   ${rowsM.map(x=>{const c=x.c;
@@ -2799,42 +2901,10 @@ ${ops([
    <td class="num">${daysSince(c.inv)} 天</td><td>—</td>
    <td><button class="btn" onclick="mtRecv('${c.id}')">登记收款结案</button></td></tr>`;}).join('')}
  </tbody></table>
- <div class="panel" style="margin-top:var(--sp-4)">
-  <div class="panel-head">催款模版 <span class="muted" style="font-weight:400">财务定义 · 系统按模版抓取变量后发出 · 保存留痕</span>
-    <span style="margin-left:auto;display:flex;gap:6px">
-      <button class="btn${tplTab==='normal'?' btn-primary':''}" onclick="tplTab='normal';renderAll()">常规催款模版</button>
-      <button class="btn${tplTab==='final'?' btn-primary':''}" onclick="tplTab='final';renderAll()">最终催款模版</button>
-    </span></div>
-  <div class="panel-body">
-   <div class="split" style="gap:var(--sp-4)">
-    <div>
-     <div class="field"><label>短信正文（发付款人手机，回 YES 记确认）</label>
-       <textarea id="tpl-sms" style="width:100%;min-height:84px;font-size:12px;line-height:1.6">${REMIND_TPL[tplTab].sms}</textarea></div>
-     <div class="field"><label>邮件标题（也用作系统通知 title）</label>
-       <input id="tpl-etitle" style="width:100%;font-size:12px" value="${REMIND_TPL[tplTab].emailTitle}"></div>
-     <div class="field"><label>邮件正文</label>
-       <textarea id="tpl-email" style="width:100%;min-height:150px;font-size:12px;line-height:1.6">${REMIND_TPL[tplTab].email}</textarea></div>
-     <button class="btn btn-primary" onclick="finTplSave()">保存${tplTab==='normal'?'常规':'最终'}催款模版</button>
-     <span class="hint" style="margin-left:8px">保存即全财务生效 · 改动进操作日志</span>
-    </div>
-    <div>
-     <div class="field"><label>可用变量（系统自动抓取 · 写在花括号里即可）</label>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">
-       ${[['{付款人}','付款人姓名'],['{项目昵称}','如 罗宅'],['{项目地址}','完整地址'],['{项目编号}','KX-…'],
-          ['{节点}','S1~S4'],['{节点名}','定金/物料款/人工款/尾款'],['{应收金额}','定格应收'],['{已收金额}','现算'],
-          ['{还差金额}','现算'],['{Invoice号}','系统单号'],['{Invoice日期}','开出日'],['{版本}','v1/v2'],
-          ['{超期天数}','本期超期'],['{催款次数}','本次是第几次'],['{公司名}','KONNEXT'],['{联系电话}','公司电话']]
-         .map(([v,d])=>`<span class="pill p-grey" title="${d}" style="font-family:var(--mono);font-size:11px">${v}</span>`).join('')}
-      </div></div>
-     <div class="field"><label>实时预览（用 ${(()=>{const f0=FINPAY.find(x=>{const s=finStage(x);return s.m&&s.m.inv&&!x.stalled;})||FINPAY[0];return pjNick(f0.code);})()} 的当前节点数据渲染短信）</label>
-      <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:12px;line-height:1.8;white-space:pre-wrap">${(()=>{
-        const f0=FINPAY.find(x=>{const s=finStage(x);return s.m&&s.m.inv&&!x.stalled;})||FINPAY[0];
-        const s0=finStage(f0); const m0=(s0.m&&s0.m.inv)?s0.m:f0.ms[0];
-        return tplRender(REMIND_TPL[tplTab].sms,f0,m0);})()}</div></div>
-     <div class="hint">发出前还会弹渲染结果确认一遍 · 需要某个阶段完全独立的模版时，正式系统按阶段加覆盖行即可（先用变量适配）</div>
-    </div>
-   </div>
-  </div></div>`;
+ <div class="hint" style="margin-top:var(--sp-3)">催款模版（常规/最终 × 中/英 × 短信/邮件）在
+   <a style="color:var(--accent);cursor:pointer" onclick="go('fin','设置')"><b>「设置」</b></a> 里维护 ——
+   点催款按钮会弹窗给出按模版渲染好的内容，本次可改、可选渠道与语言、确认后发出
+ </div>`;
 },
 
 'fin/工资数据':()=>{
@@ -2870,7 +2940,7 @@ ${ops([
  </div>
  <div class="panel"><div class="panel-head">月度封账 · 外部工资系统用的汇总单
     <span class="muted" style="font-weight:400">周期 07/21 → 08/20 · 21 日封账即发放</span>
-    <button class="btn btn-primary" style="margin-left:auto" onclick="alert('演示：汇总单=日结加总，不再存一遍明细\\n（挂起 2 天补录放行后才能真封账）')">生成汇总单</button></div>
+    <button class="btn btn-primary" style="margin-left:auto" onclick="uiAlert('演示：汇总单=日结加总，不再存一遍明细\\n（挂起 2 天补录放行后才能真封账）')">生成汇总单</button></div>
   <table><thead><tr><th>人</th><th>制度</th><th style="text-align:right">日结加总</th><th style="text-align:right">加班(倍数 1.0)</th><th style="text-align:right">倒休变动</th><th style="text-align:right">应发合计</th></tr></thead>
   <tbody>
    <tr><td>小陈</td><td>月薪</td><td class="num">${can('salary')?'A$5,800.00':'— —'}</td><td class="num">—</td><td class="num">+3.5h</td><td class="num">${can('salary')?'<b>A$5,800.00</b>':'— —'}</td></tr>
@@ -2993,6 +3063,43 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
   <div class="field"><label>拒付停服后提醒停用服务器（天）</label>
     <input class="mono" style="width:90px" value="${finSet.suspendDays}" onchange="finSetVal('suspendDays','停服倒计时天数',this.value)"></div>
  </div></div>
+<div class="panel" style="max-width:820px"><div class="panel-head">催款模版 <span class="muted" style="font-weight:400">系统抓变量渲染 · 弹窗里可临时改 · 保存留痕</span>
+  <span style="margin-left:auto;display:flex;gap:6px">
+    <button class="btn${tplTab==='normal'?' btn-primary':''}" onclick="tplTab='normal';renderAll()">常规催款</button>
+    <button class="btn${tplTab==='final'?' btn-primary':''}" onclick="tplTab='final';renderAll()">最终催款</button>
+    <button class="btn${tplLang==='zh'?' btn-primary':''}" onclick="tplLang='zh';renderAll()">中文</button>
+    <button class="btn${tplLang==='en'?' btn-primary':''}" onclick="tplLang='en';renderAll()">English</button>
+  </span></div>
+ <div class="panel-body">
+  <div class="split" style="gap:var(--sp-4)">
+   <div>
+    <div class="field"><label>短信正文（收件人可回 Y 作确认 —— 不回不影响任何进展）</label>
+      <textarea id="tpl-sms" style="width:100%;min-height:84px;font-size:12px;line-height:1.6">${REMIND_TPL[tplTab][tplLang].sms}</textarea></div>
+    <div class="field"><label>邮件标题（发出即视为送达，无需回复）</label>
+      <input id="tpl-etitle" style="width:100%;font-size:12px" value="${REMIND_TPL[tplTab][tplLang].emailTitle}"></div>
+    <div class="field"><label>邮件正文</label>
+      <textarea id="tpl-email" style="width:100%;min-height:150px;font-size:12px;line-height:1.6">${REMIND_TPL[tplTab][tplLang].email}</textarea></div>
+    <button class="btn btn-primary" onclick="finTplSave()">保存${tplTab==='normal'?'常规':'最终'}催款 · ${tplLang==='zh'?'中文':'English'} 模版</button>
+   </div>
+   <div>
+    <div class="field"><label>可用变量（系统自动抓取 · ★对外催款不含项目昵称，用完整地址）</label>
+     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">
+      ${[['{付款人}','付款人姓名'],['{项目地址}','完整地址（对外标识项目）'],['{项目编号}','KX-…'],
+         ['{节点}','S1~S4'],['{节点名}','定金/物料款/人工款/尾款（英文模版自动用英文名）'],
+         ['{应收金额}','定格应收'],['{已收金额}','现算'],['{还差金额}','现算'],
+         ['{Invoice号}','系统单号'],['{Invoice日期}','开出日'],['{版本}','v1/v2'],
+         ['{超期天数}','本期超期'],['{催款次数}','本次是第几次'],['{公司名}','KONNEXT'],['{联系电话}','公司电话']]
+        .map(([v,d])=>`<span class="pill p-grey" title="${d}" style="font-family:var(--mono);font-size:11px">${v}</span>`).join('')}
+     </div></div>
+    <div class="field"><label>实时预览（短信 · 用在收项目真数据渲染）</label>
+     <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:12px;line-height:1.8;white-space:pre-wrap">${(()=>{
+       const f0=FINPAY.find(x=>{const s=finStage(x);return s.m&&s.m.inv&&!x.stalled;})||FINPAY[0];
+       const s0=finStage(f0); const m0=(s0.m&&s0.m.inv)?s0.m:f0.ms[0];
+       return tplRender(REMIND_TPL[tplTab][tplLang].sms,f0,m0,tplLang);})()}</div></div>
+    <div class="hint">需要某阶段完全独立的模版时，正式系统按阶段加覆盖行即可（先用变量适配）</div>
+   </div>
+  </div>
+ </div></div>
 <div class="panel" style="max-width:560px"><div class="panel-head">加班倍数（全局默认 · 可按人覆盖）</div>
  <div class="panel-body">
   ${[['weekday','平日超时'],['sat','周六'],['sun','周日'],['ph','公共假日']].map(([k,lb])=>`
@@ -3113,7 +3220,7 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
     else{ const m=st.m;
       if(!m.inv) acts=gateBtn('标记已请款',`finReq('${f.code}',${si})`,st.gate);
       else{ acts=f.stalled?`<span class="pill p-red" title="已标注烂尾 —— 不再关联催款，走拒付停服与法务路径">烂尾 · 不催款</span> `
-          :`<button class="btn" onclick="finRemind('${f.code}',${si})">催款</button> `;
+          :`<button class="btn" onclick="finRemindOpen('${f.code}',${si})">催款</button> `;
         acts+=msPaid(m)>=msDue(f,m)
           ?`<button class="btn btn-primary" onclick="finSettle('${f.code}',${si})">点结清</button>`
           :`<button class="btn" title="不足额结清必须填原因（差额定格）" onclick="finSettle('${f.code}',${si})">结清(差额)</button>`; } }
@@ -3156,8 +3263,8 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
             :`<span class="pill p-amber">${p.who} 未确认</span> <a style="cursor:pointer;color:var(--accent)" onclick="notifOk(${i},${j})">标记已确认</a>`).join(' ')}
         </div>`).join('')||'<span class="muted" style="font-size:var(--fs-xs)">还没有通知记录</span>'}
         </div>
-        <b style="font-size:var(--fs-sm);display:block;margin-top:10px">催款记录</b>
-        <div class="hint">${remRows.map(r=>`${r.s} · ${r.at} · ${r.how} · ${r.by}`).join('<br>')||'—'}</div>
+        <b style="font-size:var(--fs-sm);display:block;margin-top:10px">催款记录 <span class="hint" style="font-weight:400">回 Y 只是确认记录 —— 不回不影响任何进展</span></b>
+        <div class="hint">${remRows.map(r=>`${r.s} · ${r.at} · ${r.how} · ${r.by}${r.level==='final'?' · <b style="color:var(--breach)">最终</b>':' · 常规'}${r.lang==='en'?' · EN':''}`).join('<br>')||'—'}</div>
        </div>
       </div></td></tr>`; }).join('')}
   </tbody></table></div>`;
@@ -3218,7 +3325,7 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
               :'<div class="hint">现算 · 未定格</div>'}</td>
      <td>${st}</td>
      <td class="gs" style="white-space:nowrap">${m.inv?(m.settled?'—'
-        :`<button class="btn" onclick="finRemind('${f.code}',3)">催款</button>`)
+        :`<button class="btn" onclick="finRemindOpen('${f.code}',3)">催款</button>`)
         :gate?`<button class="btn" disabled title="门禁：${gate}${gate.includes('未退料')?' —— 点本行「结算未退料」按钮先转入变更':gate.includes('待估价')?' —— 在「明细 ▸」里逐条填金额+依据':''}" style="opacity:.5;cursor:not-allowed">标记 S4 已请款</button>`
         :`<button class="btn btn-primary" onclick="finS4Req('${f.code}')">标记 S4 已请款</button>`}</td>
      <td><a style="color:var(--accent);cursor:pointer" onclick="s4Open['${f.code}']=!s4Open['${f.code}'];renderAll()">${open?'收起 ▴':'明细 ▸'}</a></td></tr>`;
