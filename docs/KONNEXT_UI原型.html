@@ -357,28 +357,28 @@ const COMPANY_PAGES=new Set([
 ]);
 /* 项目清单（对应 v_project_label：编号 · 名称 + Suburb + 业主） */
 const PROJECTS=[
- {code:'KX-2026-0142',opened:'2025/11/02',name:'Cherrybrook 王宅',suburb:'Cherrybrook',street:'8 Franklin Rd',
+ {code:'KX-2026-0142',nick:'王宅',opened:'2025/11/02',name:'Cherrybrook 王宅',suburb:'Cherrybrook',street:'8 Franklin Rd',
   state:'NSW',owner:'王先生',builder:'Mike · BuildCo',elec:'Tony · Spark电气',
   status:'项目维护中',band:'p-green'},
- {code:'KX-2026-0180',opened:'2025/09/15',name:'Hornsby 陈宅',suburb:'Hornsby',street:'22 Rosamond St',
+ {code:'KX-2026-0180',nick:'陈宅',opened:'2025/09/15',name:'Hornsby 陈宅',suburb:'Hornsby',street:'22 Rosamond St',
   state:'NSW',owner:'陈女士',builder:'Sam · NorthBuild',elec:'Leo · VoltPro',
   status:'项目交付',band:'p-green'},
- {code:'KX-2026-0121',opened:'2025/06/10',name:'Castle Hill 刘宅',suburb:'Castle Hill',street:'5 Gilbert Rd',
+ {code:'KX-2026-0121',nick:'刘宅',opened:'2025/06/10',name:'Castle Hill 刘宅',suburb:'Castle Hill',street:'5 Gilbert Rd',
   state:'NSW',owner:'刘先生',builder:'—',elec:'Tony · Spark电气',
   status:'项目维护中',band:'p-green'},
- {code:'KX-2026-0160',opened:'2025/12/08',name:'Ryde 张宅',suburb:'Ryde',street:'31 Blaxland Rd',
+ {code:'KX-2026-0160',nick:'张宅',opened:'2025/12/08',name:'Ryde 张宅',suburb:'Ryde',street:'31 Blaxland Rd',
   state:'NSW',owner:'张先生',builder:'Ken · MetroCon',elec:'—',
   status:'已烂尾',band:'p-loss'},
- {code:'KX-2026-0155',opened:'2026/04/02',name:'Epping 李宅',suburb:'Epping',street:'7 Beecroft Rd',
+ {code:'KX-2026-0155',nick:'李宅',opened:'2026/04/02',name:'Epping 李宅',suburb:'Epping',street:'7 Beecroft Rd',
   state:'NSW',owner:'李先生',builder:'—',elec:'—',status:'已流失',band:'p-grey'},
- {code:'KX-2026-0201',opened:'2026/07/02',name:'Chatswood 黄宅',suburb:'Chatswood',street:'12 Orchard Rd',
+ {code:'KX-2026-0201',nick:'黄宅',opened:'2026/07/02',name:'Chatswood 黄宅',suburb:'Chatswood',street:'12 Orchard Rd',
   state:'NSW',owner:'黄先生',builder:'—',elec:'—',status:'接洽当中',band:'p-grey'},
  /* 财务线演示：三个签约施工中的项目，收款各在不同阶段（二十一轮加） */
- {code:'KX-2026-0188',opened:'2026/05/20',name:'Mosman 林宅',suburb:'Mosman',street:'11 Bond St',
+ {code:'KX-2026-0188',nick:'林宅',opened:'2026/05/20',name:'Mosman 林宅',suburb:'Mosman',street:'11 Bond St',
   state:'NSW',owner:'林先生',builder:'Sam · NorthBuild',elec:'Leo · VoltPro',status:'施工中',band:'p-cyan'},
- {code:'KX-2026-0203',opened:'2026/06/12',name:'Killara 罗宅',suburb:'Killara',street:'3 Springdale Rd',
+ {code:'KX-2026-0203',nick:'罗宅',opened:'2026/06/12',name:'Killara 罗宅',suburb:'Killara',street:'3 Springdale Rd',
   state:'NSW',owner:'罗先生',builder:'Mike · BuildCo',elec:'—',status:'施工中',band:'p-cyan'},
- {code:'KX-2026-0170',opened:'2026/04/18',name:'Denistone 赵宅',suburb:'Denistone',street:'22 Chatham Rd',
+ {code:'KX-2026-0170',nick:'赵宅',opened:'2026/04/18',name:'Denistone 赵宅',suburb:'Denistone',street:'22 Chatham Rd',
   state:'NSW',owner:'赵女士',builder:'—',elec:'Tony · Spark电气',status:'施工中',band:'p-cyan'},
 ];
 let pj=0;   // 当前项目
@@ -524,6 +524,10 @@ const todayS=()=>{const d=new Date(),z=n=>String(n).padStart(2,'0');
 /* 每项目一条收款生命周期：ms = S1~S4；inv=外部开出并标记的时刻(应收此刻定格)；recv=收款流水(可多笔·现金/走账·GST单列) */
 const FINPAY=[
  {code:'KX-2026-0203',price:480000,payer:'罗先生',payerPh:'0433 900 111',payerEm:'luo@x.com',
+  payerSrc:'联系人1',payerTi:'业主',
+  noteF:'业主要求发票抬头写公司 Luo Holdings Pty Ltd · 定金可能分两笔付',noteFr:'unread',
+  cand:[{src:'联系人1',name:'罗先生',phone:'0433 900 111',email:'luo@x.com',title:'业主'},
+        {src:'联系人2',name:'罗太太',phone:'0433 900 112',email:'',title:'共同决策'}],
   sm3:false,sm4:false,vars:[],unret:0,susp:false,
   ms:[{s:'S1',pct:10,inv:'2026/07/28',ver:1,recv:[{amt:20000,how:'走账',gst:2000,at:'2026/07/30',by:'王姐'}],
        remind:[{at:'2026/07/31',how:'短信',by:'王姐'}],settled:false},
@@ -531,6 +535,9 @@ const FINPAY=[
       {s:'S3',pct:40,recv:[],remind:[],settled:false},
       {s:'S4',pct:10,recv:[],remind:[],settled:false}]},
  {code:'KX-2026-0188',price:520000,payer:'林先生',payerPh:'0400 771 220',payerEm:'lin@x.com',
+  payerSrc:'联系人1',payerTi:'业主',
+  cand:[{src:'联系人1',name:'林先生',phone:'0400 771 220',email:'lin@x.com',title:'业主'},
+        {src:'干系人',name:'Kevin',phone:'0433 111 444',email:'kevin@agent.com.au',company:'置业顾问行',title:'介绍人'}],
   sm3:true,sm4:false,unret:0,susp:false,
   vars:[{id:1,src:'SM3',type:'加',desc:'花园廊架加 4 路灯控',sys:2600,amt:null,billable:true,ref:'SM3-0188-02'}],
   ms:[{s:'S1',pct:10,inv:'2026/06/02',ver:1,recv:[{amt:52000,how:'走账',gst:5200,at:'2026/06/05',by:'王姐'}],
@@ -542,6 +549,8 @@ const FINPAY=[
       {s:'S3',pct:40,recv:[],remind:[],settled:false},
       {s:'S4',pct:10,recv:[],remind:[],settled:false}]},
  {code:'KX-2026-0170',price:390000,payer:'赵女士',payerPh:'0455 300 288',payerEm:'zhao@x.com',
+  payerSrc:'联系人1',payerTi:'业主',
+  cand:[{src:'联系人1',name:'赵女士',phone:'0455 300 288',email:'zhao@x.com',title:'业主'}],
   sm3:true,sm4:true,vars:[],unret:0,susp:false,
   ms:[{s:'S1',pct:10,inv:'2026/05/06',ver:1,recv:[{amt:39000,how:'走账',gst:3900,at:'2026/05/08',by:'王姐'}],
        remind:[],settled:true,settledAt:'2026/05/08'},
@@ -550,6 +559,8 @@ const FINPAY=[
       {s:'S3',pct:40,recv:[],remind:[],settled:false},
       {s:'S4',pct:10,recv:[],remind:[],settled:false}]},
  {code:'KX-2026-0160',price:400000,payer:'张先生',payerPh:'0411 664 090',payerEm:'zhang@x.com',
+  payerSrc:'联系人1',payerTi:'业主',
+  cand:[{src:'联系人1',name:'张先生',phone:'0411 664 090',email:'zhang@x.com',title:'业主'}],
   sm3:true,sm4:false,vars:[],unret:0,susp:false,stalled:true,
   ms:[{s:'S1',pct:10,inv:'2025/12/20',ver:1,recv:[{amt:40000,how:'走账',gst:4000,at:'2025/12/24',by:'王姐'}],
        remind:[],settled:true,settledAt:'2025/12/24'},
@@ -558,6 +569,8 @@ const FINPAY=[
       {s:'S3',pct:40,recv:[],remind:[],settled:false},
       {s:'S4',pct:10,recv:[],remind:[],settled:false}]},
  {code:'KX-2026-0142',price:500000,payer:'王先生',payerPh:'0433 555 010',payerEm:'wang@x.com',
+  payerSrc:'联系人1',payerTi:'决策人',
+  cand:[{src:'联系人1',name:'王先生',phone:'0433 555 010',email:'wang@x.com',title:'决策人'}],
   sm3:true,sm4:true,unret:2013.83,susp:false,
   vars:[{id:1,src:'SM3',type:'加',desc:'客厅加两个开关点位（业主现场提出）',sys:4800,amt:4800,billable:true,
          ref:'SM3-0142-07',by:'王姐',at:'2026/07/30',note:'物料售卖价×2 点位'},
@@ -590,7 +603,7 @@ const finStage=f=>{ for(const m of f.ms.slice(0,3)){ if(!m.settled){
   return {m:null,gate:null}; };   // S1~S3 已清 → 去 S4 线
 /* 财务设置（演示；正式=eng_setting write_depts=finance） */
 let finSet={overdueDays:30, gstBank:10, gstCash:0, suspendDays:90, otRates:{weekday:1.0,sat:1.0,sun:1.0,ph:1.0}};
-let finQ='', finF='全部', FINOPEN={}, s4Open={};
+let finQ='', finF='全部', FINOPEN={}, s4Open={}, nodeF='全部';
 /* 通知记录（演示）：内外责任人 · 手动确认接收（外部付款人=短信回 YES；内部=待办已知悉） */
 const NOTIF=[
  {at:'2026/07/28 10:02',pj:'KX-2026-0203',what:'S1 定金 Invoice 已开出（外部系统）· 应收 A$48,000',
@@ -602,6 +615,54 @@ function notifAdd(pj,what,to){ NOTIF.unshift({at:nowTs(),pj,what,to}); }
 function notifOk(i,j){ NOTIF[i].to[j].ok=true;
   opLog(NOTIF[i].pj,'通知确认接收','「'+NOTIF[i].what+'」→ '+NOTIF[i].to[j].who+' 已确认',['fin']); renderAll(); }
 const daysSince=s=>s?Math.floor((Date.now()-new Date(s).getTime())/864e5):null;
+/* 售前财务注释：S1 过程直接显示在财务行内与 S1 待办里（二十二轮用户定）；
+   已读落回执（谁/何时）→ 售前侧角标变 已读✓ */
+function finNoteF(code){ const b=BIGPD.find(x=>x.code===code);
+  if(b&&b.noteF) return {text:b.noteF,read:b.noteFr==='read'};
+  const f=finOf(code);
+  if(f&&f.noteF) return {text:f.noteF,read:f.noteFr==='read'};
+  return null; }
+function finNoteRead(code){ const b=BIGPD.find(x=>x.code===code);
+  if(b&&b.noteF) b.noteFr='read';
+  const f=finOf(code); if(f&&f.noteF) f.noteFr='read';
+  opLog(code,'已读财务注释','售前注释标为已读 → 售前侧角标变 已读✓',['fin','presales']);
+  renderAll(); }
+/* 付款人候选（二十二轮用户定）：售前收集的 联系人1/2 · 干系人 · Builder · 电工
+   —— BIGPD（售前大表）里有的项目动态取；财务演示补充 cand；Builder/电工 从项目档案并入 */
+function finPeople(code){ const out=[];
+  const b=BIGPD.find(x=>x.code===code);
+  if(b){ if(b.o1) out.push({src:'联系人1',name:b.o1,phone:b.o1p,email:b.o1e,title:b.o1r});
+         if(b.o2) out.push({src:'联系人2',name:b.o2,phone:b.o2p,email:b.o2e,title:b.o2r});
+         if(b.rel) out.push({src:'干系人',name:b.rel,phone:b.relp,email:b.rele,title:b.relr}); }
+  const f=finOf(code);
+  (f&&f.cand||[]).forEach(c=>{ if(!out.some(x=>x.src===c.src&&x.name===c.name)) out.push(c); });
+  const pj=PROJECTS.find(x=>x.code===code);
+  if(pj){ if(pj.builder&&pj.builder!=='—'){ const s=pj.builder.split(' · ');
+            out.push({src:'Builder',name:s[0],company:s[1]||'',title:'Builder'}); }
+          if(pj.elec&&pj.elec!=='—'){ const s=pj.elec.split(' · ');
+            out.push({src:'电工',name:s[0],company:s[1]||'',title:'电工'}); } }
+  return out; }
+/* 付款人单元格：姓名/电话/邮箱/公司/title 全显示（有则显）+ 下拉换人 + 保存留痕 */
+function payerCell(f){ const ppl=finPeople(f.code); const cur=(f.payerSrc||'')+'|'+f.payer;
+  return `<div><b>${f.payer}</b>${f.payerSrc?` <span class="pill p-grey">${f.payerSrc}</span>`:''}
+    <div class="hint mono">${f.payerPh||'—'}</div>
+    ${f.payerEm?`<div class="hint">${f.payerEm}</div>`:''}
+    ${(f.payerCo||f.payerTi)?`<div class="hint">${[f.payerCo,f.payerTi].filter(Boolean).join(' · ')}</div>`:''}
+    <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
+      <select id="payer-${f.code}" style="width:150px;font-size:11px;padding:2px 4px">
+        ${ppl.map((p,i)=>`<option value="${i}"${(p.src+'|'+p.name)===cur?' selected':''}>${p.src} · ${p.name}${p.company?'（'+p.company+'）':''}</option>`).join('')}
+      </select>
+      <button class="btn" style="padding:2px 8px;font-size:11px"
+        title="保存后：请款/催款/通知/发票抬头都用这个人" onclick="finSetPayer('${f.code}')">保存</button>
+    </div></div>`; }
+function finSetPayer(code){ const f=finOf(code); const e=document.getElementById('payer-'+code);
+  const p=finPeople(code)[+(e&&e.value)]; if(!p) return;
+  const old=f.payer+(f.payerSrc?'（'+f.payerSrc+'）':'');
+  f.payer=p.name; f.payerPh=p.phone||''; f.payerEm=p.email||'';
+  f.payerCo=p.company||''; f.payerTi=p.title||''; f.payerSrc=p.src;
+  opLog(code,'设置付款人',old+' → '+p.name+'（'+p.src+'）· 之后请款/催款/通知/发票抬头都用这个人',
+    ['fin','presales']);
+  renderAll(); }
 /* 标记已请款：外部财务系统开出 Invoice 之后在这里标记 —— 应收金额此刻定格 */
 function finReq(code,si){ const f=finOf(code),m=f.ms[si];
   if(m.s==='S2'&&!f.sm3){ alert('门禁：SM3 未完成，不能发起 S2 物料款'); return; }
@@ -775,7 +836,18 @@ const preTodos=()=>BIGPD.filter(p=>!p.lost&&p.step<6&&p.stay>=preRemindDays)
     ev:`${p.nick} · ${STAGES[p.step-1]}已停留 ${p.stay} 天`,
     from:'售前流程',act:`${PRE_ACT[p.step]}（每天提醒）`,
     h:p.stay*24,sla:preRemindDays*24,pj:p.code,p:'项目列表'}));
-const allTodos=()=>[...preTodos(),...TODOS];
+/* 财务内生待办：S1 未结清（含未请款/部分到账）自动出现，附售前财务注释 —— 结清即消失 */
+const finTodos=()=>FINPAY.filter(f=>!f.susp&&!f.ms[0].settled).map(f=>{
+  const m=f.ms[0], due=msDue(f,m), paid=msPaid(m);
+  const pj=PROJECTS.find(p=>p.code===f.code)||{};
+  const note=finNoteF(f.code);
+  return {id:'fin-s1-'+f.code, dept:'fin',
+    ev:(pj.nick||f.code)+' · S1 定金 '+(m.inv?(paid>0?'部分到账（还差 '+A$(due-paid)+'）':'已请款未到账'):'待请款'),
+    from:'收款流程',
+    act:'跟进 S1：'+(m.inv?'收款/催款':'标记请款')+(note?' ｜ 📝 售前注释：'+note.text:''),
+    h:m.inv?Math.max(daysSince(m.inv),0)*24:24, sla:72,
+    pj:f.code, p:'项目收款S1-S3'};});
+const allTodos=()=>[...preTodos(),...finTodos(),...TODOS];
 /* 十九轮：待办三动作 —— 已知悉(停止通知) / 处理(跳页并切到该项目) / 搁置(保留) */
 const todoState={};                    // id → 'ack' | 'hold'
 /* 用户定：已知悉只对「当前状态」有效 —— 项目状态一旦改变，清掉标记，通知重新启动 */
@@ -817,7 +889,7 @@ function switchWho(w){ me=w; tab=WHO[w].depts.includes(tab)?tab:(w==='admin'?'de
   if(tab==='decision'&&WHO[w].tier!==1) tab=WHO[w].depts[0];
   page=DEPT[tab].pages[0]; pjFilter=null; renderAll(); }
 function pickPj(i){ pj=+i; renderAll(); }
-function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; stFilter='全部'; statPeriod='month'; logQ=''; logDeptF='全部'; renderAll(); }
+function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; stFilter='全部'; statPeriod='month'; logQ=''; logDeptF='全部'; nodeF='全部'; renderAll(); }
 /* 逐字刷新：重渲染后把光标还给搜索框（否则打一个字就失焦） */
 function keepFocus(id){ renderAll(); const e=document.getElementById(id);
   if(e){ e.focus(); const n=e.value.length; e.setSelectionRange(n,n); } }
@@ -2500,11 +2572,13 @@ ${ops([
  const recent=FINPAY.flatMap(f=>f.ms.flatMap(m=>m.recv)).filter(r=>daysSince(r.at)<=30);
  const bank=recent.filter(r=>r.how==='走账').reduce((a,r)=>a+r.amt,0);
  const cash=recent.filter(r=>r.how==='现金').reduce((a,r)=>a+r.amt,0);
- const stage={};
+ const cats={};
  FINPAY.forEach(f=>{const st=finStage(f);
    const k=!st.m?(f.ms[3].inv?'S4 收款中':'S4 待开票'):st.gate?(st.gate.includes('SM3')?'等 SM3':'等 SM4')
      :st.m.s+(st.m.inv?' 请款中':' 待请款');
-   stage[k]=(stage[k]||0)+1;});
+   (cats[k]=cats[k]||[]).push({f,label:k});});
+ const nodeRows=(nodeF==='全部'?Object.values(cats).flat()
+   :(cats[nodeF]||[])).slice();
  const stuck=STUCK['fin']||[];
  return `<h2>财务节点</h2>
  <div class="page-sub">财务整体数据一览 + 此刻卡点与异常 · 真正的账在外部财务系统，这里管流程与信息 · 待办去右上角 🔔</div>
@@ -2524,11 +2598,33 @@ ${ops([
     <div class="card-value">21 日</div>
     <div class="card-foot">周期 上月21 → 本月20 · 日结挂起 2 天</div></div>
  </div>
- <div class="panel"><div class="panel-head">S1~S4 节点分布 <span class="muted" style="font-weight:400">每个在途项目此刻停在哪</span>
+ <div class="panel"><div class="panel-head">S1~S4 节点分布 <span class="muted" style="font-weight:400">点框框过滤下表 · 每个在途项目此刻停在哪</span>
    <span style="margin-left:auto"><button class="btn" onclick="go('fin','项目收款S1-S3')">收款 S1-S3 →</button>
    <button class="btn" onclick="go('fin','尾款结算S4与Var')">S4 与 Var →</button></span></div>
-  <div class="panel-body" style="display:flex;gap:var(--sp-2);flex-wrap:wrap">
-   ${Object.entries(stage).map(([k,n])=>`<span class="pill ${k.includes('等')?'p-amber':k.includes('S4')?'p-cyan':'p-grey'}" style="font-size:var(--fs-sm);padding:6px 12px">${k} · <b>${n}</b></span>`).join('')}
+  <div class="panel-body">
+   <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap">
+    <button class="btn${nodeF==='全部'?' btn-primary':''}" style="font-size:var(--fs-sm);padding:6px 12px"
+      onclick="nodeF='全部';renderAll()">全部 · <b>${FINPAY.length}</b></button>
+    ${Object.entries(cats).map(([k,arr])=>`<button class="btn${nodeF===k?' btn-primary':''}"
+      style="font-size:var(--fs-sm);padding:6px 12px${k.includes('等')?';border-color:#f0c36d':''}"
+      onclick="nodeF='${k}';renderAll()">${k} · <b>${arr.length}</b></button>`).join('')}
+   </div>
+   <table id="nodetbl" style="margin-top:var(--sp-3)"><thead><tr><th>项目编号</th><th>立项时间</th><th>项目</th>
+     <th>付款人</th><th>当前节点</th><th style="text-align:right">该节点应收</th>
+     <th style="text-align:right">已收</th><th></th></tr></thead>
+   <tbody>${nodeRows.map(({f,label})=>{const pj=PROJECTS.find(p=>p.code===f.code)||{};
+     const st=finStage(f); const m=st.m||f.ms[3];
+     const goP=label.includes('S4')?'尾款结算S4与Var':'项目收款S1-S3';
+     return `<tr>
+      <td><b class="mono">${f.code}</b></td>
+      <td class="mono" style="font-size:11px">${OPENED[f.code]||'—'}</td>
+      <td><b>${pj.nick||pj.name||''}</b><div class="hint">📍 ${pj.street||''}, ${pj.suburb||''} ${pj.state||''}</div></td>
+      <td>${f.payer}<div class="hint mono">${f.payerPh||''}</div></td>
+      <td><span class="pill ${label.includes('等')?'p-amber':label.includes('S4')?'p-cyan':label.includes('请款中')?'p-grey':'p-grey'}">${label}</span></td>
+      <td class="num">${can('customer')?A$(msDue(f,m)):'— —'}</td>
+      <td class="num">${can('customer')?A$(msPaid(m)):'— —'}</td>
+      <td><button class="btn" onclick="go('fin','${goP}')">去处理 →</button></td></tr>`;}).join('')
+     ||`<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">该阶段没有项目</td></tr>`}</tbody></table>
   </div></div>
  <div class="panel">
   <div class="panel-head">卡点与异常 <span class="muted" style="font-weight:400">每条写明卡在哪 · 影响什么 · 去哪处理</span>
@@ -2747,7 +2843,8 @@ ${ops([
  <tbody>${R.map(r=>`<tr>
    <td><b class="mono">${r.c}</b></td>
    <td class="mono" style="font-size:11px">${OPENED[r.c]||'—'}</td>
-   <td>${r.n}</td>
+   <td>${(()=>{const pj=PROJECTS.find(p=>p.code===r.c)||{};
+     return `<b>${pj.nick||r.n}</b><div class="hint">📍 ${pj.street||''}, ${pj.suburb||''} ${pj.state||''}</div>`;})()}</td>
    <td class="num">${can('margin')?r.rev:'— —'}</td><td class="num">${can('margin')?r.mat:'— —'}</td>
    <td class="num">${can('margin')?r.lab:'— —'}</td><td class="num">${can('margin')?(r.exp||'—'):'— —'}</td>
    <td class="num">${can('margin')?(r.mnet||'—'):'— —'}</td>
@@ -2822,7 +2919,7 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
    const pj=PROJECTS.find(p=>p.code===f.code)||{};
    return `<rect x="${x}" y="${base-hP}" width="${W}" height="${Math.max(hP-1,1)}" fill="#047857" rx="2"><title>${f.code} 已收 ${A$(paidT)}</title></rect>
      <rect x="${x}" y="${base-hP-hU}" width="${W}" height="${Math.max(hU-1,1)}" fill="${over?'#dc2626':'#2563eb'}" rx="2"><title>${f.code} 未收 ${A$(dueT-paidT)}${over?' · 已超期':''}</title></rect>
-     <text x="${x+W/2}" y="${base+13}" font-size="9" text-anchor="middle" fill="#5f6b76">${f.code.slice(-4)} ${(pj.name||'').split(' ').pop()||''}</text>`;}).join('');
+     <text x="${x+W/2}" y="${base+13}" font-size="9" text-anchor="middle" fill="#5f6b76">${f.code.slice(-4)} ${pj.nick||''}</text>`;}).join('');
  const chips=['全部','S1','S2','S3','等工程','已清'];
  const msCell=(f,m)=>{ const due=msDue(f,m),paid=msPaid(m);
    const over=m.inv&&!m.settled&&daysSince(m.inv)>finSet.overdueDays;
@@ -2900,8 +2997,11 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
     const main=`<tr${f.susp?' style="opacity:.55"':''}>
      <td class="c1"><b class="mono">${f.code}</b>${f.stalled?' <span class="pill p-red">烂尾</span>':''}</td>
      <td class="c1b"><span class="mono" style="font-size:11px">${OPENED[f.code]||'—'}</span></td>
-     <td class="c2"><b>${pj.name||f.code}</b><div class="hint">📍 ${pj.street||''}, ${pj.suburb||''} ${pj.state||''}</div></td>
-     <td class="gs"><b>${f.payer}</b><div class="hint mono">${f.payerPh}</div></td>
+     <td class="c2"><b>${pj.nick||pj.name||f.code}</b><div class="hint">📍 ${pj.street||''}, ${pj.suburb||''} ${pj.state||''}</div>
+       ${(()=>{const nt=finNoteF(f.code); return nt?`<div style="background:#fff8e6;border:1px solid #f0dfae;border-radius:4px;padding:3px 6px;margin-top:4px;font-size:11px;max-width:230px" title="${nt.text}">📝 售前注释：${nt.text}
+         ${nt.read?'<span class="pill p-green" style="margin-left:4px">已读 ✓</span>'
+                  :`<a style="color:var(--accent);cursor:pointer;margin-left:4px" onclick="finNoteRead('${f.code}')">标已读</a>`}</div>`:'';})()}</td>
+     <td class="gs">${payerCell(f)}</td>
      <td class="num">${can('customer')?A$(f.price):'— —'}</td>
      ${f.ms.slice(0,3).map(m=>msCell(f,m)).join('')}
      <td class="gs" style="white-space:nowrap">${acts}</td>
@@ -2951,7 +3051,8 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
  ${helpNote(`变更两个数并排：<b>系统算价</b>（物料售卖价=成本÷(1−毛利率)，人工不单列）与<b>财务定价</b>（外部手工计算填回的真实数）——
    财务可以改，但必须填依据，谁改的何时改的全留痕。`)}
  <div style="overflow-x:auto"><table class="bigtable"><thead>
-  <tr class="leaf"><th class="c1">编号</th><th class="c1b">立项时间</th><th class="c2">昵称 · 付款人（发票就发给这个人）</th>
+  <tr class="leaf"><th class="c1">编号</th><th class="c1b">立项时间</th><th class="c2">昵称 · 地址</th>
+   <th class="gs">付款人（发票就发给这个人）</th>
    <th class="gs">变更积累</th><th style="text-align:right">未退料</th>
    <th class="gs" style="text-align:right">S4 组合 = 尾款 + 变更 + 未退料</th>
    <th>状态</th><th class="gs">操作</th><th>明细</th></tr></thead>
@@ -2971,8 +3072,9 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
     const main=`<tr${f.stalled?' style="opacity:.6"':''}>
      <td class="c1"><b class="mono">${f.code}</b></td>
      <td class="c1b"><span class="mono" style="font-size:11px">${OPENED[f.code]||'—'}</span></td>
-     <td class="c2"><b>${pj.name||f.code}</b>
-       <div class="hint">💳 <b>${f.payer}</b> · <span class="mono">${f.payerPh}</span> · ${f.payerEm}</div></td>
+     <td class="c2"><b>${pj.nick||pj.name||f.code}</b>
+       <div class="hint">📍 ${pj.street||''}, ${pj.suburb||''} ${pj.state||''}</div></td>
+     <td class="gs">${payerCell(f)}</td>
      <td class="gs" style="font-size:var(--fs-xs)">
        <span class="pill p-green">计费 ${bill.length} 条 ${can('customer')?A$(varSum):'— —'}</span>
        ${pend.length?`<span class="pill p-red">待估价 ${pend.length}</span>`:''}
@@ -2988,7 +3090,7 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
         :`<button class="btn btn-primary" onclick="finS4Req('${f.code}')">标记 S4 已请款</button>`}</td>
      <td><a style="color:var(--accent);cursor:pointer" onclick="s4Open['${f.code}']=!s4Open['${f.code}'];renderAll()">${open?'收起 ▴':'明细 ▸'}</a></td></tr>`;
     if(!open) return main;
-    return main+`<tr><td colspan="9" style="background:var(--bg-elevated);padding:var(--sp-3)">
+    return main+`<tr><td colspan="10" style="background:var(--bg-elevated);padding:var(--sp-3)">
       <b style="font-size:var(--fs-sm)">Variation 明细 —— 系统算价 vs 财务定价（改了必须留依据）</b>
       <table style="margin-top:6px"><thead><tr><th>序</th><th>计费</th><th>来源</th><th>类型</th><th>说明</th>
         <th style="text-align:right">系统算价</th><th style="text-align:right">财务定价（可改）</th><th>依据</th><th>登记</th><th></th></tr></thead>
@@ -3084,14 +3186,17 @@ const PJMONEY={
  'KX-2026-0201':{v:'—',      r:'0',      m:null,b:'p-grey'},
 };
 /* ★ 手术②：项目列表全公司一份 —— 部门只决定默认筛选 + 默认那一列 */
-const DEPT_FILTER={presales:'接洽当中',mt:'项目维护中'}; /* 其余部门默认「全部」 */
+const DEPT_FILTER={presales:'接洽当中',mt:'项目维护中',fin:'财务相关'};
+/* 财务相关（二十二轮用户定）：接洽中=售前没走完财务无需参与；已流失=售前的结论；
+   已烂尾=财务必须知道（拒付之后的结果，或项目做到一半没了同样可标烂尾） */
+const FIN_SCOPE=['施工中','项目交付','项目维护中','已烂尾'];
 const PJ_STATUSES=['全部','接洽当中','施工中','项目交付','项目维护中','已流失','已烂尾'];
 function projectList(d){
   const col=DEPT_COL[d];
   const dft=DEPT_FILTER[d]||'全部';
   const eff=pjFilter||dft;
   const q=pjQ.trim().toLowerCase();
-  const rows=PROJECTS.filter(p=>(eff==='全部'||p.status===eff)
+  const rows=PROJECTS.filter(p=>(eff==='全部'?true:eff==='财务相关'?FIN_SCOPE.includes(p.status):p.status===eff)
     &&(!q||`${p.code} ${p.name} ${p.street} ${p.suburb} ${p.state}`.toLowerCase().includes(q)));
   const canNew=WHO[me].tier===1||WHO[me].depts.includes('presales');
   return `<h2>项目列表 <span class="pill p-cyan">全公司一份</span></h2>
@@ -3104,7 +3209,7 @@ function projectList(d){
   ${canNew?ops([['+ 新建项目（售前）','无业务门禁 · 立项即建档，编号自动 KX-2026-XXXX','建档后即出现在这张全公司列表，各部门按默认筛选看到']]):''}
   <div class="panel">
     <div class="panel-head" style="gap:var(--sp-2);flex-wrap:wrap">
-      ${PJ_STATUSES.map(s=>`<button class="btn${eff===s?' btn-primary':''}" onclick="pjFilter='${s}';renderAll()">${s}</button>`).join('')}
+      ${(d==='fin'?['财务相关']:[]).concat(PJ_STATUSES).map(s=>`<button class="btn${eff===s?' btn-primary':''}"${s==='财务相关'?' title="施工中+交付+维护中+烂尾 —— 接洽中(售前没走完)与已流失(售前结论)财务无需参与"':''} onclick="pjFilter='${s}';renderAll()">${s}</button>`).join('')}
       <span class="muted" style="font-weight:400">显示 ${rows.length} / ${PROJECTS.length} · 本部门默认「${dft}」</span>
       <input id="pjq" class="search" placeholder="🔍 搜编号 / 名称 / 地址…" value="${pjQ}"
         style="width:190px;margin-left:auto;padding:5px var(--sp-2)"
@@ -3123,7 +3228,7 @@ function projectList(d){
         return `<tr>
           <td class="mono">${p.code}</td>
           <td class="mono" style="font-size:11px">${p.opened||'—'}</td>
-          <td><b>${p.name}</b><div class="hint">📍 ${p.street}, ${p.suburb} ${p.state}</div></td>
+          <td><b>${p.nick||p.name}</b><div class="hint">📍 ${p.street}, ${p.suburb} ${p.state}</div></td>
           <td class="hint">${p.owner}<br>B: ${p.builder}<br>E: ${p.elec}</td>
           <td><span class="pill ${p.band}">${p.status}</span></td>
           <td class="num${over?' ':''}" ${over?'style="color:var(--warning)"':''}>${stall} 天${over?' ⚠':''}</td>

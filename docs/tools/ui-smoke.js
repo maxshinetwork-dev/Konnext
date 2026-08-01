@@ -2,7 +2,7 @@
 // 用法（云容器）：cd docs/tools && node ui-smoke.js
 //   依赖 playwright（首次先 npm i playwright --no-save；浏览器用预装 /opt/pw-browsers，勿 playwright install）
 // 覆盖：6 角色 × 全页面渲染零报错 + 售前定稿断言（§14）+ 待办三动作 +
-//       操作日志真记录（§14 二十轮）+ 财务全线断言（§15 二十一轮）
+//       操作日志真记录（§14 二十轮）+ 财务全线断言（§15 二十一/二十二轮）
 // 期望输出：运行时报错 0 · 断言失败 0 · ★ 冒烟测试全部通过
 const { chromium } = require('playwright');
 (async()=>{
@@ -52,7 +52,10 @@ const { chromium } = require('playwright');
   ok(html.includes('施工中'),'项目列表缺「施工中」筛选（财务线三项目）');
   n=await page.evaluate(()=>{pjFilter=null;renderAll();
     return document.querySelectorAll('#main tbody tr').length;});
-  ok(n===9,`财务默认「全部」应 9 行，实际 ${n}`);
+  ok(n===7,`财务默认「财务相关」应 7 行（不含接洽中/已流失），实际 ${n}`);
+  n=await page.evaluate(()=>{pjFilter='全部';renderAll();
+    const x=document.querySelectorAll('#main tbody tr').length;pjFilter=null;return x;});
+  ok(n===9,`财务点「全部」应 9 行（读全部原则），实际 ${n}`);
   await page.screenshot({path:__dirname+'/shot_项目列表.png'});
   // 运维默认筛选 = 项目维护中
   await page.evaluate(()=>loginAs('maintenance'));
@@ -459,6 +462,62 @@ const { chromium } = require('playwright');
   const st2=JSON.parse(setChk);
   ok(st2.low,'加班倍数低于 1 未被拦');
   ok(st2.chg,'财务设置改动未生效/未入日志');
+  // 6.8) 二十二轮：付款人全息+下拉换人 · 昵称/完整地址 · 财务节点分布过滤
+  await page.evaluate(()=>go('fin','项目收款S1-S3'));
+  fh=await page.evaluate(()=>document.getElementById('main').innerHTML);
+  ok(fh.includes('payer-KX-2026-0203')&&fh.includes('联系人1'),'付款人缺下拉/来源标');
+  ok(fh.includes('<b>罗宅</b>')&&fh.includes('3 Springdale Rd, Killara NSW'),'昵称/完整地址未按定稿口径');
+  ok(!fh.includes('<b>Killara 罗宅</b>'),'昵称位置仍显示混合全称');
+  const payChk=await page.evaluate(()=>{
+    const sel=document.getElementById('payer-KX-2026-0188');
+    const i=[...sel.options].findIndex(o=>o.text.includes('Builder'));
+    sel.value=String(i); finSetPayer('KX-2026-0188');
+    const f=finOf('KX-2026-0188');
+    const h1=document.getElementById('main').innerHTML;
+    go('fin','尾款结算S4与Var');
+    const h2=document.getElementById('main').innerHTML;
+    const r={name:f.payer,co:f.payerCo,src:f.payerSrc,
+      s13:h1.includes('NorthBuild'),s4:h2.includes('NorthBuild'),
+      log:OPLOG[0].action==='设置付款人'&&OPLOG[0].detail.includes('林先生（联系人1） → Sam（Builder）')};
+    f.payer='林先生'; f.payerPh='0400 771 220'; f.payerEm='lin@x.com';
+    f.payerCo=''; f.payerTi='业主'; f.payerSrc='联系人1'; renderAll();
+    return JSON.stringify(r);});
+  const pk=JSON.parse(payChk);
+  ok(pk.name==='Sam'&&pk.co==='NorthBuild'&&pk.src==='Builder','换付款人未存全息信息');
+  ok(pk.s13&&pk.s4,'换付款人后未全线生效（S1-3 与 S4 都要显示）');
+  ok(pk.log,'设置付款人未留 前→后 日志');
+  const nodeChk=await page.evaluate(()=>{go('fin','财务节点');
+    const n0=document.querySelectorAll('#nodetbl tbody tr').length;
+    nodeF='S1 请款中'; renderAll();
+    const n1=document.querySelectorAll('#nodetbl tbody tr').length;
+    const one=document.getElementById('main').innerHTML.includes('<b class="mono">KX-2026-0203</b>');
+    nodeF='全部'; renderAll();
+    return JSON.stringify({n0,n1,one});});
+  const nk=JSON.parse(nodeChk);
+  ok(nk.n0===5&&nk.n1===1&&nk.one,`节点分布过滤失效（全部应5行/S1请款中应1行，实际 ${nk.n0}/${nk.n1}）`);
+  const cmChk=await page.evaluate(()=>{go('fin','成本与利润率');
+    return document.getElementById('main').innerHTML.includes('<b>张宅</b>');});
+  ok(cmChk,'成本利润率页昵称未按口径');
+  const plChk=await page.evaluate(()=>{go('fin','项目列表');pjFilter=null;renderAll();
+    const h=document.getElementById('main').innerHTML;pjFilter=null;
+    return h.includes('<b>王宅</b>');});
+  ok(plChk,'公司项目列表粗体未改客户昵称');
+  // 售前财务注释 → S1 行内 + S1 待办（二十二轮）
+  await page.evaluate(()=>go('fin','项目收款S1-S3'));
+  fh=await page.evaluate(()=>document.getElementById('main').innerHTML);
+  ok(fh.includes('售前注释')&&fh.includes('Luo Holdings'),'S1 行内缺售前财务注释');
+  const noteChk=await page.evaluate(()=>{
+    const td=allTodos().find(x=>x.id==='fin-s1-KX-2026-0203');
+    const r1=!!td&&td.act.includes('售前注释')&&td.act.includes('Luo Holdings');
+    finNoteRead('KX-2026-0203');
+    const f=finOf('KX-2026-0203');
+    const read=f.noteFr==='read'&&OPLOG[0].action==='已读财务注释';
+    const badge=document.getElementById('main').innerHTML.includes('已读 ✓');
+    f.noteFr='unread'; renderAll();
+    return JSON.stringify({r1,read,badge});});
+  const nc2=JSON.parse(noteChk);
+  ok(nc2.r1,'S1 待办内容未附售前注释');
+  ok(nc2.read&&nc2.badge,'标已读未落回执/未变角标');
   await page.evaluate(()=>{go('fin','项目收款S1-S3');FINOPEN['KX-2026-0203']=true;renderAll();});
   await page.screenshot({path:__dirname+'/shot_收款S1S3.png'});
   await page.evaluate(()=>{FINOPEN['KX-2026-0203']=false;go('fin','尾款结算S4与Var');s4Open['KX-2026-0142']=true;renderAll();});
