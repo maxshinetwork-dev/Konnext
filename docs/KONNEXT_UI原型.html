@@ -332,7 +332,7 @@ const WHO = {
   presales:   {name:'小林', role:'售前',       tier:2, depts:['presales'],
                see:['customer']},
   finance:    {name:'王姐', role:'财务',       tier:2, depts:['fin'],
-               see:['salary','margin','customer']},
+               see:['salary','margin','customer','stock']},
   warehouse:  {name:'老张', role:'采购＋库管', tier:2, depts:['proc','wh'],
                see:['purchase','stock']},
   maintenance:{name:'小周', role:'运维',       tier:2, depts:['mt'],  see:[]},
@@ -753,13 +753,24 @@ function finSetVal(k,label,v){ const nv=parseFloat(v); if(isNaN(nv)){ renderAll(
   renderAll(); }
 /* 维护单（运维财务支持）：先上门后定价 · 人没去过不许开票 */
 const MCASES=[
+ /* 成本核算（二十五轮）：人工=（在场+路上）×成本时薪 现算；物料=维护出库台账自动归集（出库单价已定格） */
  {id:'MT-0180-03',code:'KX-2026-0180',st:'待定价',causeCn:'人为损坏（业主原因）',free:false,
-  dur:'在场 1.5h · 路上 0.5h',content:'更换损坏的调光模块 · 客户已签字',est:400,amt:null},
+  dur:'在场 1.5h · 路上 0.5h',content:'更换损坏的调光模块 · 客户已签字',est:400,amt:null,
+  tech:'小陈',site:1.5,travel:0.5,costHr:34.9,
+  parts:[{name:'调光模块 DIM-4(白)',qty:1,cost:68.40,src:'出库单 OUT-0180-12'}]},
  {id:'MT-0121-11',code:'KX-2026-0121',st:'已开票',causeCn:'自然老化 · 已过免责期',free:false,
-  dur:'在场 1h',content:'更换传感器电池并校准',amt:390,inv:'2026/07/25',paid:0},
+  dur:'在场 1h',content:'更换传感器电池并校准',amt:390,inv:'2026/07/25',paid:0,
+  tech:'小周',site:1,travel:0.4,costHr:31.2,
+  parts:[{name:'纽扣电池 CR2450 ×3',qty:3,cost:4.50,src:'出库单 OUT-0121-31'}]},
  {id:'MT-0142-01',code:'KX-2026-0142',st:'已结案',causeCn:'产品缺陷 · 免责期内全免',free:true,
-  dur:'在场 2h',content:'网关固件故障返修（供应商索赔中）',amt:0,inv:'2026/07/10',paid:0},
+  dur:'在场 2h',content:'网关固件故障返修（供应商索赔中）',amt:0,inv:'2026/07/10',paid:0,
+  tech:'小陈',site:2,travel:0.6,costHr:34.9,
+  parts:[{name:'KNX 网关 GW-200(备件)',qty:1,cost:210.00,src:'出库单 OUT-0142-88 · RMA 在保索赔中，赔回冲减'}]},
 ];
+const A$2=n=>n==null?'—':'A$'+Number(n).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2});
+const mtLabor=c=>Math.round((c.site+c.travel)*c.costHr*100)/100;
+const mtParts=c=>Math.round(c.parts.reduce((a,p)=>a+p.cost*1,0)*100)/100;
+const mtCost=c=>Math.round((mtLabor(c)+mtParts(c))*100)/100;
 function mtPrice(id){ const c=MCASES.find(x=>x.id===id);
   const a=document.getElementById('mt-amt-'+id); const amt=parseFloat(a&&a.value);
   if(isNaN(amt)){ alert('请按 归因+时长 定价（口头预估仅参考，不参与计费）'); return; }
@@ -2649,35 +2660,52 @@ ${ops([
 'fin/运维财务支持':()=>{
  const inc=MCASES.filter(c=>c.amt>0).reduce((a,c)=>a+(c.amt||0),0);
  const free=MCASES.filter(c=>c.free).length;
+ const costT=Math.round(MCASES.reduce((a,c)=>a+mtCost(c),0)*100)/100;
  return `<h2>运维财务支持 <span class="pill p-cyan">只服务已进入维护阶段的项目</span></h2>
  <div class="page-sub">跟着维护团队的信息走：现场归因+时长 → 财务定价 → 外部系统开 Invoice → 这里记收款 · 说明看左下「？ 帮助」</div>
  ${ops([
   ['定价开票','人没去过不许开票 —— 定价依据=工程人员报回的归因+时长；免责期内按归因判免不免','付款人收短信 · 运维收「已开票」'],
   ['登记收款 → 结案','—','单据状态 open → in_progress → invoiced → paid_closed'],
+  ['看成本核算','只读现算 —— 人工与物料都不是手填','定价时旁边给成本参考，心里有底不亏着开票'],
  ])}
  ${helpNote(`免责维保口径：免责期内 <b>产品缺陷/自然老化 → 全免</b>（成本计入维保成本，产品在保返供应商索赔）；
    <b>人为损坏 → 不免</b>，正常计费。口头预估只做参考，实际以发票为准。`)}
+ ${helpNote(`成本核算（二十五轮）：<b>人工</b>=（在场+路上）× 该员工成本时薪，工时来自打卡系统现算；
+   <b>物料</b>=维护出库的更换件，从<b>库管出库台账自动归集</b>（出库那一刻单价已定格，关联本维护单）——
+   两样都不用财务手查手填。免单的单成本照记（计入维保成本）；在保物料走 RMA 索赔，赔回后冲减。`)}
  <div class="cards">
   <div class="card"><div class="card-label">本月维护开票</div><div class="card-value">${can('customer')?A$(inc):'— —'}</div><div class="card-foot">免单 ${free} 单（免责期内）</div></div>
   <div class="card"><div class="card-label">待定价</div><div class="card-value">${MCASES.filter(c=>c.st==='待定价').length} 单</div><div class="card-foot">修完等财务定价</div></div>
   <div class="card"><div class="card-label">已开票未收</div><div class="card-value">${MCASES.filter(c=>c.st==='已开票').length} 单</div><div class="card-foot">收款后点结案</div></div>
+  <div class="card"><div class="card-label">本月维护成本（现算）</div>
+    <div class="card-value">${can('salary')&&can('stock')?A$2(costT):'— —'}</div>
+    <div class="card-foot">人工（打卡工时）+ 物料（出库台账）</div></div>
  </div>
- <table><thead><tr><th>单号</th><th>项目编号</th><th>立项时间</th><th>内容（客户签的就是这段）</th><th>归因</th><th>时长</th>
+ <table><thead><tr><th>单号</th><th>项目编号</th><th>立项时间</th><th>内容（客户签的就是这段）</th><th>归因</th>
+   <th>成本核算（现算 · 只读）</th>
    <th style="text-align:right">口头预估</th><th style="text-align:right">定价/开票</th><th>状态</th><th>操作</th></tr></thead>
- <tbody>${MCASES.map(c=>`<tr${c.free?' style="opacity:.75"':''}>
+ <tbody>${MCASES.map(c=>{
+   const lab=mtLabor(c), pts=mtParts(c), tot=mtCost(c);
+   const costCell=`<div style="font-size:11px;line-height:1.7">
+     <div title="工时来自打卡系统 · 成本时薪按人">👷 人工 ${can('salary')?`<b>${A$2(lab)}</b> <span class="hint">=（在场${c.site}h+路上${c.travel}h）× ${c.tech} A$${c.costHr}/h</span>`:'<span class="masked">— —</span>'}</div>
+     <div title="维护出库自动归集，出库单价已定格">🔩 物料 ${can('stock')?`<b>${A$2(pts)}</b> <span class="hint">${c.parts.map(p=>`${p.name}（${p.src}）`).join(' · ')}</span>`:'<span class="masked">— —</span>'}</div>
+     <div>Σ 成本 ${can('salary')&&can('stock')?`<b>${A$2(tot)}</b>`:'<span class="masked">— —</span>'}${c.amt>0&&can('salary')&&can('stock')&&can('customer')?` <span class="hint">· 开票 ${A$(c.amt)} → 毛利 ${A$2(Math.round((c.amt-tot)*100)/100)}</span>`:''}${c.free?' <span class="pill p-grey">免单 · 成本计入维保成本</span>':''}</div>
+   </div>`;
+   return `<tr${c.free?' style="opacity:.8"':''}>
    <td class="mono">${c.id}</td><td><b class="mono">${c.code}</b></td>
    <td class="mono" style="font-size:11px">${OPENED[c.code]||'—'}</td>
-   <td style="max-width:240px">${c.content}</td>
+   <td style="max-width:200px">${c.content}<div class="hint">${c.dur} · ${c.tech}</div></td>
    <td style="font-size:var(--fs-xs)">${c.free?'<span class="pill p-green">'+c.causeCn+'</span>':c.causeCn}</td>
-   <td class="hint">${c.dur}</td>
+   <td style="max-width:300px">${costCell}</td>
    <td class="num">${c.est?A$(c.est):'—'}</td>
    <td class="num">${c.st==='待定价'
-     ?`<input id="mt-amt-${c.id}" class="mono" style="width:90px" placeholder="定价" value="${c.est||''}">`
+     ?`<input id="mt-amt-${c.id}" class="mono" style="width:90px" placeholder="定价" value="${c.est||''}">
+       <div class="hint" style="white-space:nowrap" title="人工+物料现算合计，定价参考">成本参考 ${can('salary')&&can('stock')?A$2(tot):'— —'}</div>`
      :`${can('customer')?A$(c.amt):'— —'}${c.inv?`<div class="hint">🔒 ${c.inv} 开出</div>`:''}`}</td>
    <td>${c.st==='待定价'?'<span class="pill p-amber">待定价</span>':c.st==='已开票'?'<span class="pill p-cyan">已开票</span>':'<span class="pill p-green">已结案</span>'}</td>
    <td>${c.st==='待定价'?`<button class="btn btn-primary" onclick="mtPrice('${c.id}')">定价开票</button>`
       :c.st==='已开票'?`<button class="btn" onclick="mtRecv('${c.id}')">登记收款结案</button>`:'—'}</td>
- </tr>`).join('')}</tbody></table>`;
+ </tr>`;}).join('')}</tbody></table>`;
 },
 
 'fin/催账和停服':()=>{

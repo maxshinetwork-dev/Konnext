@@ -431,6 +431,20 @@ const { chromium } = require('playwright');
     return JSON.stringify(r);});
   const mc=JSON.parse(mtChk);
   ok(mc.st==='已开票'&&mc.amt===400&&mc.log==='维护单定价开票','维护定价开票流程未生效');
+  // 二十五轮：成本核算（人工=工时×成本时薪现算 · 物料=出库台账归集）
+  const mtCostChk=await page.evaluate(()=>{go('fin','运维财务支持');
+    const h=document.getElementById('main').innerHTML;
+    return JSON.stringify({
+      lab:h.includes('A$69.80')&&h.includes('在场1.5h+路上0.5h'),
+      pts:h.includes('A$68.40')&&h.includes('出库单 OUT-0180-12'),
+      tot:h.includes('A$138.20'),ref:h.includes('成本参考'),
+      free:h.includes('免单 · 成本计入维保成本'),
+      card:h.includes('本月维护成本')});});
+  const mk=JSON.parse(mtCostChk);
+  ok(mk.lab,'人工成本未按 工时×成本时薪 现算展示');
+  ok(mk.pts,'物料成本未从出库台账归集展示');
+  ok(mk.tot&&mk.ref,'成本合计/定价参考缺失');
+  ok(mk.free&&mk.card,'免单成本口径/月度成本卡缺失');
   // 项目报销：自批拦截 + 批准入成本 + 图表
   const expChk=await page.evaluate(()=>{go('fin','项目报销');
     const h=document.getElementById('main').innerHTML;
