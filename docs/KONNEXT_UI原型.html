@@ -334,12 +334,12 @@ const WHO = {
   eng:        {name:'陈工', role:'工程管理',   tier:2, depts:['eng'], see:[]},
 };
 const DEPT = {
-  presales:{label:'售前', pages:['项目列表','项目状态表','设置']},  /* 用户定：大表=项目列表；状态表=比例图+走向图+状态过滤 */
-  eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','Site Meeting','安装调试','交付','工程流水账','每日上报','人员与外包','文档库','设置']},
-  proc:    {label:'采购', pages:['总览','项目列表','物料主表','汇率','采购单','补货建议','调价历史','RMA索赔']},
-  wh:      {label:'库管', pages:['总览','项目列表','入库','出库','退库与拒收','RMA登记','盘点','物料在谁手里','库存流水','期初移库']},
-  fin:     {label:'财务', pages:['总览','项目列表','付款节点','收款明细','变更估价','S4结算','维护开票','催账与停服','工资','成本与利润率']},
-  mt:      {label:'运维', pages:['总览','项目列表','报修受理','派工与上门','维护单跟踪','业主订阅','维保状态']},
+  presales:{label:'售前', pages:['项目列表','项目状态表','操作日志','设置']},  /* 用户定：大表=项目列表；状态表=比例图+走向图+状态过滤 */
+  eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','Site Meeting','安装调试','交付','工程流水账','每日上报','人员与外包','文档库','操作日志','设置']},
+  proc:    {label:'采购', pages:['总览','项目列表','物料主表','汇率','采购单','补货建议','调价历史','RMA索赔','操作日志']},
+  wh:      {label:'库管', pages:['总览','项目列表','入库','出库','退库与拒收','RMA登记','盘点','物料在谁手里','库存流水','期初移库','操作日志']},
+  fin:     {label:'财务', pages:['总览','项目列表','付款节点','收款明细','变更估价','S4结算','维护开票','催账与停服','工资','成本与利润率','操作日志']},
+  mt:      {label:'运维', pages:['总览','项目列表','报修受理','派工与上门','维护单跟踪','业主订阅','维保状态','操作日志']},
   decision:{label:'决策页', pages:['决策看板','风险看板','悬而未决','账号与权限','系统健康','审计日志','全局参数']},
 };
 /* ★ 公司级页面（不属于任何项目）—— 其余一律是项目内页面
@@ -349,6 +349,7 @@ const COMPANY_PAGES=new Set([
   'wh/总览','wh/入库','wh/盘点','wh/库存流水','wh/期初移库','wh/RMA登记',
   'eng/总览','eng/派工排班','eng/每日上报','eng/人员与外包','eng/文档库','eng/设置',
   'fin/总览','fin/工资','presales/总览','presales/项目列表','presales/项目状态表','presales/设置','mt/总览',
+  'presales/操作日志','eng/操作日志','proc/操作日志','wh/操作日志','fin/操作日志','mt/操作日志',
   'presales/项目列表','eng/项目列表','proc/项目列表','wh/项目列表','fin/项目列表','mt/项目列表',
   'decision/决策看板','decision/风险看板','decision/悬而未决','decision/账号与权限',
   'decision/系统健康','decision/审计日志','decision/全局参数',
@@ -469,6 +470,51 @@ const BIGPD=[
 const STAGES=['接洽中','设计中','报价中','修订中','待签约','已签约','已流失'];
 /* 立项时间速查表（十六轮：所有编号列后面跟立项时间列） */
 const OPENED={};PROJECTS.forEach(p=>OPENED[p.code]=p.opened);BIGPD.forEach(p=>OPENED[p.code]=p.opened);
+
+/* ═══ 操作日志（二十轮：六部门通用页）═══
+   每条四要素：时间 · 谁（部门）· 操作了什么 · 改了什么（前→后）
+   rel = 与哪些部门相关（本部门操作 + 他部门确认引起的状态改变都要出现）
+   正式系统数据源 = audit_log 表（契约已有，触发器写 before/after，只读不可删） */
+let logQ='', logDeptF='全部';
+const nowTs=()=>{const d=new Date(),z=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}/${z(d.getMonth()+1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;};
+const OPLOG=[
+ {ts:'2026/08/01 09:41',who:'王姐',dept:'财务',pj:'KX-2026-0142',action:'写入定金',
+  detail:'定金 （空） → A$50,000 · 回填售前大表「定金」列（售前侧亮绿）',rel:['fin','presales']},
+ {ts:'2026/08/01 09:38',who:'王姐',dept:'财务',pj:'KX-2026-0142',action:'开出 S1 定金 Invoice',
+  detail:'S1 定金 10% · A$50,000 · INV-0142-S1',rel:['fin','presales']},
+ {ts:'2026/08/01 09:20',who:'陈工',dept:'工程管理',pj:'KX-2026-0201',action:'已读工程注释',
+  detail:'「业主提到想预留影音室，设计时留走线」标为已读 → 售前侧角标变 已读✓',rel:['eng','presales']},
+ {ts:'2026/07/31 17:50',who:'小林',dept:'售前',pj:'',action:'修改提醒阈值',
+  detail:'4 天 → 3 天（大表停留橙线与待办 SLA 同步）',rel:['presales']},
+ {ts:'2026/07/31 16:24',who:'小林',dept:'售前',pj:'KX-2026-0186',action:'填写签约三样',
+  detail:'报价单号 Q-2026-018 · 预测工时 500h · 签约定价 A$655,000（待签约时一并填）',rel:['presales']},
+ {ts:'2026/07/31 16:21',who:'小林',dept:'售前',pj:'KX-2026-0186',action:'勾状态推进',
+  detail:'修订中 → 待签约',rel:['presales']},
+ {ts:'2026/07/30 11:02',who:'陈工',dept:'工程管理',pj:'KX-2026-0142',action:'SM3 检查布线完成',
+  detail:'触发财务待办「开 S2 物料款 Invoice」（SLA 1 天）',rel:['eng','fin']},
+ {ts:'2026/07/30 10:40',who:'老张',dept:'采购＋库管',pj:'KX-2026-0142',action:'S2 到账下单',
+  detail:'采购单 PO-0142-01 建立 · 物料 12 项',rel:['proc']},
+ {ts:'2026/07/30 09:55',who:'老张',dept:'采购＋库管',pj:'KX-2026-0142',action:'入库',
+  detail:'KNX 四联面板(白) ×24 · 含成本入库（成本单价按权限遮罩）',rel:['wh']},
+ {ts:'2026/07/29 15:12',who:'小周',dept:'运维',pj:'KX-2026-0180',action:'维护单开票',
+  detail:'上门维护 · 归因=业主原因 · A$390 开票 → 财务收款跟踪',rel:['mt','fin']},
+ {ts:'2026/07/29 10:31',who:'小林',dept:'售前',pj:'KX-2026-0210',action:'完成立项建档',
+  detail:'5 步引导完成 · 状态=接洽中 · 立项时间落当天',rel:['presales']},
+ {ts:'2026/07/28 14:06',who:'小林',dept:'售前',pj:'KX-2026-0155',action:'勾已流失',
+  detail:'报价中 → 已流失（终态归档，整行变灰）',rel:['presales']},
+];
+function opLog(pj,action,detail,rel){
+  OPLOG.unshift({ts:nowTs(),who:WHO[me].name,dept:WHO[me].role,pj:pj||'',action,detail,rel:rel||[tab]}); }
+/* 大表行内直改：改前值→后值 全留痕；注释改动会把对方部门置回「未读」 */
+function preEdit(code,field,value,label){ const p=BIGPD.find(x=>x.code===code); if(!p) return;
+  const old=p[field]; if(String(old||'')===String(value||'')) return;
+  p[field]=value;
+  if(field==='noteF') p.noteFr='unread';
+  if(field==='noteE') p.noteEr='unread';
+  opLog(code,'修改'+label,(old?'「'+old+'」':'（空）')+' → '+(value?'「'+value+'」':'（空）'),
+    field==='noteF'?['presales','fin']:field==='noteE'?['presales','eng']:['presales']);
+  renderAll(); }
 /* 图表联动基线：页面载入时的签约/流失数。此后勾的改动按「发生在今天」
    计入 周/月/季/年 各档与当月柱（演示口径；正式系统按每勾定格日期精确落桶） */
 /* 十七轮：图表全按项目真实数据现算（跟正式系统同口径，不再用模拟史+今日增量）
@@ -509,8 +555,13 @@ const todoState={};                    // id → 'ack' | 'hold'
 /* 用户定：已知悉只对「当前状态」有效 —— 项目状态一旦改变，清掉标记，通知重新启动 */
 function todoWake(code){ Object.keys(todoState).forEach(k=>{
   if(k==='pre-'+code) delete todoState[k]; }); }
-function todoAck(id){ todoState[id]='ack'; renderAll(); }
-function todoHold(id){ todoState[id]=todoState[id]==='hold'?'':'hold'; renderAll(); }
+function todoAck(id){ const t0=allTodos().find(x=>x.id===id); todoState[id]='ack';
+  if(t0) opLog(t0.pj,'待办已知悉','「'+t0.ev+'」停止通知 —— 状态一变会重新提醒',[t0.dept]);
+  renderAll(); }
+function todoHold(id){ const on=todoState[id]!=='hold'; todoState[id]=on?'hold':'';
+  const t0=allTodos().find(x=>x.id===id);
+  if(t0) opLog(t0.pj,on?'待办搁置':'待办取消搁置','「'+t0.ev+'」'+(on?'保留通知，照常显示':'恢复普通显示'),[t0.dept]);
+  renderAll(); }
 function todoGo(id){ const t=allTodos().find(x=>x.id===id); if(!t) return;
   document.getElementById('drawer').classList.remove('open');
   document.getElementById('backdrop').classList.remove('open');
@@ -540,7 +591,7 @@ function switchWho(w){ me=w; tab=WHO[w].depts.includes(tab)?tab:(w==='admin'?'de
   if(tab==='decision'&&WHO[w].tier!==1) tab=WHO[w].depts[0];
   page=DEPT[tab].pages[0]; pjFilter=null; renderAll(); }
 function pickPj(i){ pj=+i; renderAll(); }
-function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; stFilter='全部'; statPeriod='month'; renderAll(); }
+function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; stFilter='全部'; statPeriod='month'; logQ=''; logDeptF='全部'; renderAll(); }
 /* 逐字刷新：重渲染后把光标还给搜索框（否则打一个字就失焦） */
 function keepFocus(id){ renderAll(); const e=document.getElementById(id);
   if(e){ e.focus(); const n=e.value.length; e.setSelectionRange(n,n); } }
@@ -548,9 +599,18 @@ function keepFocus(id){ renderAll(); const e=document.getElementById(id);
 function colBtn(k,label){ return `<button class="btn${bigCols[k]?' btn-primary':''}"
     onclick="bigCols['${k}']=!bigCols['${k}'];renderAll()">${label}</button>`; }
 /* 设置页维护下拉选项（角色/工种） */
+function preSetRemind(v){ const nv=Math.max(1,parseInt(v)||3);
+  if(nv!==preRemindDays){ opLog('','修改提醒阈值',preRemindDays+' 天 → '+nv+' 天（大表橙线与待办 SLA 同步）',['presales']);
+    preRemindDays=nv; }
+  renderAll(); }
+const OPT_LABEL=new Map();
 function optAdd(list,inputId){ const e=document.getElementById(inputId); const v=e&&e.value.trim();
-  if(v&&!list.includes(v)) list.push(v); renderAll(); }
-function optDel(list,i){ list.splice(i,1); renderAll(); }
+  if(v&&!list.includes(v)){ list.push(v);
+    opLog('','新增'+(OPT_LABEL.get(list)||'')+'选项','「'+v+'」加入下拉 · 大表/立项引导即时启用',['presales']); }
+  renderAll(); }
+function optDel(list,i){ const v=list[i]; list.splice(i,1);
+  opLog('','删除'+(OPT_LABEL.get(list)||'')+'选项','「'+v+'」移除 —— 已填过它的历史数据不受影响',['presales']);
+  renderAll(); }
 function toggleDrawer(){
   document.getElementById('drawer').classList.toggle('open');
   document.getElementById('backdrop').classList.toggle('open');
@@ -582,6 +642,8 @@ function wizNext(){ if(wizN===WIZ_STEPS){
       o1:'',o1n:'',o1p:'',o1e:'',o1r:'',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
       rel:'',reln:'',relp:'',rele:'',relr:'',ct:'',cv:'',use:'',ht:'',stage:'',
       pp:0,hm:0,so:false,fl:false,qno:'',hrs:'',price:'',dep:'',noteF:'',noteFr:'',noteE:'',noteEr:''});
+    OPENED[code]=today;
+    opLog(code,'完成立项建档','5 步引导完成 · 状态=接洽中 · 立项时间='+today,['presales']);
     wizClose(); renderAll();
     alert('已建档 '+code+'（演示）：新项目已出现在项目列表第一行，状态=接洽中，停留从今天起算；图表已同步 +1');
     return; }
@@ -598,7 +660,13 @@ let detParties=[{tr:'Builder',co:'BuildCo',nm:'Mike',ph:'0422 000 111'},
  {tr:'电工',co:'Spark 电气',nm:'Tony',ph:'0422 000 222'}];
 let detSol={wiring:'有线',proto:'KNX',budget:'480,000',knx:true,fh:false};
 let detFloors={b:'无',l1:'双砖',l2:'轻钢',l3:'无',l4:'无',roof:'瓦顶'};
-const FLOOR_OPTS=['无','双砖','轻钢','木结构','混凝土','砖木','其他'];
+let FLOOR_OPTS=['无','双砖','轻钢','木结构','混凝土','砖木','其他'];       // 楼层用途（设置可调）
+let houseTypeOpts=['House','Duplex','Townhouse','Apartment','商铺','Villa','Granny Flat','空地','仓库'];
+let buildStageOpts=['DA','CC','拆除','地基','地下室','结构','Rough-in','翻新','其他'];
+let roofOpts=['瓦顶','平顶','露台','其他'];
+setTimeout(()=>{ OPT_LABEL.set(roleOpts,'角色'); OPT_LABEL.set(tradeOpts,'工种');
+  OPT_LABEL.set(houseTypeOpts,'房屋类型'); OPT_LABEL.set(buildStageOpts,'施工阶段');
+  OPT_LABEL.set(FLOOR_OPTS,'楼层用途'); OPT_LABEL.set(roofOpts,'屋顶'); },0);
 const FAM_TYPES=['成人','老人','儿童','保姆','司机','清洁工','宠物','其他'];
 function detFamAdd(){ detFam.push({t:'成人',age:'',note:''}); detPaint(); }
 function detFamDel(i){ detFam.splice(i,1); detPaint(); }
@@ -655,7 +723,7 @@ function detPaint(){
         <td class="muted">二层</td><td>${sel(FLOOR_OPTS,detFloors.l2,'detFloors.l2=this.value')}</td></tr>
     <tr><td class="muted">三层</td><td>${sel(FLOOR_OPTS,detFloors.l3,'detFloors.l3=this.value')}</td>
         <td class="muted">四层+</td><td>${sel(FLOOR_OPTS,detFloors.l4,'detFloors.l4=this.value')}</td>
-        <td class="muted">屋顶</td><td>${sel(['瓦顶','平顶','露台','其他'],detFloors.roof,'detFloors.roof=this.value')}</td></tr>
+        <td class="muted">屋顶</td><td>${sel(roofOpts,detFloors.roof,'detFloors.roof=this.value')}</td></tr>
   </tbody></table>`;
 }
 function detOpen(code,nick){
@@ -670,6 +738,7 @@ function detClose(){ document.getElementById('detback').classList.remove('open')
 /* ── 状态勾点选与反选（用户定：支持人为点错回退；改后停留清零重新计时提醒） ── */
 function preTick(code,i){
   const p=BIGPD.find(x=>x.code===code); if(!p) return;
+  const s0=p.step;
   if(p.lost){ alert('该项目已勾「已流失」（终态）——先点第⑦勾取消流失，才能改前六步'); return; }
   const target=i+1;
   if(target===p.step){                       // 点当前勾 = 反选回退一步
@@ -685,6 +754,8 @@ function preTick(code,i){
   p.d[p.step-1]=p.d[p.step-1]||'今天';
   p.stay=(p.step>=6)?'':0;                    // 终态不计停留；其余从 0 重新计时→提醒重算
   todoWake(code);                             // 状态改变：该项目「已知悉/搁置」失效，通知重新启动
+  if(p.step!==s0) opLog(code, p.step>s0?'勾状态推进':'勾状态回退',
+    STAGES[s0-1]+' → '+STAGES[p.step-1], p.step>=6?['presales','fin']:['presales']);
   renderAll();
 }
 function preLost(code){
@@ -692,8 +763,10 @@ function preLost(code){
   if(!p.lost&&p.step>=6){ alert('已签约项目不走「流失」——如需作废走财务撤销流程（后续版本）'); return; }
   p.lost=!p.lost;
   if(p.lost){ (p.d=p.d||[])[6]='今天'; p.stay='';
+    opLog(code,'勾已流失',STAGES[p.step-1]+' → 已流失（终态归档，整行变灰）',['presales']);
     alert('已勾「已流失」（=流标，终态归档）。点错的话再点一次第⑦勾即可取消'); }
   else{ if(p.d) p.d[6]=undefined; p.stay=0;
+    opLog(code,'取消已流失','回到第 '+p.step+' 步「'+STAGES[p.step-1]+'」· 停留从今天重新计时',['presales']);
     alert('已取消「已流失」——项目回到第 '+p.step+' 步，停留从今天重新计时'); }
   todoWake(code);                             // 状态改变：该项目「已知悉/搁置」失效，通知重新启动
   renderAll();
@@ -804,8 +877,47 @@ function placeholder(){
 }
 
 /* ── 共用：售前大表表格（项目列表与项目状态表同款可操作） ── */
+/* ═══ 操作日志页（二十轮：六部门通用组件）═══ */
+function opLogPage(d){
+ const dl=DEPT[d].label;
+ const mine=OPLOG.filter(r=>r.rel.includes(d));
+ const rows=mine.filter(r=>logDeptF==='全部'||r.dept===logDeptF)
+   .filter(r=>{const q=logQ.trim().toLowerCase(); if(!q) return true;
+     return (r.pj+' '+r.who+' '+r.dept+' '+r.action+' '+r.detail).toLowerCase().includes(q);});
+ const chips=['全部',...new Set(mine.map(r=>r.dept))];
+ return `<h2>操作日志 <span class="muted" style="font-size:var(--fs-sm);font-weight:400">· ${dl}相关</span></h2>
+ <div class="page-sub">${dl}的每一步操作留痕 + 其他部门确认引起的状态改变 · 四要素：什么时间 / 谁 / 操作了什么 / 改了什么 · 最新在最上</div>
+ ${ops([
+  ['逐字搜索（编号/人/操作/内容一框全搜）','—','打一个字过滤一次'],
+  ['按操作人部门筛选（点 chip）','—','选「全部」才看得到他部门确认的条目'],
+  ['想改或删某条日志','不可能 —— 日志只读，谁都不能改删（正式系统同样）','—'],
+ ])}
+ ${helpNote(`这页记什么：①<b>${dl}自己的每一步操作</b>——状态勾推进/回退、立项建档、大表直改（前值→后值）、
+   设置改动（阈值/下拉选项）、待办三动作（已知悉/搁置）；
+   ②<b>其他部门确认时引起的状态改变</b>——如财务写入定金（售前定金列亮绿）、对方部门已读注释、开出 Invoice 回填。
+   一句话：凡是改了${dl}页面上看得见的东西，这里必有一行。`)}
+ ${helpNote(`怎么读：每条四要素 <b>时间 · 谁（部门）· 操作 · 改了什么（前 → 后）</b>；最新在最上；
+   项目编号后固定跟立项时间，公司级改动（如设置）标「公司级」。
+   日志<b>只读</b>——不能改、不能删；正式系统落 audit_log 表并带触发器留痕，连管理员也只能看。`)}
+ <div style="display:flex;gap:var(--sp-2);margin:var(--sp-3) 0;flex-wrap:wrap;align-items:center">
+   ${chips.map(x=>`<button class="btn${logDeptF===x?' btn-primary':''}" onclick="logDeptF='${x}';renderAll()">${x}</button>`).join('')}
+   <input id="logq" placeholder="🔍 搜编号 / 人 / 操作 / 内容…" style="width:240px" value="${logQ}"
+     oninput="logQ=this.value;keepFocus('logq')">
+   <span class="muted" style="font-size:var(--fs-xs)">共 ${rows.length} 条</span>
+ </div>
+ <table><thead><tr><th>时间</th><th>项目编号</th><th>立项时间</th><th>操作人</th><th>操作</th><th>改了什么</th></tr></thead>
+ <tbody>${rows.map(r=>`<tr>
+   <td class="mono" style="font-size:11px;white-space:nowrap">${r.ts}</td>
+   <td>${r.pj?`<b class="mono" style="color:var(--accent)">${r.pj}</b>`:'<span class="pill p-grey">公司级</span>'}</td>
+   <td class="mono" style="font-size:11px">${r.pj?(OPENED[r.pj]||'—'):'—'}</td>
+   <td style="white-space:nowrap">${r.who}<span class="hint"> · ${r.dept}</span></td>
+   <td style="white-space:nowrap"><b>${r.action}</b></td>
+   <td style="max-width:380px">${r.detail}</td></tr>`).join('')
+   ||`<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">没有匹配的日志</td></tr>`}</tbody></table>`;
+}
+
 function preBigTable(rows){
- const inp=(v,w,ph)=>`<input class="${w||'w80'}" value="${v||''}" placeholder="${ph||'手填'}">`;
+ const inp=(v,w,ph,bind)=>`<input class="${w||'w80'}" value="${v||''}" placeholder="${ph||'手填'}"${bind?` onchange="${bind}"`:''}>`;
  const two=(a,b)=>`<div style="display:flex;flex-direction:column;gap:3px">${a}${b}</div>`;
  /* 角色下拉：选项来自 roleOpts（售前设置页维护，不写死） */
  const roleSel=(cur)=>`<select style="font-size:11px;padding:3px 4px">
@@ -824,11 +936,12 @@ function preBigTable(rows){
     :`<span class="hint" style="color:var(--warning)">${emptyTxt}</span>`}
     <a style="color:var(--accent);cursor:pointer;font-size:11px" onclick="detOpen('${p.code}','${p.nick}')">改</a>`;
  /* 注释大框：多行 textarea 小字 + 悬浮弹出全文（用户定） */
- const noteCell=(v,r,who)=>{
+ const noteCell=(pc,field,v,r,who)=>{
    const badge=v?(r==='read'?`<span class="pill p-green">${who}已读 ✓</span>`
                            :`<span class="pill p-amber">${who}未读</span>`):'';
    return `<div class="notewrap">
-     <textarea placeholder="售前填 → 通知${who}\n（支持多行，可拖右下角加高）">${v||''}</textarea>
+     <textarea placeholder="售前填 → 通知${who}\n（支持多行，可拖右下角加高）"
+       onchange="preEdit('${pc}','${field}',this.value,'${who}注释')">${v||''}</textarea>
      ${v?`<div class="notepop">${v}</div>`:''}
      <div style="margin-top:3px">${badge}</div></div>`;
  };
@@ -886,13 +999,13 @@ function preBigTable(rows){
          <a style="color:var(--accent);cursor:pointer" onclick="detOpen('${p.code}','${p.nick}')">修改 →</a></div></td>
      <td class="gs">${ticks(p)}</td>
      <td class="num">${p.stay!==''?`<span title="阈值 ${preRemindDays} 天起每天提醒（售前设置里改）"${p.stay>=preRemindDays?' style="color:var(--warning);font-weight:600"':''}>${p.stay} 天</span>`:'—'}</td>
-     <td class="gs">${ro?`<span class="muted">${p.est}</span>`:inp(p.est,'w80','如 300k–350k')}</td>
+     <td class="gs">${ro?`<span class="muted">${p.est}</span>`:inp(p.est,'w80','如 300k–350k',`preEdit('${p.code}','est',this.value,'预测报价范围')`)}</td>
      <td class="gs">${signed?`<span class="mono">${p.qno||'—'}</span>`:p.lost?'<span class="muted">—</span>'
-          :p.step===5?inp(p.qno,'w80','Q-…'):'<span class="masked">待签约时填</span>'}</td>
+          :p.step===5?inp(p.qno,'w80','Q-…',`preEdit('${p.code}','qno',this.value,'报价单号')`):'<span class="masked">待签约时填</span>'}</td>
      <td class="num">${signed?(p.hrs||'—'):p.lost?'<span class="muted">—</span>'
-          :p.step===5?inp(p.hrs,'w60','别漏'):'<span class="masked">待签约时填</span>'}</td>
+          :p.step===5?inp(p.hrs,'w60','别漏',`preEdit('${p.code}','hrs',this.value,'预测人工工时')`):'<span class="masked">待签约时填</span>'}</td>
      <td class="num">${signed?money(p.price,'customer'):p.lost?'<span class="muted">—</span>'
-          :p.step===5?inp(p.price,'w80','定价后填'):'<span class="masked">未到待签约</span>'}</td>
+          :p.step===5?inp(p.price,'w80','定价后填',`preEdit('${p.code}','price',this.value,'签约定价')`):'<span class="masked">未到待签约</span>'}</td>
      <td>${signed?`<span class="pill p-green">${can('customer')?('已收 '+p.dep):'— —'}</span>`
           :p.lost?'<span class="muted">—</span>':'<span class="masked">只读 · 财务写</span>'}</td>
      ${bigCols.contact?`
@@ -909,12 +1022,12 @@ function preBigTable(rows){
        <td>${ro?(p.relr||'—'):roleSel(p.relr)}</td>
        <td>${ro?(p.ct||'—'):`<select><option${p.ct?'':' selected'}>— 手选 —</option><option${p.ct==='百分比'?' selected':''}>百分比</option><option${p.ct==='固定'?' selected':''}>固定金额</option></select>`}</td>
        <td>${ro?(p.cv?(p.ct==='固定'?'A$'+p.cv:p.cv+'%'):'—'):inp(p.cv,'w60',p.ct==='固定'?'金额':'%')}</td>`:''}
-     ${bigCols.house?`<td class="gs">${ro?(p.use||'—'):`<select><option${p.use?'':' selected'}>—</option><option${p.use==='自住'?' selected':''}>自住</option><option${p.use==='出售'?' selected':''}>出售</option><option>混合</option><option>商业</option></select>`}</td>
-       <td>${ro?(p.ht||'—'):`<select><option${p.ht?'':' selected'}>—</option><option${p.ht==='House'?' selected':''}>House</option><option${p.ht==='Duplex'?' selected':''}>Duplex</option><option${p.ht==='Townhouse'?' selected':''}>Townhouse</option><option>Apartment</option><option>商铺</option><option>Villa</option><option>Granny Flat</option><option>空地</option><option>仓库</option></select>`}</td>
-       <td>${ro?(p.stage||'—'):`<select><option${p.stage?'':' selected'}>—</option><option${p.stage==='DA'?' selected':''}>DA</option><option${p.stage==='CC'?' selected':''}>CC</option><option>拆除</option><option>地基</option><option>地下室</option><option${p.stage==='结构'?' selected':''}>结构</option><option${p.stage==='Rough-in'?' selected':''}>Rough-in</option><option>翻新</option><option>其他</option></select>`}</td>
+     ${bigCols.house?`<td class="gs">${ro?(p.use||'—'):`<select onchange="preEdit('${p.code}','use',this.value,'房屋用途')"><option${p.use?'':' selected'}>—</option>${['自住','出售','混合','商业'].map(o=>`<option${p.use===o?' selected':''}>${o}</option>`).join('')}</select>`}</td>
+       <td>${ro?(p.ht||'—'):`<select onchange="preEdit('${p.code}','ht',this.value,'房屋类型')"><option${p.ht?'':' selected'}>—</option>${houseTypeOpts.map(o=>`<option${p.ht===o?' selected':''}>${o}</option>`).join('')}</select>`}</td>
+       <td>${ro?(p.stage||'—'):`<select onchange="preEdit('${p.code}','stage',this.value,'施工阶段')"><option${p.stage?'':' selected'}>—</option>${buildStageOpts.map(o=>`<option${p.stage===o?' selected':''}>${o}</option>`).join('')}</select>`}</td>
        <td>${subCell(p,EX(p).floors,'楼层未填')}</td>`:''}
      ${bigCols.family?`<td class="gs">${subCell(p,EX(p).fam,'成员未录')}</td>`:''}
-     ${bigCols.notes?`<td class="gs">${noteCell(p.noteF,p.noteFr,'财务')}</td><td>${noteCell(p.noteE,p.noteEr,'工程')}</td>`:''}
+     ${bigCols.notes?`<td class="gs">${noteCell(p.code,'noteF',p.noteF,p.noteFr,'财务')}</td><td>${noteCell(p.code,'noteE',p.noteE,p.noteEr,'工程')}</td>`:''}
      <td class="gs">${ro?`<button class="btn" onclick="alert('${p.lost?'已流失（流标）项目 · 归档只读':'已签约项目转入工程线，售前侧只读'}')">查看</button>`
             :`<button class="btn" onclick="detOpen('${p.code}','${p.nick}')">修改</button>`}</td>
     </tr>`;}).join('')||`<tr><td colspan="${gCount}" class="muted" style="padding:var(--sp-4)">该筛选下暂无项目</td></tr>`}</tbody>
@@ -1587,6 +1700,13 @@ ${ops([
    ⑤子表走「修改」抽屉（全可编辑、行可增删）：家庭成员/参建方/方案倾向/楼层结构屋顶 —— 参建方与方案倾向
      是下游硬依赖（出库提货人/Builder告知/SM电工签字/SM2带线清单）
    ⑥财务注释/工程注释：售前填 → 对应部门必读（已读标） */
+'presales/操作日志':()=>opLogPage('presales'),
+'eng/操作日志':()=>opLogPage('eng'),
+'proc/操作日志':()=>opLogPage('proc'),
+'wh/操作日志':()=>opLogPage('wh'),
+'fin/操作日志':()=>opLogPage('fin'),
+'mt/操作日志':()=>opLogPage('mt'),
+
 'presales/项目列表':()=>{
  const BIGP=BIGPD;
  const cities=['全部',...new Set(BIGP.map(p=>p.city))];
@@ -1697,24 +1817,22 @@ ${ops([
     <div class="split" style="gap:var(--sp-3)">
       <div class="field"><label>房屋用途</label><select><option>自住</option><option>出售</option>
         <option>混合</option><option>商业</option></select></div>
-      <div class="field"><label>房屋类型（9 选）</label><select><option>House</option><option>Duplex</option>
-        <option>Townhouse</option><option>Apartment</option><option>商铺</option><option>Villa</option>
-        <option>Granny Flat</option><option>空地</option><option>仓库</option></select></div>
+      <div class="field"><label>房屋类型（选项在设置里维护）</label>
+        <select>${houseTypeOpts.map(o=>`<option>${o}</option>`).join('')}</select></div>
     </div>
     <div class="split" style="gap:var(--sp-3)">
       <div class="field"><label>施工阶段 <span style="color:var(--breach)">必填</span></label>
-        <select><option>DA</option><option>CC</option><option>拆除</option><option>地基</option><option>地下室</option>
-          <option>结构</option><option>Rough-in</option><option>翻新</option><option>其他（旁边补充说明）</option></select></div>
+        <select>${buildStageOpts.map(o=>`<option>${o}</option>`).join('')}</select></div>
       <div class="field"><label>选「其他」时说明</label><input placeholder="手填"></div>
     </div>
     <div class="field"><label>楼层结构（每层选一个，默认无）</label>
       <table><tbody>
-        <tr><td class="muted">地下室</td><td><select><option>无</option><option>双砖</option><option>轻钢</option><option>木结构</option><option>混凝土</option><option>砖木</option><option>其他</option></select></td>
-            <td class="muted">一层</td><td><select><option>无</option><option selected>双砖</option><option>轻钢</option><option>木结构</option><option>混凝土</option><option>砖木</option><option>其他</option></select></td></tr>
-        <tr><td class="muted">二层</td><td><select><option>无</option><option>双砖</option><option selected>轻钢</option><option>木结构</option><option>混凝土</option><option>砖木</option><option>其他</option></select></td>
-            <td class="muted">三层</td><td><select><option selected>无</option><option>双砖</option><option>轻钢</option><option>木结构</option><option>混凝土</option><option>砖木</option><option>其他</option></select></td></tr>
-        <tr><td class="muted">四层及以上</td><td><select><option selected>无</option><option>双砖</option><option>轻钢</option><option>木结构</option><option>混凝土</option><option>砖木</option><option>其他</option></select></td>
-            <td class="muted">屋顶</td><td><select><option>瓦顶</option><option>平顶</option><option>露台</option><option>其他</option></select></td></tr>
+        <tr><td class="muted">地下室</td><td><select>${FLOOR_OPTS.map(o=>`<option>${o}</option>`).join('')}</select></td>
+            <td class="muted">一层</td><td><select>${FLOOR_OPTS.map(o=>`<option${o==='双砖'?' selected':''}>${o}</option>`).join('')}</select></td></tr>
+        <tr><td class="muted">二层</td><td><select>${FLOOR_OPTS.map(o=>`<option${o==='轻钢'?' selected':''}>${o}</option>`).join('')}</select></td>
+            <td class="muted">三层</td><td><select>${FLOOR_OPTS.map(o=>`<option>${o}</option>`).join('')}</select></td></tr>
+        <tr><td class="muted">四层及以上</td><td><select>${FLOOR_OPTS.map(o=>`<option>${o}</option>`).join('')}</select></td>
+            <td class="muted">屋顶</td><td><select>${roofOpts.map(o=>`<option>${o}</option>`).join('')}</select></td></tr>
       </tbody></table></div>
     <div class="field"><label>★ 免责维保月数（0~12，默认 3）</label>
       <input value="3" class="mono" style="width:90px">
@@ -1921,7 +2039,7 @@ ${helpNote(`阈值默认 3 天。改成 5，就是停留满 5 天才开始每天
     <div class="field"><label>前六步 · 停留提醒阈值（天）</label>
       <div style="display:flex;gap:var(--sp-3);align-items:center">
         <input class="mono" style="width:90px" value="${preRemindDays}"
-          onchange="preRemindDays=Math.max(1,parseInt(this.value)||3);renderAll()">
+          onchange="preSetRemind(this.value)">
         <span class="muted" style="font-size:var(--fs-sm)">停留达到这个天数 → 开始提醒</span>
       </div>
       <div class="hint">当前：任一步停留满 <b>${preRemindDays} 天</b>开始提醒 · 大表「停留」列同步变橙 · 🔔 待办中心的售前条目与 SLA 用的就是这个阈值，改完立即生效</div></div>
@@ -1955,12 +2073,28 @@ ${helpNote(`阈值默认 3 天。改成 5，就是停留满 5 天才开始每天
   </div>
 </div>
 <div class="panel" style="max-width:560px">
-  <div class="panel-head">改动留痕（演示）</div>
+  <div class="panel-head">立项 · 建筑选项管理 <span class="muted" style="font-weight:400">房屋/施工/楼层/屋顶 · 不写死</span></div>
   <div class="panel-body">
-    <table><thead><tr><th>时间</th><th>谁改的</th><th>改了什么</th></tr></thead>
-      <tbody><tr><td class="muted mono">2026-07-30 09:12</td><td>小林 · 售前</td>
-        <td>提醒阈值 5 天 → 3 天</td></tr></tbody></table>
+    ${[['房屋类型选项',houseTypeOpts,'houseTypeOpts','newhouse','如：农庄'],
+       ['施工阶段选项',buildStageOpts,'buildStageOpts','newstage','如：外墙'],
+       ['楼层用途选项',FLOOR_OPTS,'FLOOR_OPTS','newfloor','如：钢结构'],
+       ['屋顶选项',roofOpts,'roofOpts','newroof','如：斜顶']].map(([lb,list,arr,iid,ph])=>`
+    <div class="field"><label>${lb}</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">
+        ${list.map((o,i)=>`<span class="pill p-grey">${o} <a style="cursor:pointer;color:var(--breach)" onclick="optDel(${arr},${i})">✕</a></span>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px">
+        <input id="${iid}" placeholder="新增，${ph}" style="width:210px">
+        <button class="btn" onclick="optAdd(${arr},'${iid}')">＋ 添加</button>
+      </div></div>`).join('')}
+    <div class="hint">改完，立项引导第④步 / 大表「房屋+楼层」列组 / 修改抽屉 立即用新列表；删除选项不影响已填历史数据</div>
   </div>
+</div>
+<div class="panel" style="max-width:560px">
+  <div class="panel-head">改动留痕</div>
+  <div class="panel-body"><div class="hint">本页所有改动（阈值 / 各下拉选项的增减）都自动写入左栏
+    <b>「操作日志」</b>——什么时间、谁、改了什么，全公司售前生效 · 日志只读不可删。</div>
+  <button class="btn" onclick="go('presales','操作日志')">打开操作日志 →</button></div>
 </div>`,
 
 /* ───────── (旧)售前 · 项目立项 —— 已并入「售前大表」引导弹层，保留作字段参考，不在导航 ───────── */

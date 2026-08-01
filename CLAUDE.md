@@ -12,8 +12,9 @@
 
 **数据库契约已完成并验证**：`db/contract_v0_32.sql` —— 60 表 / 86 视图 / 140 条 RLS 策略 / 73 条断言。
 （v0_32 变更＝售前定稿对齐：6+1 落库口径、预测报价范围 est_quote_low/high、双注释+已读回执、
-pre_stage_remind_days 与 角色/工种两个选项键、v_presales_pipeline + 每日提醒函数、
-to_contact 删除、「留标」全库更名「已流失」）
+pre_stage_remind_days 与 六个下拉选项键（角色/工种/房屋/施工阶段/楼层/屋顶，对应硬 CHECK 放开）、
+v_presales_pipeline + 每日提醒函数、to_contact 删除、「留标」全库更名「已流失」；
+二十轮追加：六部门「操作日志」页 = 全局标准件，正式数据源 audit_log）
 **现在的任务是写前后端**，不是重新设计数据库。
 
 ---

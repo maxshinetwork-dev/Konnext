@@ -946,6 +946,27 @@ Twilio 接入（★最急，没它谁都登不进）｜ Google Maps 实接 ｜ 2
 - **售前条目与 SLA 全部现算**（用户纠错：设置改 4 天仍显 72h 是错）：由大表停留天数 + 设置阈值 preRemindDays 生成，
   不写死——阈值一改，条目增减、SLA 展示、超期计算立即同步；点勾推进→停留清零→条目消失，再停留到阈值→重新出现
 
+### 操作日志（二十轮 2026-08-01 · 全局标准件，六部门每部门一页）
+- **左栏每个部门都有「操作日志」页**，内容=**本部门相关**：①本部门自己的每一步操作
+  （状态勾推进/回退、立项建档、大表行内直改、设置改动、待办三动作）；
+  ②**其他部门确认时引起的状态改变**（财务写定金→售前定金列亮绿、对方部门已读注释、开 Invoice 回填、
+  SM 完成触发交接……）——凡是改了本部门页面上看得见的东西，日志必有一行
+- **每条四要素**：什么时间 · 谁（部门）· 操作了什么 · **改了什么（前值 → 后值）**；最新在最上；
+  项目编号后固定跟立项时间列；公司级改动（设置等）标「公司级」
+- **只读**：不能改、不能删，管理员也只能看；正式系统数据源 = `audit_log` 表（契约已有，触发器写 before/after）
+- 页内：逐字搜索（编号/人/操作/内容一框全搜）+ 按操作人部门 chip 筛选；帮助弹层有本页功能总结（二十轮用户定：帮助=页面功能使用总结）
+- **原型即真记录**：点勾/建档/改值/改设置/待办动作立即入日志（演示与正式同口径）；
+  售前设置页原「改动留痕（演示）」面板改为指向本页
+- 大表行内直改借此轮全部接上保存与留痕（preEdit：预测报价/报价单号/预测工时/签约定价/房屋三下拉/双注释，
+  注释一改对方部门自动置回「未读」）
+
+### 立项建筑选项设置化（二十轮补，用户定：立项时建筑相关下拉的增减也进设置）
+- 售前设置页「立项 · 建筑选项管理」：**房屋类型 / 施工阶段 / 楼层用途 / 屋顶** 四类列表可增删，
+  改完立项引导第④步、大表「房屋+楼层」列组、修改抽屉立即用新列表；增减动作进操作日志
+- 契约侧：`pre_house_types / pre_build_stages / pre_floor_uses / pre_roof_types` 四键（write_depts=presales），
+  同时**放开 project.house_type / build_stage / roof_type 的硬编码 CHECK**（build_stage 保持必填）——
+  选项即配置，不再是 DDL 枚举
+
 ### 契约对齐欠账 —— ✅ 已由 v0_32 清账（2026-08-01，三步规矩全过：零报错 / 130 拦截 / 73 断言）
 - ✅ 七步 ↔ 6+1：step1..6 = 六个勾的定格日期（列注释对齐），第⑦红勾=已流失=`bid_lost`；
   `to_contact` 从 status 枚举删除；全库中文标签「留标」→「已流失」（21 处，enum 值不动）
@@ -953,7 +974,9 @@ Twilio 接入（★最急，没它谁都登不进）｜ Google Maps 实接 ｜ 2
 - ✅ `pre_stage_remind_days` 键（write_depts=presales，默认 3）+ `fn_presales_reminders_today()`
   每日提醒生成函数（一项目一条不累积；状态一变 current_step 变，自然重新出现）
 - ✅ 双注释六列：note_finance/note_eng + read_by/read_at 已读回执
-- ✅ `pre_contact_roles` / `pre_party_trades` 两个下拉选项键（JSON 数组，售前设置页维护）
+- ✅ 下拉选项键共六个（JSON 数组，售前设置页维护）：`pre_contact_roles` / `pre_party_trades`
+  + 二十轮补 `pre_house_types` / `pre_build_stages` / `pre_floor_uses` / `pre_roof_types`
+  （并放开 house_type/build_stage/roof_type 硬 CHECK，build_stage 保持必填；重跑三步规矩仍全绿）
 - ✅ 新视图 `v_presales_pipeline`（85→86）：售前大表数据源——当前勾/停留/提醒全现算，
   金额按 fn_can_see_customer_amount 遮罩；工时按 fn_can_see_margin
 - 立项时间 = project.created_at（本来就有，视图暴露为 opened_on）

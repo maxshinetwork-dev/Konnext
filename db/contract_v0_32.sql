@@ -7,7 +7,8 @@
 --   ② quote_version / quote_status 废弃删除；新增 est_quote_low/high 预测报价范围（立项第5步填）
 --   ③ project 新增 财务注释/工程注释 + 已读回执共六列（售前填，对方部门必读，读了落谁/何时）
 --   ④ eng_setting 新增 pre_stage_remind_days（默认3天，write_depts=售前）
---      与 pre_contact_roles / pre_party_trades 两个下拉选项键（售前设置页维护，不写死）
+--      与 6 个下拉选项键（角色/工种/房屋类型/施工阶段/楼层用途/屋顶——售前设置页维护，不写死；
+--      对应放开 project.house_type/build_stage/roof_type 的硬编码 CHECK，build_stage 保持必填）
 --   ⑤ 新增视图 v_presales_pipeline（售前大表/内生提醒数据源，全现算）
 --      + fn_presales_reminders_today()（每天提醒生成：一项目一条，不累积）
 --  v0.31 变更（2026-07-30）：
@@ -65,12 +66,10 @@ CREATE TABLE project (
 
     -- 房屋
     usage_type        text CHECK (usage_type IN ('self_live','sell','mixed','commercial')),
-    house_type        text CHECK (house_type IN
-                        ('house','duplex','townhouse','apartment','shops',
-                         'villa','granny_flat','land','warehouse')),
-    build_stage       text NOT NULL CHECK (build_stage IN
-                        ('da','cc','demolition','foundation','basement',
-                         'structure','rough_in','renovation','other')),
+    -- v0.32：房屋类型/施工阶段/屋顶 不再硬编码枚举 —— 选项列表在 eng_setting
+    --   （pre_house_types / pre_build_stages / pre_floor_uses / pre_roof_types，售前设置页可增减）
+    house_type        text,
+    build_stage       text NOT NULL,   -- 必填不变；取值来自 pre_build_stages 选项键
     build_stage_other text,
 
     -- 楼层结构 ×5
@@ -80,7 +79,7 @@ CREATE TABLE project (
     floor_l3          text DEFAULT 'none',
     floor_l4p         text DEFAULT 'none',
     floor_other_note  text,
-    roof_type         text CHECK (roof_type IN ('tile','flat','deck','other')),
+    roof_type         text,
     roof_other_note   text,
 
     -- 售前 6+1（v0.32 定稿对齐）：6 个顺序勾的定格日期 —— 勾到哪 = 处于哪，
@@ -7614,7 +7613,20 @@ INSERT INTO eng_setting(key, value_text, note, write_depts) VALUES
  ('pre_party_trades',
   '["设计师","Builder","电工","空调","地暖","泳池","影音室","转盘","电梯","其他"]',
   '参建方工种下拉选项(JSON数组)。售前设置页维护；删除选项不影响已填历史数据',
-  ARRAY['presales']);
+  ARRAY['presales']),
+ -- v0.32b（二十轮）：立项建筑相关四类下拉同样设置化，替代原字段硬 CHECK
+ ('pre_house_types',
+  '["House","Duplex","Townhouse","Apartment","商铺","Villa","Granny Flat","空地","仓库"]',
+  '房屋类型下拉选项(JSON数组)。售前设置页维护', ARRAY['presales']),
+ ('pre_build_stages',
+  '["DA","CC","拆除","地基","地下室","结构","Rough-in","翻新","其他"]',
+  '施工阶段下拉选项(JSON数组)。售前设置页维护；build_stage 仍必填', ARRAY['presales']),
+ ('pre_floor_uses',
+  '["无","双砖","轻钢","木结构","混凝土","砖木","其他"]',
+  '楼层用途下拉选项(JSON数组)。售前设置页维护', ARRAY['presales']),
+ ('pre_roof_types',
+  '["瓦顶","平顶","露台","其他"]',
+  '屋顶类型下拉选项(JSON数组)。售前设置页维护', ARRAY['presales']);
 
 -- 86 售前管道（售前大表与内生提醒的数据源 —— 当前勾/停留/提醒全现算，金额按守卫遮罩）
 CREATE VIEW v_presales_pipeline AS
