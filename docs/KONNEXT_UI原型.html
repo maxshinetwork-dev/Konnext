@@ -1796,15 +1796,6 @@ ${ops([
      fill="${i===MONTHS.length-1?'#1f2933':'#8b98a5'}"${i===MONTHS.length-1?' font-weight="700"':''}>${x.m}</text>`;
    return out;
  }).join('');
- /* 十四轮加：每月新立项数量（市场增长）——单色单柱，只回答“这个月市场进来多少” */
- const gbars=MONTHS.map((x,i)=>{
-   const bx3=mX0+i*mPitch, h=mh(x.o), y=mBase-h;
-   return `<rect x="${bx3}" y="${y}" width="${mW}" height="${Math.max(h-2,1)}" fill="#2563eb" rx="2">
-       <title>${x.m} 新立项 ${x.o} 个</title></rect>
-     <text x="${bx3+mW/2}" y="${y-5}" font-size="10" text-anchor="middle" fill="#1f2933">${x.o}</text>
-     <text x="${bx3+mW/2}" y="${mBase+14}" font-size="9" text-anchor="middle"
-       fill="${i===MONTHS.length-1?'#1f2933':'#8b98a5'}"${i===MONTHS.length-1?' font-weight="700"':''}>${x.m}</text>`;
- }).join('');
  return `<h2>项目状态表</h2>
  <div class="page-sub">上半看全局：比例与立项去向 · 下半按状态过滤，表格与「项目列表」同款可操作 · 说明看左下「？ 帮助」</div>
  ${ops([
@@ -1817,14 +1808,13 @@ ${ops([
    <span style="color:#047857"><b>绿=已签约</b></span> ·
    <span style="color:#dc2626"><b>红=已流标</b></span> ·
    <span style="color:#2563eb"><b>蓝=还在途（待签约）</b></span>；时间范围点「周/月/季/年」方块切换。`)}
- ${helpNote(`月度图有两张、各答一个问题（十七轮定名）：
-   <b>「每月新立项数量（市场增长）」</b>（纯蓝单柱）= 这个月建档了几个项目，没有就是 0 → 看增长；
-   <b>「每月立项项目成交图」</b>（三段柱）= 这个月立的项目后来签了/流了/还在途几个 → 看转化。
+ ${helpNote(`<b>「每月立项项目成交图」</b>（三段柱）= 这个月立的项目后来签了/流了/还在途几个：
+   <b>柱顶数字 = 当月新立项总数</b>（没有就是 0）→ 看增长；三段颜色 → 看转化。
    去向永远回填到<b>立项月份</b>的柱上：26-05 立的项哪怕 9 月才流失，红段也记在 26-05 那根柱 ——
    不是积累量、不重复计数。`)}
  ${helpNote(`图表联动：本页所有图都由项目数据<b>现算</b>（立项日期 + 当前状态，跟正式系统同口径）——
    改 6+1 的勾，成交图在该项目<b>立项月份</b>的柱上换色，不动别的月；
-   立项引导建新档，两张月度图的<b>当月</b>柱同时 +1；扇形与上方去向柱一并同步。`)}
+   立项引导建新档，成交图<b>当月</b>柱 +1；扇形与上方去向柱一并同步。`)}
  <div class="split">
   <div class="panel"><div class="panel-head">在途项目 · 状态比例
      <span class="muted" style="font-weight:400">不含已签约/已流失 · 共 ${total} 个</span></div>
@@ -1851,20 +1841,8 @@ ${ops([
    </div></div>
  </div>
  <div class="panel">
-  <div class="panel-head">近 12 个月 · 每月<b style="color:var(--accent)">新立项数量</b>（市场增长）
-    <span class="muted" style="font-weight:400">一个月一根柱 · 当月建档数，没有就是 0 · 不拆去向</span></div>
-  <div class="panel-body" style="overflow-x:auto">
-   <svg width="600" height="204" viewBox="0 0 600 204" role="img" aria-label="近12个月每月新立项数量柱状图">
-     <line x1="20" y1="180" x2="590" y2="180" stroke="#d8e0e8"/>
-     <line x1="20" y1="105" x2="590" y2="105" stroke="#eef2f6"/>
-     <line x1="20" y1="30" x2="590" y2="30" stroke="#eef2f6"/>
-     ${gbars}
-   </svg>
-  </div>
- </div>
- <div class="panel">
   <div class="panel-head">近 12 个月 · <b>每月立项项目成交图</b>
-    <span class="muted" style="font-weight:400">这个月立的项目现在签了/流了/还在途 · 去向回填到立项月份的柱上，不重复计数</span>
+    <span class="muted" style="font-weight:400">柱顶数字 = 当月新立项数 · 去向回填到立项月份的柱上，不重复计数</span>
     <span style="margin-left:auto;font-size:var(--fs-xs);display:flex;gap:12px">
       <span><i style="display:inline-block;width:9px;height:9px;background:#047857;border-radius:2px;margin-right:4px"></i>已签约</span>
       <span><i style="display:inline-block;width:9px;height:9px;background:#dc2626;border-radius:2px;margin-right:4px"></i>已流标</span>
