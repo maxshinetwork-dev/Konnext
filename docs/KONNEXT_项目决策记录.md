@@ -1090,11 +1090,18 @@ Twilio 接入（★最急，没它谁都登不进）｜ Google Maps 实接 ｜ 2
   接洽中（售前没走完，财务无需参与）与已流失（售前的结论）不进默认视野；**已烂尾必须看**
   （两种来源：拒付之后的结果 ／ 项目做到一半没了也可标烂尾）；「全部」chip 保留（读全部原则不破）
 
-### 契约欠账（→ v0_33，做财务后端时一并）
-- 催款记录表 payment_remind_log（时间/方式/谁催的）；通知确认已有 notification.replied_yes 可用
-- project 付款人指定：payer_source（contact1/contact2/rel/builder/electrician）+ 付款人快照列
-  （姓名/电话/邮箱/公司/title，保存时从售前采集数据落格）+ 改动审计
-- eng_setting 财务键：gst_bank_pct / gst_cash_pct / suspend_server_days（overdue_days 已有）
-- 催款模版键：remind_tpl_normal_sms/email_title/email + remind_tpl_final_*（write_depts=finance，
-  支持按阶段覆盖行）；payment_remind 记录加 level 列（normal/final）
-- 待办三动作留痕落库（十九轮欠账，同批做）
+### 契约欠账 —— ✅ 收款线部分已由 v0_33 清账（2026-08-02，三步全绿：零报错 / 134 拦截 / 73 断言）
+- ✅ payment_remind_log 催款记录表（渠道 sms/email/both · 语言 zh/en · 级别 normal/final · 发送人 ·
+  sms_replied_at 仅记录不做门禁）+ **门禁：已烂尾项目不再关联催款**（P0001 原句；回归 26 号文件盖 4 拦）
+- ✅ 催款模版 12 键（常规/最终 × 中/英 × 短信/邮件标题/邮件正文，write_depts=finance，
+  默认值=UI 参考文案、不含项目昵称）；按阶段覆盖行留给需要时再加
+- ✅ 财务设置键：gst_bank_pct=10 / gst_cash_pct=0 / suspend_server_days=90；
+  overdue_days 开放财务共写（UPDATE 置于写权限门禁触发器之前，被自家门禁拦过一次后修正）
+- ✅ project 付款人指定六列（payer_source CHECK 五候选 + 姓名/电话/邮箱/公司/title 快照，财务写）
+- ✅ 新表三件配套齐：project_scope_registry（经 milestone 追项目）+ table_ownership（finance）+ 4 条 RLS
+  （吸取 v0_31「只登记未设防」教训，本次一并补齐）
+- **61 表 / 86 视图 / 144 策略 / 73 断言 · 回归 26 个文件合计 134 拦截**
+
+### 剩余欠账（→ v0_34，工资线定稿时一并）
+- 待办三动作留痕落库（十九轮）
+- 工资相关键与汇总视图（「工资数据」页明日继续、定稿后落）
