@@ -162,10 +162,11 @@ tbody tr:hover{background:var(--bg-elevated)}
 .todo{background:var(--bg-elevated);border:1px solid var(--border);
   border-radius:var(--radius);padding:var(--sp-3);margin-bottom:var(--sp-2)}
 .todo.over{border-color:rgba(239,68,68,.5)}
-.todo-top{display:flex;justify-content:space-between;gap:var(--sp-2);margin-bottom:var(--sp-1)}
+.todo-top{display:flex;justify-content:space-between;gap:var(--sp-2);margin-bottom:var(--sp-1);flex-wrap:wrap}
 .todo-act{font-size:var(--fs-sm);color:var(--text)}
-.todo-meta{font-size:var(--fs-xs);color:var(--text-muted);margin-top:var(--sp-2);
-  display:flex;justify-content:space-between;align-items:center;gap:var(--sp-2)}
+.todo-meta{font-size:var(--fs-xs);color:var(--text-muted);margin-top:var(--sp-2)}
+.todo-btns{display:flex;gap:6px;justify-content:flex-end;margin-top:var(--sp-2)}
+.todo-btns .btn{padding:4px 10px;font-size:var(--fs-xs)}
 .backdrop{position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:40;display:none}
 .backdrop.open{display:block}
 
@@ -302,7 +303,7 @@ tbody tr:hover{background:var(--bg-elevated)}
 <aside class="drawer" id="drawer">
   <div class="drawer-head">
     <b style="flex:1">待办中心</b>
-    <span class="muted" style="font-size:var(--fs-xs)">超期置顶</span>
+    <span class="muted" style="font-size:var(--fs-xs)">超期最久置顶</span>
     <button class="btn" onclick="toggleDrawer()">✕</button>
   </div>
   <div class="drawer-body" id="drawer-body"></div>
@@ -392,23 +393,22 @@ const money = (v,k) => can(k) ? `<span class="num">${v}</span>` : `<span class="
 
 /* ════════ 待办（对应 v_pending_handoff） ════════ */
 const TODOS=[
- /* ★售前提醒全部内生：不来自外部交接，只来自前六步的停留天数
-    （达到阈值 preRemindDays=3 天起，每天提醒一次，直到推进或流失） */
- {dept:'presales',ev:'黄宅 · 设计中已停留 12 天',from:'售前流程',act:'推进出报价，或回访客户（每天提醒）',h:288,sla:72,pj:'KX-2026-0201'},
- {dept:'presales',ev:'许宅 · 修订中已停留 9 天', from:'售前流程',act:'修订完尽快约签约（每天提醒）',      h:216,sla:72,pj:'KX-2026-0190'},
- {dept:'presales',ev:'郑宅 · 报价中已停留 6 天', from:'售前流程',act:'报价该出了（每天提醒）',            h:144,sla:72,pj:'KX-2026-0198'},
- {dept:'presales',ev:'吴宅 · 接洽中已停留 3 天', from:'售前流程',act:'今天刚到 3 天线，开始每天提醒',      h:72, sla:72,pj:'KX-2026-0210'},
- {dept:'fin', ev:'SM3 检查布线完成',   from:'工程管理', act:'开 S2 物料款 Invoice',    h:31, sla:24, pj:'KX-2026-0142'},
- {dept:'fin', ev:'SM3 登记了变更',     from:'工程管理', act:'安排变更估价',            h:31, sla:48, pj:'KX-2026-0142'},
- {dept:'fin', ev:'维护上门服务完成',   from:'运维',     act:'按现场归因与工时定价开票', h:6,  sla:24, pj:'KX-2026-0180'},
- {dept:'proc',ev:'S2 物料款已结清',    from:'财务',     act:'可以下单采购',            h:30, sla:24, pj:'KX-2026-0142'},
- {dept:'proc',ev:'库存低于红线',       from:'库管',     act:'纳入下次集中采购',        h:12, sla:72, pj:''},
- {dept:'wh',  ev:'S2 物料款已结清',    from:'财务',     act:'准备收货与出库',          h:30, sla:48, pj:'KX-2026-0142'},
- {dept:'wh',  ev:'有未退料待结算',     from:'库管',     act:'结算未退料并计入 S4 变更', h:52, sla:48, pj:'KX-2026-0142'},
- {dept:'eng', ev:'S1 定金已结清',      from:'财务',     act:'安排 SM1 进场',           h:9,  sla:24, pj:'KX-2026-0155'},
- {dept:'eng', ev:'盘点待审批',         from:'库管',     act:'复核并审批盘亏 A$255.60', h:26, sla:24, pj:''},
- {dept:'mt',  ev:'项目交付完成',       from:'工程管理', act:'接管运维，启动免责维保',   h:14, sla:24, pj:'KX-2026-0180'},
+ /* ★售前提醒不在这里写死 —— 全部由大表 stay + 设置阈值现算生成（见 preTodos()），
+    改设置里的阈值，待办条目与 SLA 立即跟着变。
+    p = 「处理」按钮的目标页：跳过去并切到该项目，方便直接操作 */
+ {dept:'fin', ev:'张宅 · 烂尾停工，S1 之外应收未追回',from:'财务流程',act:'催账与停服流程推进（每天提醒）',h:5448,sla:168,pj:'KX-2026-0160',p:'催账与停服'},
+ {dept:'fin', ev:'SM3 检查布线完成',   from:'工程管理', act:'开 S2 物料款 Invoice',    h:31, sla:24, pj:'KX-2026-0142',p:'付款节点'},
+ {dept:'fin', ev:'SM3 登记了变更',     from:'工程管理', act:'安排变更估价',            h:31, sla:48, pj:'KX-2026-0142',p:'变更估价'},
+ {dept:'fin', ev:'维护上门服务完成',   from:'运维',     act:'按现场归因与工时定价开票', h:6,  sla:24, pj:'KX-2026-0180',p:'维护开票'},
+ {dept:'proc',ev:'S2 物料款已结清',    from:'财务',     act:'可以下单采购',            h:30, sla:24, pj:'KX-2026-0142',p:'采购单'},
+ {dept:'proc',ev:'库存低于红线',       from:'库管',     act:'纳入下次集中采购',        h:12, sla:72, pj:'',p:'补货建议'},
+ {dept:'wh',  ev:'S2 物料款已结清',    from:'财务',     act:'准备收货与出库',          h:30, sla:48, pj:'KX-2026-0142',p:'入库'},
+ {dept:'wh',  ev:'有未退料待结算',     from:'库管',     act:'结算未退料并计入 S4 变更', h:52, sla:48, pj:'KX-2026-0142',p:'物料在谁手里'},
+ {dept:'eng', ev:'S1 定金已结清',      from:'财务',     act:'安排 SM1 进场',           h:9,  sla:24, pj:'KX-2026-0155',p:'Site Meeting'},
+ {dept:'eng', ev:'盘点待审批',         from:'库管',     act:'复核并审批盘亏 A$255.60', h:26, sla:24, pj:'',p:'总览'},
+ {dept:'mt',  ev:'项目交付完成',       from:'工程管理', act:'接管运维，启动免责维保',   h:14, sla:24, pj:'KX-2026-0180',p:'维保状态'},
 ];
+TODOS.forEach((t,i)=>t.id='s'+i);   // 稳定编号：三动作按它记状态（售前现算条目用 pre-项目编号）
 /* 售前管道里未进全公司项目列表演示数据的地址（补给待办抽屉显示） */
 const PRE_ADDR={
  'KX-2026-0190':'5 Jersey St, Hornsby NSW','KX-2026-0198':'9 Old Northern Rd, Castle Hill NSW',
@@ -486,8 +486,41 @@ const pjLabel = code => { const x=PROJECTS.find(p=>p.code===code);
   return x? `${x.code.slice(-4)} ${x.suburb}` : code; };
 const pjAddr = code => { const x=PROJECTS.find(p=>p.code===code);
   return x? `${x.street}, ${x.suburb} ${x.state}` : (PRE_ADDR[code]||'—'); };
-const myTodos = () => TODOS.filter(t=>WHO[me].depts.includes(t.dept))
-  .sort((a,b)=>((b.h>b.sla)-(a.h>a.sla))||b.h-a.h);
+/* 十九轮：超期时长自动用 年/月/天/小时 表述（取前两级，月=30天/年=365天） */
+const fmtDur=h=>{ h=Math.max(0,Math.round(h));
+  if(h<24) return h+' 小时';
+  const d=Math.floor(h/24), hh=h%24;
+  if(d<30)  return hh? `${d} 天 ${hh} 小时` : `${d} 天`;
+  if(d<365){ const m=Math.floor(d/30), dd=d%30; return dd? `${m} 个月 ${dd} 天` : `${m} 个月`; }
+  const y=Math.floor(d/365), m=Math.floor((d%365)/30);
+  return m? `${y} 年 ${m} 个月` : `${y} 年`; };
+/* ★售前内生待办 = 现算，不写死（用户纠错）：大表停留天数 + 设置阈值 →
+   改设置里的阈值（如 3 天改 4 天），条目增减与 SLA 展示立即同步；点勾推进后停留清零、条目消失 */
+const PRE_ACT={1:'尽快推进接洽，或回访客户',2:'推进出报价，或回访客户',3:'报价该出了',
+  4:'修订完尽快约签约',5:'尽快约签约落定'};
+const preTodos=()=>BIGPD.filter(p=>!p.lost&&p.step<6&&p.stay>=preRemindDays)
+  .map(p=>({id:'pre-'+p.code,dept:'presales',
+    ev:`${p.nick} · ${STAGES[p.step-1]}已停留 ${p.stay} 天`,
+    from:'售前流程',act:`${PRE_ACT[p.step]}（每天提醒）`,
+    h:p.stay*24,sla:preRemindDays*24,pj:p.code,p:'项目列表'}));
+const allTodos=()=>[...preTodos(),...TODOS];
+/* 十九轮：待办三动作 —— 已知悉(停止通知) / 处理(跳页并切到该项目) / 搁置(保留) */
+const todoState={};                    // id → 'ack' | 'hold'
+/* 用户定：已知悉只对「当前状态」有效 —— 项目状态一旦改变，清掉标记，通知重新启动 */
+function todoWake(code){ Object.keys(todoState).forEach(k=>{
+  if(k==='pre-'+code) delete todoState[k]; }); }
+function todoAck(id){ todoState[id]='ack'; renderAll(); }
+function todoHold(id){ todoState[id]=todoState[id]==='hold'?'':'hold'; renderAll(); }
+function todoGo(id){ const t=allTodos().find(x=>x.id===id); if(!t) return;
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('backdrop').classList.remove('open');
+  go(t.dept,t.p);
+  if(t.dept==='presales'&&t.pj){ bigQ=t.pj; }                 // 售前大表：搜索框过滤到该项目
+  else if(t.pj){ const i=PROJECTS.findIndex(x=>x.code===t.pj); if(i>=0) pj=i; }  // 项目内页：切项目上下文
+  renderAll(); }
+/* 排序（十九轮用户定）：按超期时长降序 —— 超得越久越置顶，未到期的沉底；已知悉的不再出现 */
+const myTodos = () => allTodos().filter(t=>WHO[me].depts.includes(t.dept)&&todoState[t.id]!=='ack')
+  .sort((a,b)=>(b.h-b.sla)-(a.h-a.sla));
 
 /* ════════ 登录 ════════ */
 function sendCode(){
@@ -651,6 +684,7 @@ function preTick(code,i){
   for(let k=0;k<p.step;k++) if(!p.d[k]||p.d[k]==='··') p.d[k]='今天';
   p.d[p.step-1]=p.d[p.step-1]||'今天';
   p.stay=(p.step>=6)?'':0;                    // 终态不计停留；其余从 0 重新计时→提醒重算
+  todoWake(code);                             // 状态改变：该项目「已知悉/搁置」失效，通知重新启动
   renderAll();
 }
 function preLost(code){
@@ -661,6 +695,7 @@ function preLost(code){
     alert('已勾「已流失」（=流标，终态归档）。点错的话再点一次第⑦勾即可取消'); }
   else{ if(p.d) p.d[6]=undefined; p.stay=0;
     alert('已取消「已流失」——项目回到第 '+p.step+' 步，停留从今天重新计时'); }
+  todoWake(code);                             // 状态改变：该项目「已知悉/搁置」失效，通知重新启动
   renderAll();
 }
 
@@ -672,7 +707,7 @@ function renderAll(){
 
   /* 顶部页标：只显示有权限的部门；决策页仅 tier1 */
   let tabs=u.depts.map(d=>{
-    const n=TODOS.filter(t=>t.dept===d).length;
+    const n=allTodos().filter(t=>t.dept===d&&todoState[t.id]!=='ack').length;
     return `<button class="tab${tab===d?' on':''}" onclick="go('${d}')">${DEPT[d].label}${n?`<span class="badge">${n}</span>`:''}</button>`;
   }).join('');
   if(u.tier===1) tabs+=`<button class="tab decision${tab==='decision'?' on':''}" onclick="go('decision')">决策页</button>`;
@@ -684,23 +719,27 @@ function renderAll(){
 
   const ts=myTodos();
   document.getElementById('todo-n').textContent=ts.length;
-  document.getElementById('drawer-body').innerHTML= ts.length? ts.map(t=>`
-    <div class="todo${t.h>t.sla?' over':''}">
+  document.getElementById('drawer-body').innerHTML= ts.length?
+    `<div class="hint" style="margin:0 0 var(--sp-2)">排序：<b>超期最久置顶</b> · 每天提醒只更新同一条，<b>不累积</b> · 已知悉只停当前状态的通知，<b>状态一变会重新提醒</b></div>`
+    +ts.map(t=>{ const hold=todoState[t.id]==='hold'; return `
+    <div class="todo${t.h>t.sla?' over':''}"${hold?' style="opacity:.55"':''}>
       <div class="todo-top">
         ${t.pj
           ? `<div><b class="mono" style="color:var(--accent)">${t.pj}</b>
                <div class="hint">📍 ${pjAddr(t.pj)}</div></div>`
           : `<div><span class="pill p-grey">公司级</span>
                <div class="hint">不属于单个项目</div></div>`}
-        ${t.h>t.sla?`<span class="pill p-red">超期 ${t.h-t.sla}h</span>`:`<span class="pill p-grey">${t.h}h</span>`}
+        ${t.h>t.sla?`<span class="pill p-red">超期 ${fmtDur(t.h-t.sla)}</span>`:`<span class="pill p-grey">已等 ${fmtDur(t.h)}</span>`}
       </div>
-      <div style="font-size:var(--fs-sm);margin:var(--sp-2) 0 0"><b>${t.ev}</b></div>
+      <div style="font-size:var(--fs-sm);margin:var(--sp-2) 0 0"><b>${t.ev}</b>${hold?' <span class="pill p-grey">已搁置</span>':''}</div>
       <div class="todo-act">→ ${t.act}</div>
-      <div class="todo-meta">
-        <span>${t.from} 交来 · SLA ${t.sla}h</span>
-        <button class="btn">已知悉</button>
+      <div class="todo-meta">来源 ${t.from} · SLA ${fmtDur(t.sla)}</div>
+      <div class="todo-btns">
+        <button class="btn" title="停止这条通知，之后不再出现（正式系统留痕）" onclick="todoAck('${t.id}')">已知悉</button>
+        <button class="btn btn-primary" title="跳到对应页面并切到该项目，直接去操作" onclick="todoGo('${t.id}')">处理</button>
+        <button class="btn" title="保留这条通知，之后照常在这里" onclick="todoHold('${t.id}')">${hold?'取消搁置':'搁置'}</button>
       </div>
-    </div>`).join('') : `<div class="muted" style="padding:var(--sp-4)">暂无待办</div>`;
+    </div>`}).join('') : `<div class="muted" style="padding:var(--sp-4)">暂无待办 —— 已知悉的通知不再显示</div>`;
 
   const isCompany=COMPANY_PAGES.has(tab+'/'+page);
   const p=PROJECTS[pj];
@@ -1885,7 +1924,7 @@ ${helpNote(`阈值默认 3 天。改成 5，就是停留满 5 天才开始每天
           onchange="preRemindDays=Math.max(1,parseInt(this.value)||3);renderAll()">
         <span class="muted" style="font-size:var(--fs-sm)">停留达到这个天数 → 开始提醒</span>
       </div>
-      <div class="hint">当前：任一步停留满 <b>${preRemindDays} 天</b>开始提醒 · 大表「停留」列同步变橙</div></div>
+      <div class="hint">当前：任一步停留满 <b>${preRemindDays} 天</b>开始提醒 · 大表「停留」列同步变橙 · 🔔 待办中心的售前条目与 SLA 用的就是这个阈值，改完立即生效</div></div>
     <div class="field"><label>提醒频率</label>
       <input value="每天一次（到达阈值后，直到推进或流失）" readonly>
       <div class="hint">频率固定，不做成可调 —— 一天多次会被当骚扰，几天一次会被忘掉</div></div>
