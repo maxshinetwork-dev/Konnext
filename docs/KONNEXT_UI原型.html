@@ -1741,6 +1741,25 @@ ${ops([
  const bar=seg(base-hS,hS,'#047857','已签约',st.signed)
    +seg(base-hS-hL,hL,'#dc2626','已流标',st.lost)
    +seg(base-H,hP,'#2563eb','待签约(在途)',pend);
+ /* 近 12 个月逐月堆叠柱（十二轮加）：月度演示数据与「年」合计对齐 32/12/6 */
+ const MONTHS=[
+  {m:'25-08',o:2,s:1,l:0},{m:'25-09',o:3,s:1,l:1},{m:'25-10',o:2,s:1,l:0},
+  {m:'25-11',o:3,s:2,l:0},{m:'25-12',o:2,s:1,l:1},{m:'26-01',o:3,s:1,l:0},
+  {m:'26-02',o:2,s:1,l:1},{m:'26-03',o:3,s:1,l:0},{m:'26-04',o:3,s:1,l:1},
+  {m:'26-05',o:2,s:0,l:1},{m:'26-06',o:3,s:1,l:0},{m:'26-07',o:4,s:1,l:1}];
+ const mMax=Math.max(...MONTHS.map(x=>x.o)), mH=150, mBase=180, mW=24, mPitch=45, mX0=34;
+ const mh=n=>n?Math.max(Math.round(n/mMax*mH),3):0;
+ const mbars=MONTHS.map((x,i)=>{
+   const p=x.o-x.s-x.l, bx2=mX0+i*mPitch;
+   let y=mBase, out='';
+   const one=(n,c,label)=>{ if(!n) return; const h=mh(n); y-=h;
+     out+=`<rect x="${bx2}" y="${y}" width="${mW}" height="${Math.max(h-2,1)}" fill="${c}" rx="2"><title>${x.m} ${label} ${n} 个</title></rect>`; };
+   one(x.s,'#047857','已签约'); one(x.l,'#dc2626','已流标'); one(p,'#2563eb','待签约(在途)');
+   out+=`<text x="${bx2+mW/2}" y="${y-5}" font-size="10" text-anchor="middle" fill="#1f2933">${x.o}</text>`;
+   out+=`<text x="${bx2+mW/2}" y="${mBase+14}" font-size="9" text-anchor="middle"
+     fill="${i===MONTHS.length-1?'#1f2933':'#8b98a5'}"${i===MONTHS.length-1?' font-weight="700"':''}>${x.m}</text>`;
+   return out;
+ }).join('');
  return `<h2>项目状态表</h2>
  <div class="page-sub">上半看全局：比例与立项去向 · 下半按状态过滤，表格与「项目列表」同款可操作 · 说明看左下「？ 帮助」</div>
  ${ops([
@@ -1753,6 +1772,8 @@ ${ops([
    <span style="color:#047857"><b>绿=已签约</b></span> ·
    <span style="color:#dc2626"><b>红=已流标</b></span> ·
    <span style="color:#2563eb"><b>蓝=还在途（待签约）</b></span>；时间范围点「周/月/季/年」方块切换。`)}
+ ${helpNote(`近 12 个月图 = 每月一根柱从左往右逐月推进（当前月加粗），配色同上；
+   柱顶数字是当月立项数，鼠标悬停每一段看具体数量；月度合计与「年」档口径一致（演示数据）。`)}
  <div class="split">
   <div class="panel"><div class="panel-head">在途项目 · 状态比例
      <span class="muted" style="font-weight:400">不含已签约/已流失 · 共 ${total} 个</span></div>
@@ -1777,6 +1798,23 @@ ${ops([
       <b style="color:#047857">绿 = 已签约</b><br><b style="color:#dc2626">红 = 已流标</b><br>
       <b style="color:#2563eb">蓝 = 还在途（待签约）</b><br>时间范围点上面的方块</div>
    </div></div>
+ </div>
+ <div class="panel">
+  <div class="panel-head">近 12 个月 · 每月立项与去向
+    <span class="muted" style="font-weight:400">一个月一根柱，从左往右逐月推进 · 柱顶数字=当月立项 · 悬停看各段</span>
+    <span style="margin-left:auto;font-size:var(--fs-xs);display:flex;gap:12px">
+      <span><i style="display:inline-block;width:9px;height:9px;background:#047857;border-radius:2px;margin-right:4px"></i>已签约</span>
+      <span><i style="display:inline-block;width:9px;height:9px;background:#dc2626;border-radius:2px;margin-right:4px"></i>已流标</span>
+      <span><i style="display:inline-block;width:9px;height:9px;background:#2563eb;border-radius:2px;margin-right:4px"></i>待签约(在途)</span>
+    </span></div>
+  <div class="panel-body" style="overflow-x:auto">
+   <svg width="600" height="204" viewBox="0 0 600 204" role="img" aria-label="近12个月每月立项去向堆叠柱状图">
+     <line x1="20" y1="180" x2="590" y2="180" stroke="#d8e0e8"/>
+     <line x1="20" y1="105" x2="590" y2="105" stroke="#eef2f6"/>
+     <line x1="20" y1="30" x2="590" y2="30" stroke="#eef2f6"/>
+     ${mbars}
+   </svg>
+  </div>
  </div>
  <div style="display:flex;gap:var(--sp-2);margin:var(--sp-3) 0;flex-wrap:wrap">
    ${['全部',...STAGES].map(s=>`<button class="btn${stFilter===s?' btn-primary':''}"
