@@ -189,8 +189,9 @@ tbody tr:hover{background:var(--bg-elevated)}
   font-size:var(--fs-xs);padding:8px 12px;letter-spacing:.03em}
 .bigtable tbody tr:hover td{background:var(--bg-elevated)}
 .bigtable .c1{position:sticky;left:0;z-index:3;min-width:110px}
-.bigtable .c2{position:sticky;left:110px;z-index:3;min-width:170px;border-right:2px solid var(--border)}
-.bigtable thead .c1,.bigtable thead .c2{z-index:4}
+.bigtable .c1b{position:sticky;left:110px;z-index:3;min-width:90px}
+.bigtable .c2{position:sticky;left:200px;z-index:3;min-width:170px;border-right:2px solid var(--border)}
+.bigtable thead .c1,.bigtable thead .c1b,.bigtable thead .c2{z-index:4}
 .bigtable input,.bigtable select{width:auto;padding:4px 6px;font-size:var(--fs-sm)}
 .bigtable input.w80{width:84px}.bigtable input.w60{width:60px}
 .mini7{display:flex;gap:5px;align-items:flex-start;height:58px}
@@ -353,21 +354,21 @@ const COMPANY_PAGES=new Set([
 ]);
 /* 项目清单（对应 v_project_label：编号 · 名称 + Suburb + 业主） */
 const PROJECTS=[
- {code:'KX-2026-0142',name:'Cherrybrook 王宅',suburb:'Cherrybrook',street:'8 Franklin Rd',
+ {code:'KX-2026-0142',opened:'2025/11/02',name:'Cherrybrook 王宅',suburb:'Cherrybrook',street:'8 Franklin Rd',
   state:'NSW',owner:'王先生',builder:'Mike · BuildCo',elec:'Tony · Spark电气',
   status:'项目维护中',band:'p-green'},
- {code:'KX-2026-0180',name:'Hornsby 陈宅',suburb:'Hornsby',street:'22 Rosamond St',
+ {code:'KX-2026-0180',opened:'2025/09/15',name:'Hornsby 陈宅',suburb:'Hornsby',street:'22 Rosamond St',
   state:'NSW',owner:'陈女士',builder:'Sam · NorthBuild',elec:'Leo · VoltPro',
   status:'项目交付',band:'p-green'},
- {code:'KX-2026-0121',name:'Castle Hill 刘宅',suburb:'Castle Hill',street:'5 Gilbert Rd',
+ {code:'KX-2026-0121',opened:'2025/06/10',name:'Castle Hill 刘宅',suburb:'Castle Hill',street:'5 Gilbert Rd',
   state:'NSW',owner:'刘先生',builder:'—',elec:'Tony · Spark电气',
   status:'项目维护中',band:'p-green'},
- {code:'KX-2026-0160',name:'Ryde 张宅',suburb:'Ryde',street:'31 Blaxland Rd',
+ {code:'KX-2026-0160',opened:'2025/12/08',name:'Ryde 张宅',suburb:'Ryde',street:'31 Blaxland Rd',
   state:'NSW',owner:'张先生',builder:'Ken · MetroCon',elec:'—',
   status:'已烂尾',band:'p-loss'},
- {code:'KX-2026-0155',name:'Epping 李宅',suburb:'Epping',street:'7 Beecroft Rd',
+ {code:'KX-2026-0155',opened:'2026/04/02',name:'Epping 李宅',suburb:'Epping',street:'7 Beecroft Rd',
   state:'NSW',owner:'李先生',builder:'—',elec:'—',status:'留标',band:'p-grey'},
- {code:'KX-2026-0201',name:'Chatswood 黄宅',suburb:'Chatswood',street:'12 Orchard Rd',
+ {code:'KX-2026-0201',opened:'2026/07/02',name:'Chatswood 黄宅',suburb:'Chatswood',street:'12 Orchard Rd',
   state:'NSW',owner:'黄先生',builder:'—',elec:'—',status:'接洽当中',band:'p-grey'},
 ];
 let pj=0;   // 当前项目
@@ -414,13 +415,13 @@ const PRE_ADDR={
  'KX-2026-0186':'27 Raglan St, Mosman NSW','KX-2026-0210':'18 Church St, Ryde NSW'};
 /* 售前大表数据（全局：状态勾点选/反选要跨渲染保存） */
 const BIGPD=[
-  {code:'KX-2026-0210',nick:'吴宅',street:'18 Church St',city:'Ryde',state:'NSW',
+  {code:'KX-2026-0210',opened:'2026/07/27',nick:'吴宅',street:'18 Church St',city:'Ryde',state:'NSW',
    step:1,lost:false,stay:3,d:['07-27'],est:'250k–300k',
    o1:'吴先生',o1n:'',o1p:'0455 002 100',o1e:'',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
    rel:'',reln:'',relp:'',rele:'',relr:'',ct:'',cv:'',
    use:'',ht:'',stage:'',pp:0,hm:0,so:false,fl:false,
    qno:'',hrs:'',price:'',dep:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
-  {code:'KX-2026-0201',nick:'黄宅',street:'12 Orchard Rd',city:'Chatswood',state:'NSW',
+  {code:'KX-2026-0201',opened:'2026/07/02',nick:'黄宅',street:'12 Orchard Rd',city:'Chatswood',state:'NSW',
    step:2,lost:false,stay:12,d:['07-02','07-18'],est:'300k–350k',
    o1:'黄先生',o1n:'黄总',o1p:'0433 111 222',o1e:'huang@x.com',o1r:'决策人',
    o2:'黄太太',o2n:'',o2p:'0433 111 333',o2e:'',o2r:'共同决策',
@@ -428,21 +429,21 @@ const BIGPD=[
    use:'自住',ht:'House',stage:'结构',pp:1,hm:3,so:true,fl:false,
    qno:'',hrs:'',price:'',dep:'',
    noteF:'',noteFr:'',noteE:'业主提到想预留影音室，设计时留走线',noteEr:'unread'},
-  {code:'KX-2026-0198',nick:'郑宅',street:'9 Old Northern Rd',city:'Castle Hill',state:'NSW',
+  {code:'KX-2026-0198',opened:'2026/06/20',nick:'郑宅',street:'9 Old Northern Rd',city:'Castle Hill',state:'NSW',
    step:3,lost:false,stay:6,d:['06-20','07-08','07-24'],est:'400k–450k',
    o1:'郑女士',o1n:'',o1p:'0400 219 800',o1e:'',o1r:'决策人',
    o2:'郑先生',o2n:'',o2p:'0400 219 801',o2e:'',o2r:'共同决策',
    rel:'Amy',reln:'',relp:'0400 219 900',rele:'',relr:'介绍人',ct:'百分比',cv:'2.0',
    use:'自住',ht:'Townhouse',stage:'CC',pp:2,hm:2,so:true,fl:false,
    qno:'',hrs:'',price:'',dep:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
-  {code:'KX-2026-0190',nick:'许宅',street:'5 Jersey St',city:'Hornsby',state:'NSW',
+  {code:'KX-2026-0190',opened:'2026/05/30',nick:'许宅',street:'5 Jersey St',city:'Hornsby',state:'NSW',
    step:4,lost:false,stay:9,d:['05-30','06-12','07-01','07-21'],est:'550k–650k',
    o1:'许先生',o1n:'',o1p:'0412 300 190',o1e:'xu@x.com',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
    rel:'',reln:'',relp:'',rele:'',relr:'',ct:'固定',cv:'3000',
    use:'出售',ht:'Duplex',stage:'Rough-in',pp:1,hm:0,so:true,fl:false,
    qno:'',hrs:'',price:'',dep:'',
    noteF:'业主想谈分期比例 5/45/40/10，能不能接？',noteFr:'unread',noteE:'',noteEr:''},
-  {code:'KX-2026-0186',nick:'周宅',street:'27 Raglan St',city:'Mosman',state:'NSW',
+  {code:'KX-2026-0186',opened:'2026/05/12',nick:'周宅',street:'27 Raglan St',city:'Mosman',state:'NSW',
    step:5,lost:false,stay:2,d:['05-12','05-28','06-15','07-10','07-28'],est:'600k–700k',
    o1:'周女士',o1n:'Amanda',o1p:'0422 018 600',o1e:'zhou@x.com',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
    rel:'设计师Lily',reln:'',relp:'0422 018 900',rele:'lily@x.com',relr:'介绍人',ct:'百分比',cv:'2.5',
@@ -450,13 +451,13 @@ const BIGPD=[
    qno:'Q-2026-0186',hrs:'500',price:'655,000',dep:'',
    noteF:'定金比例按标准 10%，业主已确认',noteFr:'read',
    noteE:'泳池设备房要走专线，工程排线注意\n二楼影音室墙内预埋 HDMI 光纤 ×2\n车库充电桩 32A 独立回路',noteEr:'read'},
-  {code:'KX-2026-0155',nick:'李宅',street:'7 Beecroft Rd',city:'Epping',state:'NSW',
+  {code:'KX-2026-0155',opened:'2026/04/02',nick:'李宅',street:'7 Beecroft Rd',city:'Epping',state:'NSW',
    step:3,lost:true,stay:'',d:['04-02','04-20','05-08','··','··','··','06-22'],est:'280k–320k',
    o1:'李先生',o1n:'',o1p:'0433 155 000',o1e:'',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
    rel:'中介小赵',reln:'',relp:'0433 155 900',rele:'',relr:'介绍人',ct:'百分比',cv:'3.0',
    use:'出售',ht:'House',stage:'DA',pp:0,hm:0,so:false,fl:false,
    qno:'',hrs:'',price:'',dep:'',noteF:'流标 · 佣金不产生',noteFr:'read',noteE:'',noteEr:''},
-  {code:'KX-2026-0142',nick:'王宅',street:'8 Franklin Rd',city:'Cherrybrook',state:'NSW',
+  {code:'KX-2026-0142',opened:'2025/11/02',nick:'王宅',street:'8 Franklin Rd',city:'Cherrybrook',state:'NSW',
    step:6,lost:false,stay:'',d:['2025-11-02','11-20','12-05','12-18','12-28','01-05'],est:'450k–520k',
    o1:'王先生',o1n:'老王',o1p:'0433 142 000',o1e:'wang@x.com',o1r:'决策人',
    o2:'王太太',o2n:'',o2p:'0433 142 001',o2e:'',o2r:'共同决策',
@@ -466,6 +467,8 @@ const BIGPD=[
    noteF:'S1 已开票已收',noteFr:'read',noteE:'已移交工程线',noteEr:'read'},
 ];
 const STAGES=['接洽中','设计中','报价中','修订中','待签约','已签约','已流失'];
+/* 立项时间速查表（十六轮：所有编号列后面跟立项时间列） */
+const OPENED={};PROJECTS.forEach(p=>OPENED[p.code]=p.opened);BIGPD.forEach(p=>OPENED[p.code]=p.opened);
 /* 图表联动基线：页面载入时的签约/流失数。此后勾的改动按「发生在今天」
    计入 周/月/季/年 各档与当月柱（演示口径；正式系统按每勾定格日期精确落桶） */
 const BASE_SIGNED=BIGPD.filter(p=>!p.lost&&p.step>=6).length;
@@ -532,7 +535,8 @@ function wizNext(){ if(wizN===WIZ_STEPS){
     const v=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
     const code='KX-2026-'+String(Math.max(...BIGPD.map(p=>parseInt(p.code.slice(-4))))+1).padStart(4,'0');
     const lo=v('wizlo'),hi=v('wizhi');
-    BIGPD.unshift({code,nick:v('wiznick')||'新项目',street:v('wizstreet')||'—',
+    const _d=new Date(), today=_d.getFullYear()+'/'+String(_d.getMonth()+1).padStart(2,'0')+'/'+String(_d.getDate()).padStart(2,'0');
+    BIGPD.unshift({code,opened:today,nick:v('wiznick')||'新项目',street:v('wizstreet')||'—',
       city:v('wizcity')||'—',state:(document.getElementById('wizstate')||{value:'NSW'}).value,
       step:1,lost:false,stay:0,d:['今天'],est:(lo||hi)?`${lo||'?'}–${hi||'?'}`:'',
       o1:'',o1n:'',o1p:'',o1e:'',o1r:'',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
@@ -801,7 +805,7 @@ function preBigTable(rows){
  return `<div class="bigwrap"><table class="bigtable" style="min-width:0">
   <thead>
    <tr class="grp">
-    <th class="c1" colspan="2" style="text-align:left">项目</th>
+    <th class="c1" colspan="3" style="text-align:left">项目</th>
     <th colspan="2" class="gs">售前状态 · 6+1 全部手填</th>
     <th class="gs">预测报价</th><th colspan="4" class="gs">签约 · 前三样待签约时一并填</th>
     ${bigCols.contact?'<th colspan="7" class="gs">联系人与参建方 · 每人五项</th>':''}
@@ -812,7 +816,7 @@ function preBigTable(rows){
     <th class="gs"></th>
    </tr>
    <tr class="leaf">
-    <th class="c1">编号</th><th class="c2">昵称 · 地址 · 子表</th>
+    <th class="c1">编号</th><th class="c1b">立项时间</th><th class="c2">昵称 · 地址 · 子表</th>
     <th class="gs">顺序勾 · 状态名在勾下</th><th style="text-align:right">停留</th>
     <th class="gs">范围（立项填）</th>
     <th class="gs">报价单号</th><th style="text-align:right">预测工时 h</th><th style="text-align:right">签约定价 AUD</th><th>定金（财务写）</th>
@@ -828,6 +832,7 @@ function preBigTable(rows){
     const signed=p.step>=6&&!p.lost, ro=signed||p.lost;
     return `<tr${p.lost?' style="opacity:.62"':signed?' style="background:#fbfcfe"':''}>
      <td class="c1"><b class="mono">${p.code}</b></td>
+     <td class="c1b"><span class="mono" style="font-size:11px">${p.opened||'—'}</span></td>
      <td class="c2"><b>${p.nick}</b>${p.lost?' <span class="pill p-red">已流失</span>':signed?' <span class="pill p-green">已签约</span>':''}
        <div class="hint">📍 ${p.street}, ${p.city} <b>${p.state}</b></div>
        <div class="hint">参建方 <b>${p.pp}</b> · 成员 <b>${p.hm}</b> · 方案${p.so?'✓':'<b style="color:var(--warning)">未填</b>'} ·
@@ -2203,7 +2208,7 @@ function projectList(d){
         oninput="pjQ=this.value;keepFocus('pjq')"></div>
     <table>
       <thead><tr>
-        <th>编号</th><th>项目 · 地址</th><th>业主 / Builder / 电工</th><th>状态</th>
+        <th>编号</th><th>立项时间</th><th>项目 · 地址</th><th>业主 / Builder / 电工</th><th>状态</th>
         <th style="text-align:right">停留</th><th>${col.h}<div class="hint" style="font-weight:400">本部门默认列</div></th>
         <th style="text-align:right">合同额</th><th style="text-align:right">已收</th>
         <th style="text-align:right">利润率</th><th></th></tr></thead>
@@ -2214,6 +2219,7 @@ function projectList(d){
         const over=(p.code==='KX-2026-0180');
         return `<tr>
           <td class="mono">${p.code}</td>
+          <td class="mono" style="font-size:11px">${p.opened||'—'}</td>
           <td><b>${p.name}</b><div class="hint">📍 ${p.street}, ${p.suburb} ${p.state}</div></td>
           <td class="hint">${p.owner}<br>B: ${p.builder}<br>E: ${p.elec}</td>
           <td><span class="pill ${p.band}">${p.status}</span></td>
@@ -2224,7 +2230,7 @@ function projectList(d){
           <td>${mo.m? (can('margin')?`<span class="pill ${mo.b}">${mo.m}</span>`:'<span class="masked">— —</span>')
                     : '<span class="masked">不显示</span>'}</td>
           <td><button class="btn" onclick="pickPj(${i});go('${d}','${DEPT[d].pages[2]||DEPT[d].pages[0]}')">进入 →</button></td>
-        </tr>`;}).join('')||`<tr><td colspan="10" class="muted" style="padding:var(--sp-4)">「${eff}」状态下暂无项目</td></tr>`}</tbody>
+        </tr>`;}).join('')||`<tr><td colspan="11" class="muted" style="padding:var(--sp-4)">「${eff}」状态下暂无项目</td></tr>`}</tbody>
     </table>
   </div>`;
 }
@@ -2286,17 +2292,18 @@ function overview(name,cards){
   <div class="panel">
     <div class="panel-head">卡点与异常 <span class="muted" style="font-weight:400">每条写明卡在哪 · 影响什么 · 去哪处理</span>
       <button class="btn" style="margin-left:auto" onclick="toggleDrawer()">🔔 待办中心 →</button></div>
-    <table><thead><tr><th>项目编号</th><th>项目地址</th><th>卡点</th><th>卡在哪 / 影响什么</th>
+    <table><thead><tr><th>项目编号</th><th>立项时间</th><th>项目地址</th><th>卡点</th><th>卡在哪 / 影响什么</th>
       <th style="text-align:right">卡了</th><th></th></tr></thead>
     <tbody>${stuck.map(s=>`<tr>
       <td>${s.pj==='?'?'<span class="pill p-red">★ 无从追溯</span>'
            :s.pj?`<b class="mono">${s.pj}</b>`:'<span class="pill p-grey">公司级</span>'}</td>
+      <td class="mono" style="font-size:11px">${s.pj&&s.pj!=='?'?(OPENED[s.pj]||'—'):'—'}</td>
       <td class="hint">${s.pj&&s.pj!=='?'?'📍 '+pjAddr(s.pj):s.pj==='?'?'需人工确认':'不属于单个项目'}</td>
       <td><b>${s.what}</b></td>
       <td class="hint">${s.why}</td>
       <td class="num">${s.h?s.h+'h':'—'}</td>
       <td><button class="btn" onclick="go('${s.t||tab}','${s.p}')">去处理 →</button></td>
-    </tr>`).join('')||`<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">此刻没有卡点 —— 待办去 🔔 待办中心看</td></tr>`}</tbody></table>
+    </tr>`).join('')||`<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">此刻没有卡点 —— 待办去 🔔 待办中心看</td></tr>`}</tbody></table>
   </div>`;
 }
 </script>
