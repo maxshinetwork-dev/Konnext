@@ -445,6 +445,19 @@ const { chromium } = require('playwright');
   ok(ec.self,'自己审批自己的报销未被拦');
   ok(ec.okd,'批准报销未生效');
   ok(ec.chart&&ec.untr,'报销页缺图表/无从追溯红牌');
+  // 二十四轮：类别只剩三种 + 项目地址列 + S4 未退料指路
+  const exp24=await page.evaluate(()=>{go('fin','项目报销');
+    const h=document.getElementById('main').innerHTML;
+    return JSON.stringify({no:!h.includes('>餐费<')&&!h.includes('>办公<'),
+      cat:h.includes('交通递送')&&h.includes('材料 / 工具 / 交通递送'),
+      addr:h.includes('项目 · 地址')&&h.includes('11 Bond St, Mosman NSW')});});
+  const e24=JSON.parse(exp24);
+  ok(e24.no&&e24.cat,'报销类别未收窄为 材料/工具/交通递送');
+  ok(e24.addr,'报销表缺项目昵称+完整地址列');
+  const s424=await page.evaluate(()=>{go('fin','尾款结算S4与Var');
+    const h=document.getElementById('main').innerHTML;
+    return h.includes('未退料 ⓘ')&&h.includes('结算未退料')&&h.includes('未退料（库管未填写）')&&h.includes('财务不手填');});
+  ok(s424,'S4 未退料来源/指路说明缺失');
   // 工资 + 成本利润率 + 设置
   await page.evaluate(()=>go('fin','工资数据'));
   fh=await page.evaluate(()=>document.getElementById('main').innerHTML);

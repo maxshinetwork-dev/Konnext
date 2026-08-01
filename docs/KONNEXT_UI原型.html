@@ -729,8 +729,8 @@ function finSettleUnret(code){ const f=finOf(code);
   f.unret=0; s4Open[code]=true; renderAll(); }
 function finS4Req(code){ const f=finOf(code),m=f.ms[3];
   const pend=f.vars.filter(v=>v.billable&&v.amt==null).length;
-  if(pend){ alert('门禁：尚有 '+pend+' 条变更待估价 —— 估完才能进 S4 结算'); return; }
-  if(f.unret){ alert('门禁：尚有未退料 '+A$(f.unret)+' 未结算 —— 直接开票会少收这笔'); return; }
+  if(pend){ alert('门禁：尚有 '+pend+' 条变更待估价 —— 在本行「明细 ▸」里逐条估价（填金额+依据）后才能进 S4 结算'); return; }
+  if(f.unret){ alert('门禁：尚有未退料 '+A$(f.unret)+' 未结算，直接开票会少收这笔 ——\n点本行「未退料」列的【结算未退料】按钮，按出库价转入变更即可（数字来自库管台账，财务不手填）'); return; }
   m.ver=(m.ver||0)+1; m.inv=todayS(); if(!m.firstInv) m.firstInv=m.inv;
   opLog(code,'标记 S4 已请款','应收 '+A$(msDue(f,m))+' 定格（尾款+变更+未退料 · 外部 Invoice v'+m.ver+'）',
     ['fin','presales','eng']);
@@ -772,10 +772,10 @@ function mtRecv(id){ const c=MCASES.find(x=>x.id===id);
 /* 项目报销：非正常采购进项目成本 · 不能自己审批自己 */
 const EXP=[
  {id:'EX-071',who:'陈工',dept:'工程管理',pj:'KX-2026-0142',cat:'材料补购',amt:186.5,st:'待审批',at:'2026/07/31',rc:true,note:'现场缺 2 个 86 底盒 · Bunnings 自购'},
- {id:'EX-070',who:'小周',dept:'运维',pj:'KX-2026-0180',cat:'交通',amt:38.2,st:'已批准',by:'王姐',at:'2026/07/30',rc:true},
- {id:'EX-069',who:'Tony',dept:'外包',pj:'KX-2026-0142',cat:'工具',amt:129,st:'已批准',by:'王姐',at:'2026/07/28',rc:true},
- {id:'EX-068',who:'王姐',dept:'财务',pj:'',cat:'办公',amt:64,st:'待审批',at:'2026/07/28',rc:true,self:true},
- {id:'EX-067',who:'阿强',dept:'工程管理',pj:'?',cat:'餐费',amt:42,st:'待审批',at:'2026/07/27',rc:true},
+ {id:'EX-070',who:'小周',dept:'运维',pj:'KX-2026-0180',cat:'交通递送',amt:38.2,st:'已批准',by:'王姐',at:'2026/07/30',rc:true},
+ {id:'EX-069',who:'Tony',dept:'外包',pj:'KX-2026-0142',cat:'工具',amt:129,st:'已批准',by:'王姐',at:'2026/07/28',rc:true,note:'开孔器磨损换新'},
+ {id:'EX-068',who:'王姐',dept:'财务',pj:'',cat:'工具',amt:64,st:'待审批',at:'2026/07/28',rc:true,self:true,note:'仓库封箱工具补购（公司级）'},
+ {id:'EX-067',who:'阿强',dept:'工程管理',pj:'?',cat:'交通递送',amt:42,st:'待审批',at:'2026/07/27',rc:true,note:'临时打车送料 · 未写哪个工地'},
  {id:'EX-066',who:'陈工',dept:'工程管理',pj:'KX-2026-0188',cat:'材料补购',amt:420,st:'已批准',by:'王姐',at:'2026/07/22',rc:true},
  {id:'EX-065',who:'小陈',dept:'工程管理',pj:'KX-2026-0142',cat:'材料补购',amt:96.9,st:'已驳回',by:'王姐',at:'2026/07/20',rc:false,note:'无收据照片 —— 门禁拒收'},
 ];
@@ -2789,12 +2789,15 @@ ${ops([
      <text x="${x+23}" y="${base-h-16}" font-size="10" text-anchor="middle" fill="#1f2933">${A$(v)}</text>
      <text x="${x+23}" y="${base-h-5}" font-size="9" text-anchor="middle" fill="${pct>1?'#b45309':'#5f6b76'}">${pct?'占成本 '+pct+'%':''}</text>
      <text x="${x+23}" y="${base+13}" font-size="9" text-anchor="middle" fill="#5f6b76">${k.slice(-4)}</text>`;}).join('');
- return `<h2>项目报销 <span class="pill p-cyan">非正常采购 → 项目成本的影响，管起来</span></h2>
- <div class="page-sub">记录采购信息与项目的关系 · 已批准的自动计入项目成本、直接影响利润率 · 说明看左下「？ 帮助」</div>
+ return `<h2>项目报销 <span class="pill p-cyan">只管项目管理报销 · 类别仅：材料 / 工具 / 交通递送</span></h2>
+ <div class="page-sub">记录采购信息与项目的关系 · 已批准的自动计入项目成本、直接影响利润率 ·
+   餐费等其他费用不走本系统（外部财务处理）· 说明看左下「？ 帮助」</div>
  ${ops([
   ['批准','必须有收据照片 · 不能自己审批自己 · 无从追溯必须先人工确认归属','计入项目成本（利润率立即联动）· 提交人收通知'],
   ['驳回','必须填原因（留痕）','提交人收通知'],
  ])}
+ ${helpNote(`本系统只负责<b>项目管理相关</b>的报销，类别只有三种：<b>材料（补购）· 工具 · 交通递送</b> ——
+   餐费、办公等其他费用不进这里，走外部财务流程。`)}
  ${helpNote(`三态归属：每笔报销要么落到<b>具体项目</b>（进项目成本），要么明确标<b>公司级</b>（单列不进项目），
    要么<b>★无从追溯</b>（红牌，人工确认前不能批）。柱状图上的「占成本 %」就是报销对该项目成本的侵蚀 ——
    超过 1% 变橙提醒。`)}
@@ -2807,12 +2810,16 @@ ${ops([
     <table style="flex:1">${cats.map((k,i)=>`<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${CPIE[i%4]};margin-right:6px;vertical-align:-1px"></span>${k}</td><td class="num">${A$(byCat[k])}</td></tr>`).join('')}</table>
    </div></div>
  </div>
- <table><thead><tr><th>单号</th><th>提交人</th><th>项目编号</th><th>立项时间</th><th>类别</th>
+ <table><thead><tr><th>单号</th><th>提交人</th><th>项目编号</th><th>立项时间</th><th>项目 · 地址</th><th>类别</th>
    <th style="text-align:right">金额</th><th>收据</th><th>状态</th><th>说明</th><th>操作</th></tr></thead>
  <tbody>${EXP.map(e=>`<tr${e.st==='已驳回'?' style="opacity:.55"':''}>
    <td class="mono">${e.id}</td><td>${e.who}<div class="hint">${e.dept}</div></td>
    <td>${e.pj==='?'?'<span class="pill p-red">★ 无从追溯</span>':e.pj?`<b class="mono">${e.pj}</b>`:'<span class="pill p-grey">公司级</span>'}</td>
    <td class="mono" style="font-size:11px">${e.pj&&e.pj!=='?'?(OPENED[e.pj]||'—'):'—'}</td>
+   <td>${(()=>{if(e.pj==='?') return '<span class="hint">需人工确认归属</span>';
+     if(!e.pj) return '<span class="hint">不属于单个项目</span>';
+     const pj=PROJECTS.find(p=>p.code===e.pj)||{};
+     return `<b>${pj.nick||''}</b><div class="hint">📍 ${pj.street||''}, ${pj.suburb||''} ${pj.state||''}</div>`;})()}</td>
    <td>${e.cat}</td><td class="num">${A$(e.amt)}</td>
    <td>${e.rc?'📎 ✓':'<span style="color:var(--breach)">✗ 无</span>'}</td>
    <td>${e.st==='待审批'?'<span class="pill p-amber">待审批</span>':e.st==='已批准'?`<span class="pill p-green">已批准</span><div class="hint">${e.by}</div>`:`<span class="pill p-red">已驳回</span><div class="hint">${e.by}</div>`}</td>
@@ -3058,10 +3065,14 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
    「标记已请款」那一刻<b>定格</b>；要改只能 v+1 开新版重发。不计费的行（移位整改）也列出来（灰✗），客户问起有交代。`)}
  ${helpNote(`变更两个数并排：<b>系统算价</b>（物料售卖价=成本÷(1−毛利率)，人工不单列）与<b>财务定价</b>（外部手工计算填回的真实数）——
    财务可以改，但必须填依据，谁改的何时改的全留痕。`)}
+ ${helpNote(`未退料从哪来：<b>不是财务手填</b> —— 库管的出库/退库台账现算（S2 出库时单价已定格，
+   金额=出库单价×领走没退回的数量）。有未退料时本行「未退料」列出现金额和【结算未退料】按钮，
+   点一下按出库价转成正式变更计入 S4；为 0 或没有则显示「—」，不挡 S4 请款。库管线上线后数字自动出现。`)}
  <div style="overflow-x:auto"><table class="bigtable"><thead>
   <tr class="leaf"><th class="c1">编号</th><th class="c1b">立项时间</th><th class="c2">昵称 · 地址</th>
    <th class="gs">付款人（发票就发给这个人）</th>
-   <th class="gs">变更积累</th><th style="text-align:right">未退料</th>
+   <th class="gs">变更积累</th>
+   <th style="text-align:right" title="来源=库管出库/退库台账现算（S2 出库单价 × 领走未退回的数量）——财务不手填；库管线上线后自动出现，0142 为演示预置值">未退料 ⓘ</th>
    <th class="gs" style="text-align:right">S4 组合 = 尾款 + 变更 + 未退料</th>
    <th>状态</th><th class="gs">操作</th><th>明细</th></tr></thead>
   <tbody>${rows.map(f=>{ const pj=PROJECTS.find(p=>p.code===f.code)||{};
@@ -3087,14 +3098,15 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
        <span class="pill p-green">计费 ${bill.length} 条 ${can('customer')?A$(varSum):'— —'}</span>
        ${pend.length?`<span class="pill p-red">待估价 ${pend.length}</span>`:''}
        ${nb.length?`<span class="pill p-grey">不计费 ${nb.length}</span>`:''}</td>
-     <td class="num">${f.unret?`${can('customer')?A$(f.unret):'— —'}<br><button class="btn" style="margin-top:3px" onclick="finSettleUnret('${f.code}')">结算未退料</button>`:'—'}</td>
+     <td class="num">${f.unret?`${can('customer')?A$(f.unret):'— —'}<br><button class="btn btn-primary" style="margin-top:3px" onclick="finSettleUnret('${f.code}')">结算未退料</button>`
+       :'<span class="hint" title="库管出库/退库台账还没有本项目的未退料数据 —— 库管线上线后自动现算；未填写按 0 处理不挡 S4 请款，但开票前请与库管口头核对一句">未退料（库管未填写）</span>'}</td>
      <td class="gs num">${can('customer')?`${A$(f.price*.1)} + ${A$(varSum)} + ${A$(f.unret||0)} =
        <b>${A$(due)}</b>`:'— —'}
        ${m.inv?`<div class="hint" title="S4 发票已发出，其中已含变更金额；要改请开新版本重发">🔒 ${m.inv} · v${m.ver} 定格</div>`
               :'<div class="hint">现算 · 未定格</div>'}</td>
      <td>${st}</td>
      <td class="gs" style="white-space:nowrap">${m.inv?(m.settled?'—':`<button class="btn" onclick="alert('收款登记与催款在「项目收款S1-S3」同套流程（演示从简）')">收款/催款</button>`)
-        :gate?`<button class="btn" disabled title="门禁：${gate}" style="opacity:.5;cursor:not-allowed">标记 S4 已请款</button>`
+        :gate?`<button class="btn" disabled title="门禁：${gate}${gate.includes('未退料')?' —— 点本行「结算未退料」按钮先转入变更':gate.includes('待估价')?' —— 在「明细 ▸」里逐条填金额+依据':''}" style="opacity:.5;cursor:not-allowed">标记 S4 已请款</button>`
         :`<button class="btn btn-primary" onclick="finS4Req('${f.code}')">标记 S4 已请款</button>`}</td>
      <td><a style="color:var(--accent);cursor:pointer" onclick="s4Open['${f.code}']=!s4Open['${f.code}'];renderAll()">${open?'收起 ▴':'明细 ▸'}</a></td></tr>`;
     if(!open) return main;
