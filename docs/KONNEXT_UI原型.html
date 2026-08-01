@@ -410,6 +410,60 @@ const TODOS=[
 const PRE_ADDR={
  'KX-2026-0190':'5 Jersey St, Hornsby NSW','KX-2026-0198':'9 Old Northern Rd, Castle Hill NSW',
  'KX-2026-0186':'27 Raglan St, Mosman NSW','KX-2026-0210':'18 Church St, Ryde NSW'};
+/* 售前大表数据（全局：状态勾点选/反选要跨渲染保存） */
+const BIGPD=[
+  {code:'KX-2026-0210',nick:'吴宅',street:'18 Church St',city:'Ryde',state:'NSW',
+   step:1,lost:false,stay:3,d:['07-27'],est:'250k–300k',
+   o1:'吴先生',o1n:'',o1p:'0455 002 100',o1e:'',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
+   rel:'',reln:'',relp:'',rele:'',relr:'',ct:'',cv:'',
+   use:'',ht:'',stage:'',pp:0,hm:0,so:false,fl:false,
+   qno:'',hrs:'',price:'',dep:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
+  {code:'KX-2026-0201',nick:'黄宅',street:'12 Orchard Rd',city:'Chatswood',state:'NSW',
+   step:2,lost:false,stay:12,d:['07-02','07-18'],est:'300k–350k',
+   o1:'黄先生',o1n:'黄总',o1p:'0433 111 222',o1e:'huang@x.com',o1r:'决策人',
+   o2:'黄太太',o2n:'',o2p:'0433 111 333',o2e:'',o2r:'共同决策',
+   rel:'Kevin',reln:'',relp:'0433 111 444',rele:'',relr:'介绍人',ct:'百分比',cv:'3.5',
+   use:'自住',ht:'House',stage:'结构',pp:1,hm:3,so:true,fl:false,
+   qno:'',hrs:'',price:'',dep:'',
+   noteF:'',noteFr:'',noteE:'业主提到想预留影音室，设计时留走线',noteEr:'unread'},
+  {code:'KX-2026-0198',nick:'郑宅',street:'9 Old Northern Rd',city:'Castle Hill',state:'NSW',
+   step:3,lost:false,stay:6,d:['06-20','07-08','07-24'],est:'400k–450k',
+   o1:'郑女士',o1n:'',o1p:'0400 219 800',o1e:'',o1r:'决策人',
+   o2:'郑先生',o2n:'',o2p:'0400 219 801',o2e:'',o2r:'共同决策',
+   rel:'Amy',reln:'',relp:'0400 219 900',rele:'',relr:'介绍人',ct:'百分比',cv:'2.0',
+   use:'自住',ht:'Townhouse',stage:'CC',pp:2,hm:2,so:true,fl:false,
+   qno:'',hrs:'',price:'',dep:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
+  {code:'KX-2026-0190',nick:'许宅',street:'5 Jersey St',city:'Hornsby',state:'NSW',
+   step:4,lost:false,stay:9,d:['05-30','06-12','07-01','07-21'],est:'550k–650k',
+   o1:'许先生',o1n:'',o1p:'0412 300 190',o1e:'xu@x.com',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
+   rel:'',reln:'',relp:'',rele:'',relr:'',ct:'固定',cv:'3000',
+   use:'出售',ht:'Duplex',stage:'Rough-in',pp:1,hm:0,so:true,fl:false,
+   qno:'',hrs:'',price:'',dep:'',
+   noteF:'业主想谈分期比例 5/45/40/10，能不能接？',noteFr:'unread',noteE:'',noteEr:''},
+  {code:'KX-2026-0186',nick:'周宅',street:'27 Raglan St',city:'Mosman',state:'NSW',
+   step:5,lost:false,stay:2,d:['05-12','05-28','06-15','07-10','07-28'],est:'600k–700k',
+   o1:'周女士',o1n:'Amanda',o1p:'0422 018 600',o1e:'zhou@x.com',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
+   rel:'设计师Lily',reln:'',relp:'0422 018 900',rele:'lily@x.com',relr:'介绍人',ct:'百分比',cv:'2.5',
+   use:'自住',ht:'House',stage:'拆除',pp:3,hm:4,so:true,fl:true,
+   qno:'Q-2026-0186',hrs:'500',price:'655,000',dep:'',
+   noteF:'定金比例按标准 10%，业主已确认',noteFr:'read',
+   noteE:'泳池设备房要走专线，工程排线注意\n二楼影音室墙内预埋 HDMI 光纤 ×2\n车库充电桩 32A 独立回路',noteEr:'read'},
+  {code:'KX-2026-0155',nick:'李宅',street:'7 Beecroft Rd',city:'Epping',state:'NSW',
+   step:3,lost:true,stay:'',d:['04-02','04-20','05-08','··','··','··','06-22'],est:'280k–320k',
+   o1:'李先生',o1n:'',o1p:'0433 155 000',o1e:'',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
+   rel:'中介小赵',reln:'',relp:'0433 155 900',rele:'',relr:'介绍人',ct:'百分比',cv:'3.0',
+   use:'出售',ht:'House',stage:'DA',pp:0,hm:0,so:false,fl:false,
+   qno:'',hrs:'',price:'',dep:'',noteF:'流标 · 佣金不产生',noteFr:'read',noteE:'',noteEr:''},
+  {code:'KX-2026-0142',nick:'王宅',street:'8 Franklin Rd',city:'Cherrybrook',state:'NSW',
+   step:6,lost:false,stay:'',d:['2025-11-02','11-20','12-05','12-18','12-28','01-05'],est:'450k–520k',
+   o1:'王先生',o1n:'老王',o1p:'0433 142 000',o1e:'wang@x.com',o1r:'决策人',
+   o2:'王太太',o2n:'',o2p:'0433 142 001',o2e:'',o2r:'共同决策',
+   rel:'—',reln:'',relp:'',rele:'',relr:'',ct:'—',cv:'',
+   use:'自住',ht:'House',stage:'Rough-in',pp:2,hm:4,so:true,fl:true,
+   qno:'Q-2026-0142',hrs:'400',price:'500,000',dep:'A$50,000',
+   noteF:'S1 已开票已收',noteFr:'read',noteE:'已移交工程线',noteEr:'read'},
+];
+
 const pjLabel = code => { const x=PROJECTS.find(p=>p.code===code);
   return x? `${x.code.slice(-4)} ${x.suburb}` : code; };
 const pjAddr = code => { const x=PROJECTS.find(p=>p.code===code);
@@ -547,6 +601,35 @@ function detOpen(code,nick){
 }
 function detClose(){ document.getElementById('detback').classList.remove('open');
   document.getElementById('detbox').classList.remove('open'); }
+/* ── 状态勾点选与反选（用户定：支持人为点错回退；改后停留清零重新计时提醒） ── */
+function preTick(code,i){
+  const p=BIGPD.find(x=>x.code===code); if(!p) return;
+  if(p.lost){ alert('该项目已勾「已流失」（终态）——先点第⑦勾取消流失，才能改前六步'); return; }
+  const target=i+1;
+  if(target===p.step){                       // 点当前勾 = 反选回退一步
+    if(p.step===1){ alert('「接洽中」是立项后的起始状态，不能取消'); return; }
+    if(p.step===6) alert('已撤回「已签约」（演示）——正式系统会通知财务并留痕');
+    p.step=p.step-1;
+  }else{
+    p.step=target;                            // 前进，或直接点回更早的勾
+    if(target===6) alert('已勾「已签约」→ 自动通知财务开 S1 定金 Invoice（演示）');
+  }
+  p.d=(p.d||[]).slice(0,p.step);
+  for(let k=0;k<p.step;k++) if(!p.d[k]||p.d[k]==='··') p.d[k]='今天';
+  p.d[p.step-1]=p.d[p.step-1]||'今天';
+  p.stay=(p.step>=6)?'':0;                    // 终态不计停留；其余从 0 重新计时→提醒重算
+  renderAll();
+}
+function preLost(code){
+  const p=BIGPD.find(x=>x.code===code); if(!p) return;
+  if(!p.lost&&p.step>=6){ alert('已签约项目不走「流失」——如需作废走财务撤销流程（后续版本）'); return; }
+  p.lost=!p.lost;
+  if(p.lost){ (p.d=p.d||[])[6]='今天'; p.stay='';
+    alert('已勾「已流失」（=流标，终态归档）。点错的话再点一次第⑦勾即可取消'); }
+  else{ if(p.d) p.d[6]=undefined; p.stay=0;
+    alert('已取消「已流失」——项目回到第 '+p.step+' 步，停留从今天重新计时'); }
+  renderAll();
+}
 
 /* ════════ 渲染骨架 ════════ */
 function renderAll(){
@@ -1315,58 +1398,7 @@ ${ops([
    ⑥财务注释/工程注释：售前填 → 对应部门必读（已读标） */
 'presales/售前大表':()=>{
  const STAGES=['接洽中','设计中','报价中','修订中','待签约','已签约','已流失'];
- const BIGP=[
-  {code:'KX-2026-0210',nick:'吴宅',street:'18 Church St',city:'Ryde',state:'NSW',
-   step:1,lost:false,stay:3,d:['07-27'],est:'250k–300k',
-   o1:'吴先生',o1n:'',o1p:'0455 002 100',o1e:'',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
-   rel:'',reln:'',relp:'',rele:'',relr:'',ct:'',cv:'',
-   use:'',ht:'',stage:'',pp:0,hm:0,so:false,fl:false,
-   qno:'',hrs:'',price:'',dep:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
-  {code:'KX-2026-0201',nick:'黄宅',street:'12 Orchard Rd',city:'Chatswood',state:'NSW',
-   step:2,lost:false,stay:12,d:['07-02','07-18'],est:'300k–350k',
-   o1:'黄先生',o1n:'黄总',o1p:'0433 111 222',o1e:'huang@x.com',o1r:'决策人',
-   o2:'黄太太',o2n:'',o2p:'0433 111 333',o2e:'',o2r:'共同决策',
-   rel:'Kevin',reln:'',relp:'0433 111 444',rele:'',relr:'介绍人',ct:'百分比',cv:'3.5',
-   use:'自住',ht:'House',stage:'结构',pp:1,hm:3,so:true,fl:false,
-   qno:'',hrs:'',price:'',dep:'',
-   noteF:'',noteFr:'',noteE:'业主提到想预留影音室，设计时留走线',noteEr:'unread'},
-  {code:'KX-2026-0198',nick:'郑宅',street:'9 Old Northern Rd',city:'Castle Hill',state:'NSW',
-   step:3,lost:false,stay:6,d:['06-20','07-08','07-24'],est:'400k–450k',
-   o1:'郑女士',o1n:'',o1p:'0400 219 800',o1e:'',o1r:'决策人',
-   o2:'郑先生',o2n:'',o2p:'0400 219 801',o2e:'',o2r:'共同决策',
-   rel:'Amy',reln:'',relp:'0400 219 900',rele:'',relr:'介绍人',ct:'百分比',cv:'2.0',
-   use:'自住',ht:'Townhouse',stage:'CC',pp:2,hm:2,so:true,fl:false,
-   qno:'',hrs:'',price:'',dep:'',noteF:'',noteFr:'',noteE:'',noteEr:''},
-  {code:'KX-2026-0190',nick:'许宅',street:'5 Jersey St',city:'Hornsby',state:'NSW',
-   step:4,lost:false,stay:9,d:['05-30','06-12','07-01','07-21'],est:'550k–650k',
-   o1:'许先生',o1n:'',o1p:'0412 300 190',o1e:'xu@x.com',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
-   rel:'',reln:'',relp:'',rele:'',relr:'',ct:'固定',cv:'3000',
-   use:'出售',ht:'Duplex',stage:'Rough-in',pp:1,hm:0,so:true,fl:false,
-   qno:'',hrs:'',price:'',dep:'',
-   noteF:'业主想谈分期比例 5/45/40/10，能不能接？',noteFr:'unread',noteE:'',noteEr:''},
-  {code:'KX-2026-0186',nick:'周宅',street:'27 Raglan St',city:'Mosman',state:'NSW',
-   step:5,lost:false,stay:2,d:['05-12','05-28','06-15','07-10','07-28'],est:'600k–700k',
-   o1:'周女士',o1n:'Amanda',o1p:'0422 018 600',o1e:'zhou@x.com',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
-   rel:'设计师Lily',reln:'',relp:'0422 018 900',rele:'lily@x.com',relr:'介绍人',ct:'百分比',cv:'2.5',
-   use:'自住',ht:'House',stage:'拆除',pp:3,hm:4,so:true,fl:true,
-   qno:'Q-2026-0186',hrs:'500',price:'655,000',dep:'',
-   noteF:'定金比例按标准 10%，业主已确认',noteFr:'read',
-   noteE:'泳池设备房要走专线，工程排线注意\n二楼影音室墙内预埋 HDMI 光纤 ×2\n车库充电桩 32A 独立回路',noteEr:'read'},
-  {code:'KX-2026-0155',nick:'李宅',street:'7 Beecroft Rd',city:'Epping',state:'NSW',
-   step:3,lost:true,stay:'',d:['04-02','04-20','05-08','··','··','··','06-22'],est:'280k–320k',
-   o1:'李先生',o1n:'',o1p:'0433 155 000',o1e:'',o1r:'决策人',o2:'',o2n:'',o2p:'',o2e:'',o2r:'',
-   rel:'中介小赵',reln:'',relp:'0433 155 900',rele:'',relr:'介绍人',ct:'百分比',cv:'3.0',
-   use:'出售',ht:'House',stage:'DA',pp:0,hm:0,so:false,fl:false,
-   qno:'',hrs:'',price:'',dep:'',noteF:'流标 · 佣金不产生',noteFr:'read',noteE:'',noteEr:''},
-  {code:'KX-2026-0142',nick:'王宅',street:'8 Franklin Rd',city:'Cherrybrook',state:'NSW',
-   step:6,lost:false,stay:'',d:['2025-11-02','11-20','12-05','12-18','12-28','01-05'],est:'450k–520k',
-   o1:'王先生',o1n:'老王',o1p:'0433 142 000',o1e:'wang@x.com',o1r:'决策人',
-   o2:'王太太',o2n:'',o2p:'0433 142 001',o2e:'',o2r:'共同决策',
-   rel:'—',reln:'',relp:'',rele:'',relr:'',ct:'—',cv:'',
-   use:'自住',ht:'House',stage:'Rough-in',pp:2,hm:4,so:true,fl:true,
-   qno:'Q-2026-0142',hrs:'400',price:'500,000',dep:'A$50,000',
-   noteF:'S1 已开票已收',noteFr:'read',noteE:'已移交工程线',noteEr:'read'},
- ];
+ const BIGP=BIGPD;
  const cities=['全部',...new Set(BIGP.map(p=>p.city))];
  const states=['全部',...new Set(BIGP.map(p=>p.state))];
  const q=bigQ.trim().toLowerCase();
@@ -1401,14 +1433,18 @@ ${ops([
      ${v?`<div class="notepop">${v}</div>`:''}
      <div style="margin-top:3px">${badge}</div></div>`;
  };
+ /* 勾真能点（用户定）：点未勾=推进到那一步；点当前勾=反选回退一步；
+    点更早的勾=直接退回那一步；第⑦勾点一下流失、再点取消。改完停留清零重新计时 */
  const ticks=(p)=>`<div class="mini7">${STAGES.map((s,i)=>{
     const date=p.d&&p.d[i]&&p.d[i]!=='··'?` · ${p.d[i]}`:'';
     if(i===6) return `<div class="m7${p.lost?' lost':''}">
-      <span class="bx" title="已流失（=流标，一回事）· 勾上即终态归档${p.lost?date:''}">${p.lost?'✗':'7'}</span>
+      <span class="bx" onclick="preLost('${p.code}')"
+        title="已流失（=流标，一回事）· 点一下勾上（终态归档），点错再点一下取消${p.lost?date:''}">${p.lost?'✗':'7'}</span>
       <i class="lb">${s}</i></div>`;
     const done=i<p.step, cur=(i===p.step-1)&&!p.lost&&p.step<6;
     return `<div class="m7${done?(cur?' on now':' on'):''}">
-      <span class="bx" title="${s}${cur?'（当前状态）':''} · 手填勾选${done?date:''}">${done?'✓':i+1}</span>
+      <span class="bx" onclick="preTick('${p.code}',${i})"
+        title="${s}${cur?'（当前状态 · 再点一下=反选回退）':done?' · 点一下退回这一步':' · 点一下推进到这一步'}${done?date:''}">${done?'✓':i+1}</span>
       <i class="lb">${s}</i></div>`;
    }).join('')}</div>`;
  const gCount=10
@@ -1508,6 +1544,9 @@ ${ops([
  </table></div>
  ${helpNote(`① 6+1 个勾就是售前的全部状态：接洽中/设计中/报价中/修订中/待签约/已签约 + 第⑦红勾「已流失」。
    勾到哪=处于哪，每勾定格日期（悬停可见），「停留」= 当前状态已等的天数（超阈值变橙）。`)}
+ ${helpNote(`①-2 勾是点出来的：<b>点下一格=推进</b>；<b>点当前格=反选回退一步</b>（人为点错可回退）；
+   点更早的格=直接退回那一步；第⑦勾点一下流失、点错再点一下取消。
+   任何改动后「停留」清零、从当天重新计时 —— 提醒也跟着重算，点错造成的偶发不做特殊处理。`)}
  ${helpNote(`② 第⑦勾（红）= 流失/流标同一回事，勾上整行归档变灰；已签约只亮 6 个勾。
    勾「已签约」会自动通知财务开 S1 定金 Invoice —— 其余勾不惊动别的部门。`)}
  ${helpNote(`③ 预测报价（范围）立项时填；报价单号/预测工时/签约定价三样「待签约」阶段一并填；
