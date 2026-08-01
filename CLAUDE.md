@@ -10,7 +10,9 @@
 澳大利亚（悉尼/NSW）智能家居集成公司 KONNEXT 的多部门协作办公管理平台。
 六个部门：售前 · 工程管理 · 采购 · 库管 · 财务 · 工程运维。
 
-**数据库契约已完成并验证**：`db/contract_v0_32.sql` —— 60 表 / 86 视图 / 140 条 RLS 策略 / 73 条断言。
+**数据库契约已完成并验证**：`db/contract_v0_33.sql` —— 61 表 / 86 视图 / 144 条 RLS 策略 / 73 条断言。
+（v0_33 变更＝财务收款线已定口径：payment_remind_log 催款记录（渠道/双语/级别+烂尾不催款门禁）、
+project 付款人指定六列、GST/停服/超期财务键、催款模版 12 键——回归新增 26 号文件，拦截 130→134）
 （v0_32 变更＝售前定稿对齐：6+1 落库口径、预测报价范围 est_quote_low/high、双注释+已读回执、
 pre_stage_remind_days 与 六个下拉选项键（角色/工种/房屋/施工阶段/楼层/屋顶，对应硬 CHECK 放开）、
 v_presales_pipeline + 每日提醒函数、to_contact 删除、「留标」全库更名「已流失」；
@@ -68,7 +70,7 @@ Supabase / PostgreSQL 15+
 ```
 CLAUDE.md                       ← 本文件
 db/
-  contract_v0_32.sql            ← 契约本体，唯一权威（v0_31/v0_30 保留作历史）
+  contract_v0_33.sql            ← 契约本体，唯一权威（v0_32/v0_31/v0_30 保留作历史）
   tests/                        ← 26 个回归测试 + run_all.sh
   tools/
     导入期初库存.py
@@ -100,10 +102,10 @@ db/deploy/10_app_role.sql       ← konnext_app 降权角色（每个库都要�
 ```bash
 # 1. 干净建库，必须零报错
 createdb konnext_test
-psql -d konnext_test -v ON_ERROR_STOP=1 -f db/contract_v0_32.sql
+psql -d konnext_test -v ON_ERROR_STOP=1 -f db/contract_v0_33.sql
 
-# 2. 回归套件：期望 130 次拦截
-cd db/tests && bash run_all.sh ../contract_v0_32.sql
+# 2. 回归套件：期望 134 次拦截（26 个文件；26 号=财务收款线）
+cd db/tests && bash run_all.sh ../contract_v0_33.sql
 
 # 3. 断言：期望「✓ 全部通过」
 psql -d konnext_test -c "SELECT * FROM fn_assertion_summary();"
@@ -195,7 +197,7 @@ psql -d konnext_test -c "SELECT * FROM fn_assertion_summary();"
 
 ---
 
-## 当前任务：售前已定稿 · 财务全线雏形已出（2026-08-01 深夜收工）→ 等用户上手反馈
+## 当前任务：售前已定稿 · 财务改到三十轮（2026-08-02 收工）→ 明天继续工资数据等
 
 **2026-08-01 收工状态**（售前七天十九轮反馈全落地，用户口头「基本满意」定稿；
 冒烟 6 角色 × 105 页零报错，界面断言全过）：
@@ -221,8 +223,14 @@ psql -d konnext_test -c "SELECT * FROM fn_assertion_summary();"
 - `docs/tools/ui-smoke.js` —— UI 全量冒烟（6 角色 × 117 页 + 售前/待办/日志/财务全部断言；首次 `npm i playwright --no-save`）
 - `docs/tools/发布原型副本.py` —— 生成 Artifact 发布副本（同文件重发＝同链接更新）
 
+**2026-08-02 收工补充**（财务二十二~三十轮全落地，见 §15）：付款人机制（候选=售前采集，全息+下拉保存留痕）·
+三件套标准列（编号·立项时间·昵称+完整地址）· 催款体系（分级/双语无昵称模版/弹窗渠道选择/烂尾不催款/回执非必要）·
+原生弹窗全面替换（Artifact 沙箱屏蔽 alert/confirm——自制 toast+弹层，原型今后禁用原生弹窗）·
+运维支持成本核算（人工现算+物料出库归集）· 报销三类口径 · 去处理直达过滤 · 「全部」清搜索。
+**契约 v0_33 已出**：财务收款线已定口径落库，三步全绿（零报错 / 134 拦截 / 73 断言）。
+
 **下次开工顺序**：
-1. **用户上手玩财务十一页** → 按反馈逐轮改（照售前节奏：每轮截图+重发原型+提交）→ 「财务定稿」→ 契约 v0_33（§15 欠账清单）
+1. **工资数据页继续**（用户明日）+ 财务其余反馈迭代至「财务定稿」→ v0_34 清 §15 剩余欠账（工资相关键等）
 2. 阶段 1 页面移植（登录/壳/待办抽屉）；之后按链路 SM1~4 → 出库 → … → 订阅
 
 **每页只定三件事**：①谁进来、要干什么 ②能做哪些操作、被什么门禁卡 ③操作完触发谁
