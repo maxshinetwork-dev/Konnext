@@ -471,9 +471,16 @@ const STAGES=['接洽中','设计中','报价中','修订中','待签约','已�
 const OPENED={};PROJECTS.forEach(p=>OPENED[p.code]=p.opened);BIGPD.forEach(p=>OPENED[p.code]=p.opened);
 /* 图表联动基线：页面载入时的签约/流失数。此后勾的改动按「发生在今天」
    计入 周/月/季/年 各档与当月柱（演示口径；正式系统按每勾定格日期精确落桶） */
-const BASE_SIGNED=BIGPD.filter(p=>!p.lost&&p.step>=6).length;
-const BASE_LOST=BIGPD.filter(p=>p.lost).length;
-const BASE_TOTAL=BIGPD.length;   // 立项联动基线：演示里新建档的项目按「今天立项」计入图表
+/* 十七轮：图表全按项目真实数据现算（跟正式系统同口径，不再用模拟史+今日增量）
+   ①每月新立项数量 = opened 落在该月的项目数，没有就是 0
+   ②每月立项项目成交图 = 同一批项目按当前状态拆三段，去向永远回填到立项月份的柱上 */
+const cohortAll=()=>{ const seen={},list=[];
+  BIGPD.forEach(p=>{seen[p.code]=1;
+    list.push({opened:p.opened,out:p.lost?'l':(p.step>=6?'s':'p')});});
+  PROJECTS.forEach(p=>{ if(seen[p.code]) return;      // 编号重复时以售前大表为准
+    list.push({opened:p.opened,out:p.status==='留标'?'l':(p.status==='接洽当中'?'p':'s')});});
+  return list;};   // 交付/维护中/烂尾都经过签约 → 售前口径算已成交
+const ymOf=d=>d?d.slice(2,4)+'-'+d.slice(5,7):'';     // '2026/07/27' → '26-07'
 
 const pjLabel = code => { const x=PROJECTS.find(p=>p.code===code);
   return x? `${x.code.slice(-4)} ${x.suburb}` : code; };
@@ -1750,19 +1757,18 @@ ${ops([
     <text x="${lx.toFixed(1)}" y="${(ly+3).toFixed(1)}" font-size="10" fill="#1f2933"
       text-anchor="${Math.cos(mid)>=0?'start':'end'}">${STAGES[i]} ${Math.round(n/total*100)}%</text>`;
  }).join(''):'';
- /* 柱状：所选时段 立项总数 = 绿(签约)+红(流标)+蓝(待签约在途) 堆一根柱，段间白隔 · 数字直标 */
- const PRE_STATS={week:{label:'周',full:'过去一周',opened:2,signed:0,lost:0},
-   month:{label:'月',full:'过去 1 个月',opened:5,signed:1,lost:1},
-   quarter:{label:'季',full:'过去 1 季度',opened:11,signed:3,lost:2},
-   year:{label:'年',full:'过去 1 年',opened:32,signed:12,lost:6}};
- /* 联动：勾改动的差值（对基线）按「发生在今天」计入所选时间档 */
- const dS=BIGPD.filter(p=>!p.lost&&p.step>=6).length-BASE_SIGNED;
- const dL=BIGPD.filter(p=>p.lost).length-BASE_LOST;
- const dO=BIGPD.length-BASE_TOTAL;   // 演示里新建档的都算「今天立项」
+ /* 柱状：所选时段内「立项」的项目按当前状态拆三段 —— 按立项日期取窗口，现算不落库 */
+ const cohort=cohortAll();
+ const PRE_STATS={week:{label:'周',full:'过去一周',days:7},
+   month:{label:'月',full:'过去 1 个月',days:30},
+   quarter:{label:'季',full:'过去 1 季度',days:91},
+   year:{label:'年',full:'过去 1 年',days:365}};
  const st0=PRE_STATS[statPeriod];
- const st={label:st0.label,full:st0.full,opened:st0.opened,
-   signed:Math.max(0,st0.signed+dS),lost:Math.max(0,st0.lost+dL)};
- st.opened=st0.opened+dO;
+ const _now=new Date(), since=new Date(_now.getTime()-st0.days*86400000);
+ since.setHours(0,0,0,0);
+ const win=cohort.filter(c=>c.opened&&new Date(c.opened)>=since);
+ const st={label:st0.label,full:st0.full,opened:win.length,
+   signed:win.filter(c=>c.out==='s').length,lost:win.filter(c=>c.out==='l').length};
  const pend=Math.max(0,st.opened-st.signed-st.lost);
  const H=170,W=64,bx=58,base=196,hOf=n=>st.opened?Math.round(n/st.opened*H):0;
  const hS=hOf(st.signed),hL=hOf(st.lost),hP=H-hS-hL;
@@ -1771,14 +1777,13 @@ ${ops([
  const bar=seg(base-hS,hS,'#047857','已签约',st.signed)
    +seg(base-hS-hL,hL,'#dc2626','已流标',st.lost)
    +seg(base-H,hP,'#2563eb','待签约(在途)',pend);
- /* 近 12 个月逐月堆叠柱（十二轮加）：月度演示数据与「年」合计对齐 32/12/6 */
- const MONTHS=[
-  {m:'25-08',o:2,s:1,l:0},{m:'25-09',o:3,s:1,l:1},{m:'25-10',o:2,s:1,l:0},
-  {m:'25-11',o:3,s:2,l:0},{m:'25-12',o:2,s:1,l:1},{m:'26-01',o:3,s:1,l:0},
-  {m:'26-02',o:2,s:1,l:1},{m:'26-03',o:3,s:1,l:0},{m:'26-04',o:3,s:1,l:1},
-  {m:'26-05',o:2,s:0,l:1},{m:'26-06',o:3,s:1,l:0},
-  {m:'26-07',o:4+dO,s:Math.max(0,1+dS),l:Math.max(0,1+dL)}];   /* 当月柱同步勾与新立项 */
- const mMax=Math.max(...MONTHS.map(x=>x.o)), mH=150, mBase=180, mW=24, mPitch=45, mX0=34;
+ /* 近 12 个月（含当月）：逐月由 opened + 当前状态现算 —— 改勾/新立项即时回填到对应月柱 */
+ const M12=[...Array(12)].map((_,i)=>{const d=new Date(_now.getFullYear(),_now.getMonth()-11+i,1);
+   return String(d.getFullYear()).slice(2)+'-'+String(d.getMonth()+1).padStart(2,'0');});
+ const MONTHS=M12.map(m=>{const rows=cohort.filter(c=>ymOf(c.opened)===m);
+   return {m,o:rows.length,s:rows.filter(c=>c.out==='s').length,
+     l:rows.filter(c=>c.out==='l').length};});
+ const mMax=Math.max(1,...MONTHS.map(x=>x.o)), mH=150, mBase=180, mW=24, mPitch=45, mX0=34;
  const mh=n=>n?Math.max(Math.round(n/mMax*mH),3):0;
  const mbars=MONTHS.map((x,i)=>{
    const p=x.o-x.s-x.l, bx2=mX0+i*mPitch;
@@ -1804,7 +1809,7 @@ ${ops([
  <div class="page-sub">上半看全局：比例与立项去向 · 下半按状态过滤，表格与「项目列表」同款可操作 · 说明看左下「？ 帮助」</div>
  ${ops([
   ['按状态过滤（全部 + 6+1）','—','下表与「项目列表」完全同款：勾可点选/反选、修改抽屉、注释大框都能用'],
-  ['切换时间范围（周/月/季/年 方块）','—','立项去向柱状图立即重算（演示数据）'],
+  ['切换时间范围（周/月/季/年 方块）','—','按立项日期取窗口，去向柱立即重算'],
  ])}
  ${helpNote(`扇形图 = <b>在途</b>项目（不含已签约/已流失）里每个状态的占比 —— 有序阶段用同一蓝色由浅到深，
    每片直接标注名称与百分比，右侧表格给出数量兜底。`)}
@@ -1812,13 +1817,14 @@ ${ops([
    <span style="color:#047857"><b>绿=已签约</b></span> ·
    <span style="color:#dc2626"><b>红=已流标</b></span> ·
    <span style="color:#2563eb"><b>蓝=还在途（待签约）</b></span>；时间范围点「周/月/季/年」方块切换。`)}
- ${helpNote(`月度图有两张、各答一个问题（十四轮定）：
-   <b>「每月新立项数量」</b>（纯蓝单柱）= 这个月市场进来多少 → 看增长；
-   <b>「每月新立项的去向」</b>（三段柱）= 这个月立的项后来签了/流了/还在途几个 → 看转化。
-   两张图都按<b>立项月份</b>归柱：项目哪怕持续好几个月，也只出现在它立项那个月的柱子里，不是积累量、不重复计数。`)}
- ${helpNote(`图表联动：在项目列表或本页表格里改 6+1 的勾，扇形与柱状图<b>即时同步</b> ——
-   勾的改动按「发生在今天」计入所选时间档与当月柱（演示口径）；
-   正式系统按每个勾的定格日期精确落到对应月份。`)}
+ ${helpNote(`月度图有两张、各答一个问题（十七轮定名）：
+   <b>「每月新立项数量（市场增长）」</b>（纯蓝单柱）= 这个月建档了几个项目，没有就是 0 → 看增长；
+   <b>「每月立项项目成交图」</b>（三段柱）= 这个月立的项目后来签了/流了/还在途几个 → 看转化。
+   去向永远回填到<b>立项月份</b>的柱上：26-05 立的项哪怕 9 月才流失，红段也记在 26-05 那根柱 ——
+   不是积累量、不重复计数。`)}
+ ${helpNote(`图表联动：本页所有图都由项目数据<b>现算</b>（立项日期 + 当前状态，跟正式系统同口径）——
+   改 6+1 的勾，成交图在该项目<b>立项月份</b>的柱上换色，不动别的月；
+   立项引导建新档，两张月度图的<b>当月</b>柱同时 +1；扇形与上方去向柱一并同步。`)}
  <div class="split">
   <div class="panel"><div class="panel-head">在途项目 · 状态比例
      <span class="muted" style="font-weight:400">不含已签约/已流失 · 共 ${total} 个</span></div>
@@ -1846,7 +1852,7 @@ ${ops([
  </div>
  <div class="panel">
   <div class="panel-head">近 12 个月 · 每月<b style="color:var(--accent)">新立项数量</b>（市场增长）
-    <span class="muted" style="font-weight:400">一个月一根柱 · 只看市场进来多少，不拆去向</span></div>
+    <span class="muted" style="font-weight:400">一个月一根柱 · 当月建档数，没有就是 0 · 不拆去向</span></div>
   <div class="panel-body" style="overflow-x:auto">
    <svg width="600" height="204" viewBox="0 0 600 204" role="img" aria-label="近12个月每月新立项数量柱状图">
      <line x1="20" y1="180" x2="590" y2="180" stroke="#d8e0e8"/>
@@ -1857,15 +1863,15 @@ ${ops([
   </div>
  </div>
  <div class="panel">
-  <div class="panel-head">近 12 个月 · 每月新立项的<b>去向</b>
-    <span class="muted" style="font-weight:400">同一批新立项按结果拆三段 · 每个项目只算在它立项那个月，不重复计数</span>
+  <div class="panel-head">近 12 个月 · <b>每月立项项目成交图</b>
+    <span class="muted" style="font-weight:400">这个月立的项目现在签了/流了/还在途 · 去向回填到立项月份的柱上，不重复计数</span>
     <span style="margin-left:auto;font-size:var(--fs-xs);display:flex;gap:12px">
       <span><i style="display:inline-block;width:9px;height:9px;background:#047857;border-radius:2px;margin-right:4px"></i>已签约</span>
       <span><i style="display:inline-block;width:9px;height:9px;background:#dc2626;border-radius:2px;margin-right:4px"></i>已流标</span>
       <span><i style="display:inline-block;width:9px;height:9px;background:#2563eb;border-radius:2px;margin-right:4px"></i>待签约(在途)</span>
     </span></div>
   <div class="panel-body" style="overflow-x:auto">
-   <svg width="600" height="204" viewBox="0 0 600 204" role="img" aria-label="近12个月每月立项去向堆叠柱状图">
+   <svg width="600" height="204" viewBox="0 0 600 204" role="img" aria-label="近12个月每月立项项目成交堆叠柱状图">
      <line x1="20" y1="180" x2="590" y2="180" stroke="#d8e0e8"/>
      <line x1="20" y1="105" x2="590" y2="105" stroke="#eef2f6"/>
      <line x1="20" y1="30" x2="590" y2="30" stroke="#eef2f6"/>
