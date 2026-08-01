@@ -2474,7 +2474,7 @@ ${ops([
  </div>
  <div style="display:flex;gap:var(--sp-2);margin:var(--sp-3) 0;flex-wrap:wrap">
    ${['全部',...STAGES].map(s=>`<button class="btn${stFilter===s?' btn-primary':''}"
-      onclick="stFilter='${s}';renderAll()">${s}</button>`).join('')}
+      onclick="stFilter='${s}';${s==='全部'?"bigQ='';":''}renderAll()">${s}</button>`).join('')}
    <span class="muted" style="font-size:var(--fs-xs);align-self:center">显示 ${stRows.length} / ${BIGPD.length}</span>
  </div>
  ${preBigTable(stRows)}`;
@@ -3208,7 +3208,7 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
    </div></div>
  </div>
  <div style="display:flex;gap:var(--sp-2);margin:var(--sp-3) 0;flex-wrap:wrap;align-items:center">
-   ${chips.map(x=>`<button class="btn${finF===x?' btn-primary':''}" onclick="finF='${x}';renderAll()">${x}</button>`).join('')}
+   ${chips.map(x=>`<button class="btn${finF===x?' btn-primary':''}" onclick="finF='${x}';${x==='全部'?"finQ='';":''}renderAll()">${x}</button>`).join('')}
    <input id="finq" placeholder="🔍 搜编号 / 昵称 / 付款人…" style="width:220px" value="${finQ}" oninput="finQ=this.value;keepFocus('finq')">
    <span class="muted" style="font-size:var(--fs-xs)">显示 ${rows.length} / ${FINPAY.length}</span>
  </div>
@@ -3468,7 +3468,7 @@ function projectList(d){
   ${canNew?ops([['+ 新建项目（售前）','无业务门禁 · 立项即建档，编号自动 KX-2026-XXXX','建档后即出现在这张全公司列表，各部门按默认筛选看到']]):''}
   <div class="panel">
     <div class="panel-head" style="gap:var(--sp-2);flex-wrap:wrap">
-      ${(d==='fin'?['财务相关']:[]).concat(PJ_STATUSES).map(s=>`<button class="btn${eff===s?' btn-primary':''}"${s==='财务相关'?' title="施工中+交付+维护中+烂尾 —— 接洽中(售前没走完)与已流失(售前结论)财务无需参与"':''} onclick="pjFilter='${s}';renderAll()">${s}</button>`).join('')}
+      ${(d==='fin'?['财务相关']:[]).concat(PJ_STATUSES).map(s=>`<button class="btn${eff===s?' btn-primary':''}"${s==='财务相关'?' title="施工中+交付+维护中+烂尾 —— 接洽中(售前没走完)与已流失(售前结论)财务无需参与"':''} onclick="pjFilter='${s}';${(s==='全部'||s==='财务相关')?"pjQ='';":''}renderAll()">${s}</button>`).join('')}
       <span class="muted" style="font-weight:400">显示 ${rows.length} / ${PROJECTS.length} · 本部门默认「${dft}」</span>
       <input id="pjq" class="search" placeholder="🔍 搜编号 / 名称 / 地址…" value="${pjQ}"
         style="width:190px;margin-left:auto;padding:5px var(--sp-2)"
