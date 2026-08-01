@@ -704,11 +704,47 @@ function finSettle(code,si){ const f=finOf(code),m=f.ms[si];
   if(ntf){ notifAdd(code,m.s+' 已结清',ntf.split('·').map(x=>({who:x.trim(),how:'待办',ok:false})));
     alert(m.s+' 已结清 ✓\n已通知：'+ntf); }
   renderAll(); }
-function finRemind(code,si){ const f=finOf(code),m=f.ms[si];
-  m.remind.push({at:todayS(),how:'短信',by:WHO[me].name});
-  notifAdd(code,m.s+' 催款（第 '+m.remind.length+' 次）',[{who:'付款人 '+f.payer,how:'短信',ok:false}]);
-  opLog(code,m.s+' 催款','第 '+m.remind.length+' 次 · 短信 → '+f.payer+'（'+f.payerPh+'）',['fin']);
-  alert('催款短信已发 '+f.payer+'（回 YES 记为已确认）'); renderAll(); }
+/* ═══ 催款模版（二十七轮用户定）═══
+   两级：normal=常规催款（收款S1-S3 / S4与Var 页内发）· final=最终催款（催账和停服页发，语气升级+停服警告）
+   变量由系统自动抓取（也可手动改文字）；正式系统落 eng_setting 模版键（write_depts=finance），可按阶段扩展覆盖 */
+let tplTab='normal';
+const STAGE_NAME={S1:'定金',S2:'物料款',S3:'人工款',S4:'尾款'};
+const REMIND_TPL={
+ normal:{
+  sms:'【KONNEXT】{付款人}您好，{项目昵称}（{项目地址}）{节点} {节点名}尚有 {还差金额} 未到账（Invoice {Invoice号} · {Invoice日期} 开出）。请您安排支付，如已付款请回 YES。—— 第 {催款次数} 次提醒',
+  emailTitle:'【KONNEXT 付款提醒】{项目编号} {项目昵称} · {节点} {节点名} · 还差 {还差金额}（第 {催款次数} 次）',
+  email:'{付款人}您好：\n\n您的项目 {项目昵称}（{项目地址}）的 {节点} {节点名}，应收 {应收金额}，已收 {已收金额}，尚有 {还差金额} 未到账。\nInvoice：{Invoice号}（{Invoice日期} 开出 · {版本}）。\n\n请您近期安排支付；如已付款请忽略本邮件并告知我们。\n\nKONNEXT 财务部 · {联系电话}'},
+ final:{
+  sms:'【KONNEXT · 最终催款】{付款人}您好，{项目昵称} {节点} {节点名} {还差金额} 已超期 {超期天数} 天（第 {催款次数} 次通知）。请于 7 日内付清，逾期将按合同暂停本项目全部服务。付款后请回 YES。',
+  emailTitle:'【KONNEXT 最终催款函】{项目编号} {项目昵称} · 超期 {超期天数} 天 · 请于 7 日内处理',
+  email:'{付款人}您好：\n\n这是关于项目 {项目昵称}（{项目地址}）{节点} {节点名}的最终催款通知（第 {催款次数} 次）。\n应收 {应收金额} · 已收 {已收金额} · 未付 {还差金额}，自 Invoice {Invoice号}（{Invoice日期}）发出已超期 {超期天数} 天。\n\n请于 7 日内付清。逾期未付，我们将按合同约定暂停本项目全部服务，由此产生的工期与费用影响由业主承担。\n\nKONNEXT 财务部 · {联系电话}'}};
+function tplRender(str,f,m){
+  const pj=PROJECTS.find(p=>p.code===f.code)||{};
+  const due=msDue(f,m),paid=msPaid(m);
+  const over=m.inv?Math.max(daysSince(m.inv)-finSet.overdueDays,0):0;
+  const map={'付款人':f.payer,'项目昵称':pjNick(f.code),'项目地址':pjAddr(f.code),'项目编号':f.code,
+    '节点':m.s,'节点名':STAGE_NAME[m.s]||'','应收金额':A$(due),'已收金额':A$(paid),
+    '还差金额':A$(Math.round((due-paid)*100)/100),'Invoice号':'INV-'+f.code.slice(-4)+'-'+m.s,
+    'Invoice日期':m.inv||'—','版本':'v'+(m.ver||1),'超期天数':String(over),
+    '催款次数':String(m.remind.length+1),'公司名':'KONNEXT','联系电话':'02 8000 0000'};
+  return str.replace(/\{([^}]+)\}/g,(_,k)=>map[k]!==undefined?map[k]:'{'+k+'}'); }
+function finTplSave(){ const lv=tplTab;
+  const s=document.getElementById('tpl-sms'),et=document.getElementById('tpl-etitle'),e=document.getElementById('tpl-email');
+  if(s) REMIND_TPL[lv].sms=s.value;
+  if(et) REMIND_TPL[lv].emailTitle=et.value;
+  if(e) REMIND_TPL[lv].email=e.value;
+  opLog('','保存催款模版','「'+(lv==='normal'?'常规催款':'最终催款')+'」短信/邮件模版已更新（全财务生效）',['fin']);
+  renderAll(); }
+function finRemind(code,si,level){ const f=finOf(code),m=f.ms[si]; level=level||'normal';
+  if(f.stalled){ alert('该项目已标注「烂尾」—— 不再关联催款；请走「拒付停服」与法务路径'); return; }
+  const text=tplRender(REMIND_TPL[level].sms,f,m);
+  if(!confirm((level==='final'?'【最终催款】':'【常规催款】')+'将按模版发出短信（模版在「催账和停服」页可改）：\n\n'+text)) return;
+  m.remind.push({at:todayS(),how:'短信',by:WHO[me].name,level});
+  const title=tplRender(REMIND_TPL[level].emailTitle,f,m);
+  notifAdd(code,(level==='final'?'最终催款':m.s+' 催款')+'（第 '+m.remind.length+' 次）· '+title,
+    [{who:'付款人 '+f.payer,how:'短信',ok:false}]);
+  opLog(code,(level==='final'?'最终催款':m.s+' 催款'),'第 '+m.remind.length+' 次 · 短信 → '+f.payer+'（'+f.payerPh+'）· '+(level==='final'?'含停服警告':'常规提醒'),['fin']);
+  alert((level==='final'?'最终催款':'催款')+'短信已发 '+f.payer+'（回 YES 记为已确认）'); renderAll(); }
 function finVarSave(code,vid){ const f=finOf(code),v=f.vars.find(x=>x.id===vid);
   if(f.ms[3].inv){ alert('门禁：S4 发票已于 '+f.ms[3].inv+' 发出，其中已含变更金额；要改请 S4 开新版本重发'); return; }
   if(!v.billable){ alert('门禁：移位是电工装错位置，属整改不计费 —— 变更结算金额填了直接拒'); return; }
@@ -2720,9 +2756,13 @@ ${ops([
  <div class="page-sub">所有正在收款过程中的项目与维护单一屏盯住 · 超期即入待办每天提醒（同一条更新不累积）·
    为恶性拒付停服做足数据支持 · 说明看左下「？ 帮助」</div>
  ${ops([
-  ['催款','—','付款人收催款短信（回 YES 记确认）· 次数与时间留痕，管理层看得到全过程'],
+  ['最终催款（本页专属）','已标注烂尾的项目不再催款','按「最终催款」模版发出（含 7 日停服警告）· 次数与时间留痕'],
+  ['编辑催款模版（页尾）','—','常规/最终两级 × 短信/邮件标题/邮件正文 · 保存即全财务生效并留痕'],
   ['标记拒付 → 项目级停服','停整个项目不是停单张单 · 需确认','全部门收通知：任何新任务派不出 · '+finSet.suspendDays+' 天后提醒停用服务器（声明由市场发）'],
  ])}
+ ${helpNote(`催款分两级（用户定）：<b>常规催款</b>在「项目收款S1-S3」和「尾款结算S4与Var」页内发，语气是提醒；
+   <b>最终催款</b>只在本页发，语气升级并带「7 日内付清否则停服」警告 —— 是停服前的最后一步。
+   <b>已标注烂尾的项目不再关联催款</b>：催也没有意义，直接走拒付停服与法务路径。`)}
  ${helpNote(`两个超期数各管一件事：<b>本期超期</b>从最后一版 Invoice 发出起算 ${finSet.overdueDays} 天 —— 催账用；
    <b>账龄</b>从第一版发出起算，<b>改版重发抹不掉</b> —— 给管理层看，堵住「改金额重发把超期归零」的口子。`)}
  <div class="cards">
@@ -2745,7 +2785,8 @@ ${ops([
    <td class="num">${over>0?`<b style="color:var(--breach)">${over} 天</b>`:'—'}</td>
    <td class="num" title="从第一版 Invoice 起算，改版重发抹不掉">${age} 天</td>
    <td style="font-size:11px">${m.remind.length?`${m.remind.length} 次 · ${m.remind[m.remind.length-1].at}<div class="hint">${m.remind[m.remind.length-1].how} · ${m.remind[m.remind.length-1].by}</div>`:'—'}</td>
-   <td style="white-space:nowrap"><button class="btn" onclick="finRemind('${f.code}',${si})">催款</button>
+   <td style="white-space:nowrap">${f.stalled?'<span class="pill p-red" title="已标注烂尾 —— 不再关联催款">烂尾 · 不催款</span> '
+     :`<button class="btn" style="border-color:var(--breach);color:var(--breach)" title="按「最终催款」模版发出（含停服警告）——本页催款即最终催款" onclick="finRemind('${f.code}',${si},'final')">最终催款</button> `}
      ${f.susp?'':`<button class="btn" style="color:var(--breach)" onclick="finSuspend('${f.code}')">拒付停服</button>`}</td>
   </tr>`;}).join('')}
   ${rowsM.map(x=>{const c=x.c;
@@ -2757,7 +2798,43 @@ ${ops([
    <td class="num">${daysSince(c.inv)>finSet.overdueDays?`<b style="color:var(--breach)">${daysSince(c.inv)-finSet.overdueDays} 天</b>`:'—'}</td>
    <td class="num">${daysSince(c.inv)} 天</td><td>—</td>
    <td><button class="btn" onclick="mtRecv('${c.id}')">登记收款结案</button></td></tr>`;}).join('')}
- </tbody></table>`;
+ </tbody></table>
+ <div class="panel" style="margin-top:var(--sp-4)">
+  <div class="panel-head">催款模版 <span class="muted" style="font-weight:400">财务定义 · 系统按模版抓取变量后发出 · 保存留痕</span>
+    <span style="margin-left:auto;display:flex;gap:6px">
+      <button class="btn${tplTab==='normal'?' btn-primary':''}" onclick="tplTab='normal';renderAll()">常规催款模版</button>
+      <button class="btn${tplTab==='final'?' btn-primary':''}" onclick="tplTab='final';renderAll()">最终催款模版</button>
+    </span></div>
+  <div class="panel-body">
+   <div class="split" style="gap:var(--sp-4)">
+    <div>
+     <div class="field"><label>短信正文（发付款人手机，回 YES 记确认）</label>
+       <textarea id="tpl-sms" style="width:100%;min-height:84px;font-size:12px;line-height:1.6">${REMIND_TPL[tplTab].sms}</textarea></div>
+     <div class="field"><label>邮件标题（也用作系统通知 title）</label>
+       <input id="tpl-etitle" style="width:100%;font-size:12px" value="${REMIND_TPL[tplTab].emailTitle}"></div>
+     <div class="field"><label>邮件正文</label>
+       <textarea id="tpl-email" style="width:100%;min-height:150px;font-size:12px;line-height:1.6">${REMIND_TPL[tplTab].email}</textarea></div>
+     <button class="btn btn-primary" onclick="finTplSave()">保存${tplTab==='normal'?'常规':'最终'}催款模版</button>
+     <span class="hint" style="margin-left:8px">保存即全财务生效 · 改动进操作日志</span>
+    </div>
+    <div>
+     <div class="field"><label>可用变量（系统自动抓取 · 写在花括号里即可）</label>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">
+       ${[['{付款人}','付款人姓名'],['{项目昵称}','如 罗宅'],['{项目地址}','完整地址'],['{项目编号}','KX-…'],
+          ['{节点}','S1~S4'],['{节点名}','定金/物料款/人工款/尾款'],['{应收金额}','定格应收'],['{已收金额}','现算'],
+          ['{还差金额}','现算'],['{Invoice号}','系统单号'],['{Invoice日期}','开出日'],['{版本}','v1/v2'],
+          ['{超期天数}','本期超期'],['{催款次数}','本次是第几次'],['{公司名}','KONNEXT'],['{联系电话}','公司电话']]
+         .map(([v,d])=>`<span class="pill p-grey" title="${d}" style="font-family:var(--mono);font-size:11px">${v}</span>`).join('')}
+      </div></div>
+     <div class="field"><label>实时预览（用 ${(()=>{const f0=FINPAY.find(x=>{const s=finStage(x);return s.m&&s.m.inv&&!x.stalled;})||FINPAY[0];return pjNick(f0.code);})()} 的当前节点数据渲染短信）</label>
+      <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:12px;line-height:1.8;white-space:pre-wrap">${(()=>{
+        const f0=FINPAY.find(x=>{const s=finStage(x);return s.m&&s.m.inv&&!x.stalled;})||FINPAY[0];
+        const s0=finStage(f0); const m0=(s0.m&&s0.m.inv)?s0.m:f0.ms[0];
+        return tplRender(REMIND_TPL[tplTab].sms,f0,m0);})()}</div></div>
+     <div class="hint">发出前还会弹渲染结果确认一遍 · 需要某个阶段完全独立的模版时，正式系统按阶段加覆盖行即可（先用变量适配）</div>
+    </div>
+   </div>
+  </div></div>`;
 },
 
 'fin/工资数据':()=>{
@@ -3035,7 +3112,8 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
     else if(f.susp) acts='<span class="pill p-red">已停服</span>';
     else{ const m=st.m;
       if(!m.inv) acts=gateBtn('标记已请款',`finReq('${f.code}',${si})`,st.gate);
-      else{ acts=`<button class="btn" onclick="finRemind('${f.code}',${si})">催款</button> `;
+      else{ acts=f.stalled?`<span class="pill p-red" title="已标注烂尾 —— 不再关联催款，走拒付停服与法务路径">烂尾 · 不催款</span> `
+          :`<button class="btn" onclick="finRemind('${f.code}',${si})">催款</button> `;
         acts+=msPaid(m)>=msDue(f,m)
           ?`<button class="btn btn-primary" onclick="finSettle('${f.code}',${si})">点结清</button>`
           :`<button class="btn" title="不足额结清必须填原因（差额定格）" onclick="finSettle('${f.code}',${si})">结清(差额)</button>`; } }
@@ -3139,7 +3217,8 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
        ${m.inv?`<div class="hint" title="S4 发票已发出，其中已含变更金额；要改请开新版本重发">🔒 ${m.inv} · v${m.ver} 定格</div>`
               :'<div class="hint">现算 · 未定格</div>'}</td>
      <td>${st}</td>
-     <td class="gs" style="white-space:nowrap">${m.inv?(m.settled?'—':`<button class="btn" onclick="alert('收款登记与催款在「项目收款S1-S3」同套流程（演示从简）')">收款/催款</button>`)
+     <td class="gs" style="white-space:nowrap">${m.inv?(m.settled?'—'
+        :`<button class="btn" onclick="finRemind('${f.code}',3)">催款</button>`)
         :gate?`<button class="btn" disabled title="门禁：${gate}${gate.includes('未退料')?' —— 点本行「结算未退料」按钮先转入变更':gate.includes('待估价')?' —— 在「明细 ▸」里逐条填金额+依据':''}" style="opacity:.5;cursor:not-allowed">标记 S4 已请款</button>`
         :`<button class="btn btn-primary" onclick="finS4Req('${f.code}')">标记 S4 已请款</button>`}</td>
      <td><a style="color:var(--accent);cursor:pointer" onclick="s4Open['${f.code}']=!s4Open['${f.code}'];renderAll()">${open?'收起 ▴':'明细 ▸'}</a></td></tr>`;
