@@ -466,6 +466,10 @@ const BIGPD=[
    noteF:'S1 已开票已收',noteFr:'read',noteE:'已移交工程线',noteEr:'read'},
 ];
 const STAGES=['接洽中','设计中','报价中','修订中','待签约','已签约','已流失'];
+/* 图表联动基线：页面载入时的签约/流失数。此后勾的改动按「发生在今天」
+   计入 周/月/季/年 各档与当月柱（演示口径；正式系统按每勾定格日期精确落桶） */
+const BASE_SIGNED=BIGPD.filter(p=>!p.lost&&p.step>=6).length;
+const BASE_LOST=BIGPD.filter(p=>p.lost).length;
 
 const pjLabel = code => { const x=PROJECTS.find(p=>p.code===code);
   return x? `${x.code.slice(-4)} ${x.suburb}` : code; };
@@ -1733,7 +1737,13 @@ ${ops([
    month:{label:'月',full:'过去 1 个月',opened:5,signed:1,lost:1},
    quarter:{label:'季',full:'过去 1 季度',opened:11,signed:3,lost:2},
    year:{label:'年',full:'过去 1 年',opened:32,signed:12,lost:6}};
- const st=PRE_STATS[statPeriod], pend=st.opened-st.signed-st.lost;
+ /* 联动：勾改动的差值（对基线）按「发生在今天」计入所选时间档 */
+ const dS=BIGPD.filter(p=>!p.lost&&p.step>=6).length-BASE_SIGNED;
+ const dL=BIGPD.filter(p=>p.lost).length-BASE_LOST;
+ const st0=PRE_STATS[statPeriod];
+ const st={label:st0.label,full:st0.full,opened:st0.opened,
+   signed:Math.max(0,st0.signed+dS),lost:Math.max(0,st0.lost+dL)};
+ const pend=Math.max(0,st.opened-st.signed-st.lost);
  const H=170,W=64,bx=58,base=196,hOf=n=>st.opened?Math.round(n/st.opened*H):0;
  const hS=hOf(st.signed),hL=hOf(st.lost),hP=H-hS-hL;
  const seg=(y,h,c,label,n)=>h<=0?'':`<rect x="${bx}" y="${y}" width="${W}" height="${Math.max(h-2,1)}" fill="${c}" rx="3"><title>${label} ${n} 个</title></rect>
@@ -1746,7 +1756,8 @@ ${ops([
   {m:'25-08',o:2,s:1,l:0},{m:'25-09',o:3,s:1,l:1},{m:'25-10',o:2,s:1,l:0},
   {m:'25-11',o:3,s:2,l:0},{m:'25-12',o:2,s:1,l:1},{m:'26-01',o:3,s:1,l:0},
   {m:'26-02',o:2,s:1,l:1},{m:'26-03',o:3,s:1,l:0},{m:'26-04',o:3,s:1,l:1},
-  {m:'26-05',o:2,s:0,l:1},{m:'26-06',o:3,s:1,l:0},{m:'26-07',o:4,s:1,l:1}];
+  {m:'26-05',o:2,s:0,l:1},{m:'26-06',o:3,s:1,l:0},
+  {m:'26-07',o:4,s:Math.max(0,1+dS),l:Math.max(0,1+dL)}];   /* 当月柱同步勾的改动 */
  const mMax=Math.max(...MONTHS.map(x=>x.o)), mH=150, mBase=180, mW=24, mPitch=45, mX0=34;
  const mh=n=>n?Math.max(Math.round(n/mMax*mH),3):0;
  const mbars=MONTHS.map((x,i)=>{
@@ -1774,6 +1785,9 @@ ${ops([
    <span style="color:#2563eb"><b>蓝=还在途（待签约）</b></span>；时间范围点「周/月/季/年」方块切换。`)}
  ${helpNote(`近 12 个月图 = 每月一根柱从左往右逐月推进（当前月加粗），配色同上；
    柱顶数字是当月立项数，鼠标悬停每一段看具体数量；月度合计与「年」档口径一致（演示数据）。`)}
+ ${helpNote(`图表联动：在项目列表或本页表格里改 6+1 的勾，扇形与柱状图<b>即时同步</b> ——
+   勾的改动按「发生在今天」计入所选时间档与当月柱（演示口径）；
+   正式系统按每个勾的定格日期精确落到对应月份。`)}
  <div class="split">
   <div class="panel"><div class="panel-head">在途项目 · 状态比例
      <span class="muted" style="font-weight:400">不含已签约/已流失 · 共 ${total} 个</span></div>
