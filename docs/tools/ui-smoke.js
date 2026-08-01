@@ -545,6 +545,19 @@ const { chromium } = require('playwright');
   const nc2=JSON.parse(noteChk);
   ok(nc2.r1,'S1 待办内容未附售前注释');
   ok(nc2.read&&nc2.badge,'标已读未落回执/未变角标');
+  // 二十六轮：编号+立项时间的表 → 三件套（+昵称+完整地址）全覆盖
+  const trioChk=await page.evaluate(()=>{
+    const grab=()=>document.getElementById('main').innerHTML;
+    go('fin','操作日志'); const a=grab().includes('项目 · 地址')&&grab().includes('8 Franklin Rd, Cherrybrook NSW');
+    go('fin','催账和停服'); const b=grab().includes('<b>张宅</b>')&&grab().includes('31 Blaxland Rd, Ryde NSW');
+    go('fin','运维财务支持'); const c=grab().includes('<b>陈宅</b>')&&grab().includes('22 Rosamond St, Hornsby NSW');
+    go('fin','财务节点'); const d=grab().includes('项目 · 地址')&&grab().includes('<b>王宅</b>');
+    return JSON.stringify({a,b,c,d});});
+  const tc=JSON.parse(trioChk);
+  ok(tc.a,'操作日志缺昵称+完整地址');
+  ok(tc.b,'催账和停服缺昵称+完整地址');
+  ok(tc.c,'运维财务支持缺昵称+完整地址');
+  ok(tc.d,'财务节点卡点表缺昵称+完整地址');
   await page.evaluate(()=>{go('fin','项目收款S1-S3');FINOPEN['KX-2026-0203']=true;renderAll();});
   await page.screenshot({path:__dirname+'/shot_收款S1S3.png'});
   await page.evaluate(()=>{FINOPEN['KX-2026-0203']=false;go('fin','尾款结算S4与Var');s4Open['KX-2026-0142']=true;renderAll();});

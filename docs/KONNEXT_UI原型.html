@@ -833,6 +833,8 @@ const ymOf=d=>d?d.slice(2,4)+'-'+d.slice(5,7):'';     // '2026/07/27' → '26-07
 
 const pjLabel = code => { const x=PROJECTS.find(p=>p.code===code);
   return x? `${x.code.slice(-4)} ${x.suburb}` : code; };
+const pjNick = code => { const x=PROJECTS.find(p=>p.code===code);
+  if(x) return x.nick||x.name; const b=BIGPD.find(p=>p.code===code); return b?b.nick:code; };
 const pjAddr = code => { const x=PROJECTS.find(p=>p.code===code);
   return x? `${x.street}, ${x.suburb} ${x.state}` : (PRE_ADDR[code]||'—'); };
 /* 十九轮：超期时长自动用 年/月/天/小时 表述（取前两级，月=30天/年=365天） */
@@ -1219,15 +1221,16 @@ function opLogPage(d){
      oninput="logQ=this.value;keepFocus('logq')">
    <span class="muted" style="font-size:var(--fs-xs)">共 ${rows.length} 条</span>
  </div>
- <table><thead><tr><th>时间</th><th>项目编号</th><th>立项时间</th><th>操作人</th><th>操作</th><th>改了什么</th></tr></thead>
+ <table><thead><tr><th>时间</th><th>项目编号</th><th>立项时间</th><th>项目 · 地址</th><th>操作人</th><th>操作</th><th>改了什么</th></tr></thead>
  <tbody>${rows.map(r=>`<tr>
    <td class="mono" style="font-size:11px;white-space:nowrap">${r.ts}</td>
    <td>${r.pj?`<b class="mono" style="color:var(--accent)">${r.pj}</b>`:'<span class="pill p-grey">公司级</span>'}</td>
    <td class="mono" style="font-size:11px">${r.pj?(OPENED[r.pj]||'—'):'—'}</td>
+   <td>${r.pj?`<b>${pjNick(r.pj)}</b><div class="hint">📍 ${pjAddr(r.pj)}</div>`:'<span class="hint">不属于单个项目</span>'}</td>
    <td style="white-space:nowrap">${r.who}<span class="hint"> · ${r.dept}</span></td>
    <td style="white-space:nowrap"><b>${r.action}</b></td>
    <td style="max-width:380px">${r.detail}</td></tr>`).join('')
-   ||`<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">没有匹配的日志</td></tr>`}</tbody></table>`;
+   ||`<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">没有匹配的日志</td></tr>`}</tbody></table>`;
 }
 
 function preBigTable(rows){
@@ -2645,12 +2648,12 @@ ${ops([
  <div class="panel">
   <div class="panel-head">卡点与异常 <span class="muted" style="font-weight:400">每条写明卡在哪 · 影响什么 · 去哪处理</span>
     <button class="btn" style="margin-left:auto" onclick="toggleDrawer()">🔔 待办中心 →</button></div>
-  <table><thead><tr><th>项目编号</th><th>立项时间</th><th>项目地址</th><th>卡点</th><th>卡在哪 / 影响什么</th>
+  <table><thead><tr><th>项目编号</th><th>立项时间</th><th>项目 · 地址</th><th>卡点</th><th>卡在哪 / 影响什么</th>
     <th style="text-align:right">卡了</th><th></th></tr></thead>
   <tbody>${stuck.map(s=>`<tr>
     <td>${s.pj==='?'?'<span class="pill p-red">★ 无从追溯</span>':s.pj?`<b class="mono">${s.pj}</b>`:'<span class="pill p-grey">公司级</span>'}</td>
     <td class="mono" style="font-size:11px">${s.pj&&s.pj!=='?'?(OPENED[s.pj]||'—'):'—'}</td>
-    <td class="hint">${s.pj&&s.pj!=='?'?'📍 '+pjAddr(s.pj):s.pj==='?'?'需人工确认':'不属于单个项目'}</td>
+    <td>${s.pj&&s.pj!=='?'?`<b>${pjNick(s.pj)}</b><div class="hint">📍 ${pjAddr(s.pj)}</div>`:`<span class="hint">${s.pj==='?'?'需人工确认':'不属于单个项目'}</span>`}</td>
     <td><b>${s.what}</b></td><td class="hint">${s.why}</td>
     <td class="num">${s.h?s.h+'h':'—'}</td>
     <td><button class="btn" onclick="go('${s.t||tab}','${s.p}')">去处理 →</button></td></tr>`).join('')}
@@ -2681,7 +2684,7 @@ ${ops([
     <div class="card-value">${can('salary')&&can('stock')?A$2(costT):'— —'}</div>
     <div class="card-foot">人工（打卡工时）+ 物料（出库台账）</div></div>
  </div>
- <table><thead><tr><th>单号</th><th>项目编号</th><th>立项时间</th><th>内容（客户签的就是这段）</th><th>归因</th>
+ <table><thead><tr><th>单号</th><th>项目编号</th><th>立项时间</th><th>项目 · 地址</th><th>内容（客户签的就是这段）</th><th>归因</th>
    <th>成本核算（现算 · 只读）</th>
    <th style="text-align:right">口头预估</th><th style="text-align:right">定价/开票</th><th>状态</th><th>操作</th></tr></thead>
  <tbody>${MCASES.map(c=>{
@@ -2694,6 +2697,7 @@ ${ops([
    return `<tr${c.free?' style="opacity:.8"':''}>
    <td class="mono">${c.id}</td><td><b class="mono">${c.code}</b></td>
    <td class="mono" style="font-size:11px">${OPENED[c.code]||'—'}</td>
+   <td><b>${pjNick(c.code)}</b><div class="hint">📍 ${pjAddr(c.code)}</div></td>
    <td style="max-width:200px">${c.content}<div class="hint">${c.dur} · ${c.tech}</div></td>
    <td style="font-size:var(--fs-xs)">${c.free?'<span class="pill p-green">'+c.causeCn+'</span>':c.causeCn}</td>
    <td style="max-width:300px">${costCell}</td>
@@ -2726,7 +2730,7 @@ ${ops([
   <div class="card"><div class="card-label">超期笔数</div><div class="card-value">${rowsC.filter(x=>daysSince(x.m.inv)>finSet.overdueDays).length}</div><div class="card-foot">超 ${finSet.overdueDays} 天（设置里改）</div></div>
   <div class="card"><div class="card-label">停服项目</div><div class="card-value">${FINPAY.filter(f=>f.susp).length}</div><div class="card-foot">拒付 · 项目级全面停服</div></div>
  </div>
- <table><thead><tr><th>类型</th><th>项目编号</th><th>立项时间</th><th>单据</th><th style="text-align:right">应收</th>
+ <table><thead><tr><th>类型</th><th>项目编号</th><th>立项时间</th><th>项目 · 地址</th><th>单据</th><th style="text-align:right">应收</th>
   <th style="text-align:right">还差</th><th style="text-align:right">本期超期</th><th style="text-align:right">账龄</th>
   <th>最后催款</th><th>操作</th></tr></thead>
  <tbody>${rowsC.map(x=>{const {f,m}=x; const over=daysSince(m.inv)-finSet.overdueDays;
@@ -2734,6 +2738,7 @@ ${ops([
    return `<tr${f.susp?' style="opacity:.55"':over>0?' class="over"':''}>
    <td>合同款</td><td><b class="mono">${f.code}</b>${f.susp?' <span class="pill p-red">已停服</span>':f.stalled?' <span class="pill p-red">烂尾</span>':''}</td>
    <td class="mono" style="font-size:11px">${OPENED[f.code]||'—'}</td>
+   <td><b>${pjNick(f.code)}</b><div class="hint">📍 ${pjAddr(f.code)}</div></td>
    <td class="mono">${m.s} · v${m.ver}${m.ver>1?`<div class="hint" title="账龄从第一版算起，改版抹不掉">首版 ${m.firstInv}</div>`:''}</td>
    <td class="num">${can('customer')?A$(msDue(f,m)):'— —'}</td>
    <td class="num">${can('customer')?A$(msDue(f,m)-msPaid(m)):'— —'}</td>
@@ -2746,6 +2751,7 @@ ${ops([
   ${rowsM.map(x=>{const c=x.c;
    return `<tr><td>维护单</td><td><b class="mono">${c.code}</b></td>
    <td class="mono" style="font-size:11px">${OPENED[c.code]||'—'}</td>
+   <td><b>${pjNick(c.code)}</b><div class="hint">📍 ${pjAddr(c.code)}</div></td>
    <td class="mono">${c.id}</td>
    <td class="num">${can('customer')?A$(c.amt):'— —'}</td><td class="num">${can('customer')?A$(c.amt):'— —'}</td>
    <td class="num">${daysSince(c.inv)>finSet.overdueDays?`<b style="color:var(--breach)">${daysSince(c.inv)-finSet.overdueDays} 天</b>`:'—'}</td>
@@ -3348,13 +3354,13 @@ function overview(name,cards){
   <div class="panel">
     <div class="panel-head">卡点与异常 <span class="muted" style="font-weight:400">每条写明卡在哪 · 影响什么 · 去哪处理</span>
       <button class="btn" style="margin-left:auto" onclick="toggleDrawer()">🔔 待办中心 →</button></div>
-    <table><thead><tr><th>项目编号</th><th>立项时间</th><th>项目地址</th><th>卡点</th><th>卡在哪 / 影响什么</th>
+    <table><thead><tr><th>项目编号</th><th>立项时间</th><th>项目 · 地址</th><th>卡点</th><th>卡在哪 / 影响什么</th>
       <th style="text-align:right">卡了</th><th></th></tr></thead>
     <tbody>${stuck.map(s=>`<tr>
       <td>${s.pj==='?'?'<span class="pill p-red">★ 无从追溯</span>'
            :s.pj?`<b class="mono">${s.pj}</b>`:'<span class="pill p-grey">公司级</span>'}</td>
       <td class="mono" style="font-size:11px">${s.pj&&s.pj!=='?'?(OPENED[s.pj]||'—'):'—'}</td>
-      <td class="hint">${s.pj&&s.pj!=='?'?'📍 '+pjAddr(s.pj):s.pj==='?'?'需人工确认':'不属于单个项目'}</td>
+      <td>${s.pj&&s.pj!=='?'?`<b>${pjNick(s.pj)}</b><div class="hint">📍 ${pjAddr(s.pj)}</div>`:`<span class="hint">${s.pj==='?'?'需人工确认':'不属于单个项目'}</span>`}</td>
       <td><b>${s.what}</b></td>
       <td class="hint">${s.why}</td>
       <td class="num">${s.h?s.h+'h':'—'}</td>
