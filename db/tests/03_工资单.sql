@@ -40,6 +40,7 @@ UPDATE daily_payroll SET paid_min=600 WHERE work_date='2026-07-22';
 UPDATE daily_payroll SET status='released' WHERE work_date='2026-07-23';
 \echo '--- 负责人补录 + 说明 → 应通过 ---'
 UPDATE daily_payroll SET status='released', backfilled_by='22222222-2222-2222-2222-222222222222',
+  backfill_reason_cat='gps_issue',  -- v0.34 起补录必须选原因类别（进 KPI）
   backfill_note='张三当天在工地地下室无信号，事后核实确有出工' WHERE work_date='2026-07-23';
 SELECT work_date, status, backfilled_at IS NOT NULL AS 已补录 FROM daily_payroll WHERE work_date='2026-07-23';
 

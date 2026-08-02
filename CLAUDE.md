@@ -10,9 +10,11 @@
 澳大利亚（悉尼/NSW）智能家居集成公司 KONNEXT 的多部门协作办公管理平台。
 六个部门：售前 · 工程管理 · 采购 · 库管 · 财务 · 工程运维。
 
-**数据库契约已完成并验证**：`db/contract_v0_33.sql` —— 61 表 / 86 视图 / 144 条 RLS 策略 / 73 条断言。
-（v0_33 变更＝财务收款线已定口径：payment_remind_log 催款记录（渠道/双语/级别+烂尾不催款门禁）、
-project 付款人指定六列、GST/停服/超期财务键、催款模版 12 键——回归新增 26 号文件，拦截 130→134）
+**数据库契约已完成并验证**：`db/contract_v0_34.sql` —— 63 表 / 86 视图 / 148 条 RLS 策略 / 75 条断言。
+（v0_34 变更＝财务定稿清欠账+工程追加拍板：daily_payroll 补录收紧（类别+详说≥10字门禁、归属改 eng）、
+leave_request 休假单（回Y自动扣/强制留痕）+倒休透支门禁、expense 三类正名+删已付、三处 email、
+todo_action_log、variation 工程追加（origin/labor_hours_est/告知短信+交付前门禁）——
+回归新增 27 号文件，拦截 134→150；断言 73→75）
 （v0_32 变更＝售前定稿对齐：6+1 落库口径、预测报价范围 est_quote_low/high、双注释+已读回执、
 pre_stage_remind_days 与 六个下拉选项键（角色/工种/房屋/施工阶段/楼层/屋顶，对应硬 CHECK 放开）、
 v_presales_pipeline + 每日提醒函数、to_contact 删除、「留标」全库更名「已流失」；
@@ -70,7 +72,7 @@ Supabase / PostgreSQL 15+
 ```
 CLAUDE.md                       ← 本文件
 db/
-  contract_v0_33.sql            ← 契约本体，唯一权威（v0_32/v0_31/v0_30 保留作历史）
+  contract_v0_34.sql            ← 契约本体，唯一权威（v0_33/v0_32/v0_31 保留作历史）
   tests/                        ← 26 个回归测试 + run_all.sh
   tools/
     导入期初库存.py
@@ -102,10 +104,10 @@ db/deploy/10_app_role.sql       ← konnext_app 降权角色（每个库都要�
 ```bash
 # 1. 干净建库，必须零报错
 createdb konnext_test
-psql -d konnext_test -v ON_ERROR_STOP=1 -f db/contract_v0_33.sql
+psql -d konnext_test -v ON_ERROR_STOP=1 -f db/contract_v0_34.sql
 
-# 2. 回归套件：期望 134 次拦截（26 个文件；26 号=财务收款线）
-cd db/tests && bash run_all.sh ../contract_v0_33.sql
+# 2. 回归套件：期望 150 次拦截（27 个文件；27 号=工资休假报销与工程追加）
+cd db/tests && bash run_all.sh ../contract_v0_34.sql
 
 # 3. 断言：期望「✓ 全部通过」
 psql -d konnext_test -c "SELECT * FROM fn_assertion_summary();"
@@ -252,11 +254,13 @@ psql -d konnext_test -c "SELECT * FROM fn_assertion_summary();"
 付款不走本系统、App 报销屏）· 成本页项目分布地图（利润率四档色点+点选弹窗）·
 操作日志上下游种子 + 九页「这页怎么用」帮助 · **全站左栏「？」删除**。
 
+**✅ 契约 v0_34 已出（2026-08-02 晚）**：§15 欠账全清 + 工程追加变更落库（拍板：放开+告知短信）；
+三步全绿（零报错 / 27 文件 150 拦截 / 断言 74/75——例外仍只 INV-SEC-03 空库无管理员）。
+**★新教训**：给已有列加枚举 CHECK 前先查系统函数在写哪些值（origin 差点掐死 'unreturned'，22 号回归抓出）。
+
 **下次开工顺序**：
-1. **契约 v0_34 清 §15 欠账**（工资键/倒休休假表/挂起补录/报销门禁/邮箱列/待办留痕；
-   工程追加变更等老板拍板一并）——三步规矩伺候
-2. **下个部门页面**（用户点名；按业务链建议 工程管理：SM1~4 → 出库 → 安装 → 交付）
-3. 阶段 1 页面移植（登录/壳/待办抽屉）→ Vercel 部署等账号
+1. **下个部门页面**（用户点名；按业务链建议 工程管理：SM1~4 → 出库 → 安装 → 交付——蓝图已给工程负责人看过）
+2. 阶段 1 页面移植（登录/壳/待办抽屉）→ Vercel 部署等账号
 
 **每页只定三件事**：①谁进来、要干什么 ②能做哪些操作、被什么门禁卡 ③操作完触发谁
 **等用户交回**：Twilio/Supabase/Vercel 账号（指南已发）· 物料主表与期初盘点 Excel（表已发）
