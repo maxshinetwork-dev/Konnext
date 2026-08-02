@@ -332,7 +332,7 @@ const { chromium } = require('playwright');
   ok(el.a==='修改报价单号'&&el.d.includes('（空） → 「Q-2026-0198」'),'行内直改未留 前值→后值');
   const lgq=await page.evaluate(()=>{go('presales','操作日志');logQ='定金';renderAll();
     const n=document.querySelectorAll('#main tbody tr').length; logQ='';renderAll(); return n;});
-  ok(lgq===2,`日志搜「定金」应 2 行，实际 ${lgq}`);
+  ok(lgq===3,`日志搜「定金」应 3 行（三十六轮种子+2），实际 ${lgq}`);
   const lgDept=await page.evaluate(()=>{logDeptF='财务';renderAll();
     const n=document.querySelectorAll('#main tbody tr').length; logDeptF='全部';renderAll(); return n;});
   ok(lgDept===2,`按「财务」筛应 2 行，实际 ${lgDept}`);
@@ -792,6 +792,23 @@ const { chromium } = require('playwright');
   ok(r35.bubble,'点选弹窗缺 昵称/完整地址/利润率');
   ok(r35.closed,'再点一次未关闭弹窗');
   ok(r35.gnote,'缺「正式系统接 Google 地图」说明');
+  // 6.14) 三十六轮：操作日志上下游种子 + 九页「这页怎么用」帮助 + 去「？」
+  const w36=await page.evaluate(()=>{
+    go('fin','操作日志');
+    const lh=document.getElementById('main').innerHTML;
+    const updown=lh.includes('勾「已签约」')&&lh.includes('未退料计提')
+      &&lh.includes('维护上门完成')&&lh.includes('出库计入项目成本')&&lh.includes('SM3 检查布线完成');
+    const pages=['财务节点','项目收款S1-S3','尾款结算S4与Var','运维财务支持','催账和停服','工资数据','项目报销','成本与利润率','设置'];
+    const helpAll=pages.every(p=>{go('fin',p);
+      const h=HELP['fin/'+p]; return h&&JSON.stringify(h.notes||h).includes('这页怎么用');});
+    const side=document.getElementById('side').innerHTML;
+    const noQ=!side.includes('？ 帮助')&&side.includes('>帮助（本页说明）<');
+    const noQ2=!document.getElementById('main').innerHTML.includes('「？ 帮助」');
+    return JSON.stringify({updown,helpAll,noQ,noQ2});});
+  const r36=JSON.parse(w36);
+  ok(r36.updown,'财务操作日志缺上下游事件（签约/未退料/维护完成/出库/SM3）');
+  ok(r36.helpAll,'九个财务页面的帮助缺「这页怎么用」总结');
+  ok(r36.noQ&&r36.noQ2,'「？」未去干净（左栏按钮或页内引用）');
   const plChk=await page.evaluate(()=>{go('fin','项目列表');pjFilter=null;renderAll();
     const h=document.getElementById('main').innerHTML;pjFilter=null;
     return h.includes('<b>王宅</b>');});
