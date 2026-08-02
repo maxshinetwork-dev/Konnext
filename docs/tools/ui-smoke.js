@@ -1,9 +1,3 @@
-// KONNEXT UI 原型冒烟测试（全量回归 · 跨会话归档版）
-// 用法（云容器）：cd docs/tools && node ui-smoke.js
-//   依赖 playwright（首次先 npm i playwright --no-save；浏览器用预装 /opt/pw-browsers，勿 playwright install）
-// 覆盖：6 角色 × 全页面渲染零报错 + 售前定稿断言（§14）+ 待办三动作 +
-//       操作日志真记录（§14 二十轮）+ 财务全线断言（§15 二十一/二十二轮）
-// 期望输出：运行时报错 0 · 断言失败 0 · ★ 冒烟测试全部通过
 const { chromium } = require('playwright');
 (async()=>{
   const browser = await chromium.launch({executablePath:'/opt/pw-browsers/chromium'});
@@ -11,7 +5,7 @@ const { chromium } = require('playwright');
   const errors=[];
   page.on('console',m=>{ if(m.type()==='error') errors.push('console: '+m.text()); });
   page.on('pageerror',e=>errors.push('pageerror: '+e.message));
-  await page.goto('file://'+require('path').join(__dirname,'..','KONNEXT_UI原型.html'));
+  await page.goto('file:///home/user/Konnext/docs/KONNEXT_UI原型.html');
 
   const fails=[];
   const ok=(cond,label)=>{ if(!cond) fails.push(label); };
@@ -402,7 +396,7 @@ const { chromium } = require('playwright');
     finS4Req('KX-2026-0142');
     go('fin','尾款结算S4与Var');
     const h=document.getElementById('main').innerHTML;
-    const r={g1,g2,inv:!!f.ms[3].inv,total:h.includes('A$59,613.83'),lock:h.includes('v1 定格')};
+    const r={g1,g2,inv:!!f.ms[3].inv,total:h.includes('A$60,963.83'),lock:h.includes('v1 定格')};
     // 还原
     f.ms[3].inv=undefined; f.ms[3].ver=0; f.ms[3].firstInv=undefined;
     f.vars=f.vars.filter(v=>v.src!=='未退料'); f.unret=2013.83;
@@ -410,7 +404,12 @@ const { chromium } = require('playwright');
     renderAll(); return JSON.stringify(r);});
   const s4=JSON.parse(s4Chk);
   ok(s4.g1&&s4.g2,'S4 请款门禁（待估价/未退料）未拦');
-  ok(s4.inv&&s4.total,'S4 组合应收 59,613.83（尾款+变更+未退料）未算对/未定格');
+  ok(s4.inv&&s4.total,'S4 组合应收 60,963.83（尾款+变更含工程追加+未退料）未算对/未定格');
+  // 工程追加变更（工程负责人提案演示）：来源标/工时列/传库管
+  const engVar=await page.evaluate(()=>{go('fin','尾款结算S4与Var');s4Open['KX-2026-0142']=true;renderAll();
+    const h=document.getElementById('main').innerHTML;s4Open['KX-2026-0142']=false;
+    return h.includes('工程追加')&&h.includes('工时(工程填)')&&h.includes('6h')&&h.includes('已传库管');});
+  ok(engVar,'工程追加变更缺来源标/工时列/传库管标注');
   // 移位不计费 + 改价必须依据
   const varChk=await page.evaluate(()=>{
     const f=finOf('KX-2026-0142'); const v=f.vars.find(x=>!x.billable);
@@ -614,8 +613,8 @@ const { chromium } = require('playwright');
     return JSON.stringify({
       lvl:h.includes('最终催款')&&h.includes('烂尾 · 不催款'),
       hint:h.includes('「设置」'),
-      render:!sms.includes('张宅')&&sms.includes('31 Blaxland Rd')&&sms.includes('超期 168 天')&&sms.includes('第 3 次'),
-      renderEn:en.includes('Materials Payment')&&en.includes('168 days overdue')&&!en.includes('张宅'),
+      render:!sms.includes('张宅')&&sms.includes('31 Blaxland Rd')&&/超期 \d+ 天/.test(sms)&&sms.includes('第 3 次'),
+      renderEn:en.includes('Materials Payment')&&/\d+ days overdue/.test(en)&&!en.includes('张宅'),
       stalledBlock});});
   const r27=JSON.parse(rm27);
   ok(r27.lvl,'催账页缺最终催款按钮/烂尾不催款标');

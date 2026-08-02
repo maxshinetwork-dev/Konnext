@@ -601,7 +601,10 @@ const FINPAY=[
          ref:'SM3-0142-09'},
         {id:4,src:'SM3',type:'加',desc:'影音室预留 HDMI 点位',sys:1200,amt:null,billable:true,ref:'SM3-0142-10'},
         {id:5,src:'SM3',type:'加',desc:'车道感应灯带',sys:2200,amt:null,billable:true,ref:'SM3-0142-11'},
-        {id:6,src:'SM3',type:'加',desc:'门口对讲屏升级 10 寸',sys:900,amt:null,billable:true,ref:'SM3-0142-12'}],
+        {id:6,src:'SM3',type:'加',desc:'门口对讲屏升级 10 寸',sys:900,amt:null,billable:true,ref:'SM3-0142-12'},
+        {id:7,src:'工程追加',type:'加',desc:'走廊补 3 个感应地脚灯（业主安装期提出）',sys:1350,amt:1350,billable:true,
+         ref:'VAR-0142-E1',by:'王姐',at:'2026/07/31',note:'物料售卖价×3 点位',hrs:6,hrsBy:'陈工',
+         toWh:'已传库管：感应地脚灯 ×3（安排出库，出库价自动计入）'}],
   ms:[{s:'S1',pct:10,inv:'2025/11/20',ver:1,recv:[{amt:50000,how:'走账',gst:5000,at:'2025/11/24',by:'王姐'}],
        remind:[],settled:true,settledAt:'2025/11/24'},
       {s:'S2',pct:40,inv:'2026/03/02',ver:1,recv:[{amt:200000,how:'走账',gst:20000,at:'2026/03/06',by:'王姐'}],
@@ -3303,6 +3306,10 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
      oninput="finQ=this.value;keepFocus('finq4')">
    <span class="muted" style="font-size:var(--fs-xs)">显示 ${rows.length} / ${FINPAY.length}${finQ?' · 已过滤，清空搜索看全部':''}</span>
  </div>
+ ${helpNote(`变更来源有两种（工程负责人 2026-08-02 提案，演示已落）：①<b>SM3 登记</b>（检查布线时业主提的加减改动）；
+   ②<b>工程追加</b>——SM3 之后、交付之前，工程管理可为项目自定义变更：物料清单自动<b>传库管安排出库</b>
+   （出库价计入）、<b>预计人工工时由工程管理手动填写</b>（只进成本核算与排产，不单独向客户计费——
+   计费仍在物料售卖价里）、金额由<b>财务估价</b>、最终并入 S4 在这里结账。`)}
  ${helpNote(`未退料从哪来：<b>不是财务手填</b> —— 库管的出库/退库台账现算（S2 出库时单价已定格，
    金额=出库单价×领走没退回的数量）。有未退料时本行「未退料」列出现金额和【结算未退料】按钮，
    点一下按出库价转成正式变更计入 S4；为 0 或没有则显示「—」，不挡 S4 请款。库管线上线后数字自动出现。`)}
@@ -3352,12 +3359,16 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
     return main+`<tr><td colspan="10" style="background:var(--bg-elevated);padding:var(--sp-3)">
       <b style="font-size:var(--fs-sm)">Variation 明细 —— 系统算价 vs 财务定价（改了必须留依据）</b>
       <table style="margin-top:6px"><thead><tr><th>序</th><th>计费</th><th>来源</th><th>类型</th><th>说明</th>
-        <th style="text-align:right">系统算价</th><th style="text-align:right">财务定价（可改）</th><th>依据</th><th>登记</th><th></th></tr></thead>
+        <th style="text-align:right">系统算价</th><th style="text-align:right">财务定价（可改）</th>
+        <th style="text-align:right" title="工程追加的变更：预计人工工时由工程管理手动填写——只进成本核算与排产，不单独向客户计费（计费仍在物料售卖价里）">工时(工程填)</th>
+        <th>依据</th><th>登记</th><th></th></tr></thead>
       <tbody>${f.vars.map(v=>`<tr${v.billable?'':' style="opacity:.6"'}>
         <td class="mono">${v.id}</td>
         <td>${v.billable?'<span class="pill p-green">✓</span>':'<span class="pill p-grey">✗</span>'}</td>
-        <td class="muted" style="font-size:11px">${v.ref}</td><td>${v.type}</td>
-        <td style="max-width:220px">${v.billable?'':'<span class="strike">'}${v.desc}${v.billable?'':'</span>'}</td>
+        <td style="font-size:11px">${v.src==='工程追加'?'<span class="pill p-cyan" title="SM3 之后、交付前由工程管理追加（工程负责人 2026-08-02 提）">工程追加</span>':`<span class="muted">${v.ref}</span>`}
+          ${v.src==='工程追加'?`<div class="muted" style="font-size:10px">${v.ref}</div>`:''}</td><td>${v.type}</td>
+        <td style="max-width:220px">${v.billable?'':'<span class="strike">'}${v.desc}${v.billable?'':'</span>'}
+          ${v.toWh?`<div class="hint" style="color:var(--accent)">📦 ${v.toWh}</div>`:''}</td>
         <td class="num">${can('customer')?A$(v.sys):'— —'}</td>
         <td class="num">${!v.billable?'<span class="masked">不计费</span>'
           :f.ms[3].inv?`<b>${A$(v.amt)}</b> 🔒`
@@ -3365,9 +3376,10 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
         <td>${!v.billable?'<span class="muted">整改不挂客户</span>'
           :f.ms[3].inv?(v.note||'—')
           :`<input id="var-note-${f.code}-${v.id}" style="width:130px" value="${v.note||''}" placeholder="计算依据（必填）">`}</td>
+        <td class="num" style="font-size:12px">${v.hrs?`${v.hrs}h<div class="hint">${v.hrsBy||''}</div>`:'—'}</td>
         <td class="hint">${v.by?`${v.by} · ${v.at}`:'<span style="color:var(--breach)">待估价</span>'}</td>
         <td>${v.billable&&!f.ms[3].inv?`<button class="btn" onclick="finVarSave('${f.code}',${v.id})">保存</button>`:''}</td>
-      </tr>`).join('')||'<tr><td colspan="10" class="muted">本项目暂无变更 · SM3 登记后自动出现在这里积累</td></tr>'}</tbody></table>
+      </tr>`).join('')||'<tr><td colspan="11" class="muted">本项目暂无变更 · SM3 登记或工程追加后自动出现在这里积累</td></tr>'}</tbody></table>
       ${f.ms[3].inv?'<div class="hint" style="margin-top:6px">🔒 S4 发票已发出 —— 变更不许再改、未退料不许再追加；要改开 v'+(f.ms[3].ver+1)+' 重发</div>':''}
     </td></tr>`; }).join('')}
   </tbody></table></div>`;

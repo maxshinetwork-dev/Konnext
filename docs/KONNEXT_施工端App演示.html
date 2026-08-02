@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KONNEXT 施工端 App · 功能演示</title>
+<style>
+:root{
+  --bg:#e9edf3; --frame:#10161d; --scr:#f5f7fa; --panel:#fff; --border:#d8e0e8;
+  --text:#1f2933; --muted:#5f6b76; --accent:#2563eb; --accent-soft:#e8effc;
+  --ok:#047857; --ok-soft:#e6f4ef; --warn:#b45309; --warn-soft:#fdf3e2; --bad:#dc2626;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root{--bg:#0b1015;--frame:#000}}
+:root[data-theme="dark"]{--bg:#0b1015;--frame:#000}
+:root[data-theme="light"]{--bg:#e9edf3;--frame:#10161d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.7 -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;
+  display:flex;flex-direction:column;align-items:center;padding:26px 12px 50px}
+.intro{max-width:430px;text-align:center;margin-bottom:18px}
+.intro .ey{font-size:11px;letter-spacing:.2em;color:var(--accent);font-weight:700}
+.intro h1{font-size:21px;margin:6px 0 6px}
+.intro p{font-size:12.5px;color:var(--muted);margin:0}
+/* 手机框 */
+.phone{width:min(392px,96vw);background:var(--frame);border-radius:38px;padding:12px;box-shadow:0 24px 60px rgba(16,24,40,.35)}
+.screen{background:var(--scr);border-radius:28px;overflow:hidden;display:flex;flex-direction:column;height:748px;position:relative;color:#1f2933}
+.notch{height:26px;display:flex;justify-content:center;align-items:center;background:var(--scr)}
+.notch i{width:110px;height:20px;background:var(--frame);border-radius:12px}
+.top{padding:8px 16px 10px;background:var(--scr);display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
+.top b{font-size:16px}
+.top .who{margin-left:auto;font-size:11px;color:var(--muted)}
+.body{flex:1;overflow-y:auto;padding:12px 14px 8px}
+.tabs{display:flex;border-top:1px solid var(--border);background:var(--panel)}
+.tabs button{flex:1;border:0;background:none;padding:9px 0 12px;font-size:11px;color:var(--muted);cursor:pointer;font-family:inherit}
+.tabs button.on{color:var(--accent);font-weight:700}
+.tabs .ic{display:block;font-size:19px;margin-bottom:1px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.card h4{margin:0 0 3px;font-size:14.5px}
+.hint{font-size:11.5px;color:var(--muted)}
+.pill{display:inline-block;font-size:10.5px;font-weight:600;padding:1px 8px;border-radius:99px}
+.p-b{background:var(--accent-soft);color:var(--accent)} .p-g{background:var(--ok-soft);color:var(--ok)}
+.p-w{background:var(--warn-soft);color:var(--warn)}
+.mono{font-family:var(--mono)}
+.btn{display:block;width:100%;border:0;border-radius:10px;padding:12px;font-size:15px;font-weight:600;
+  font-family:inherit;cursor:pointer;background:var(--accent);color:#fff;margin-top:8px}
+.btn.sec{background:var(--panel);color:var(--accent);border:1.5px solid var(--accent)}
+.btn.ok{background:var(--ok)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;align-items:center;gap:10px}
+.chk{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13.5px}
+.chk:last-child{border-bottom:0}
+.chk input{width:19px;height:19px;margin-top:2px;accent-color:var(--accent)}
+.chk .cam{margin-left:auto;font-size:11px;color:var(--accent);white-space:nowrap;cursor:pointer}
+.seg{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.seg button{border:1px solid var(--border);background:var(--panel);border-radius:99px;padding:5px 12px;font-size:12px;font-family:inherit;cursor:pointer;color:#1f2933}
+.seg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+textarea,input[type=text]{width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;
+  font:13px/1.6 inherit;background:var(--panel);color:#1f2933}
+.geo{background:var(--ok-soft);border:1px solid var(--ok);border-radius:10px;padding:9px 12px;font-size:12.5px;color:var(--ok);margin-bottom:8px}
+.bigpunch{height:128px;border-radius:18px;font-size:19px}
+canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--border);border-radius:10px;touch-action:none}
+.note{background:var(--warn-soft);border-left:3px solid var(--warn);border-radius:0 8px 8px 0;padding:7px 11px;font-size:11.5px;margin:8px 0}
+.caption{max-width:430px;font-size:12px;color:var(--muted);margin-top:16px;text-align:center}
+.scr{display:none} .scr.on{display:block}
+.login{padding:46px 26px 0;text-align:center}
+.login .logo{font-size:24px;font-weight:800;letter-spacing:.02em}
+.login .logo span{color:var(--accent)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="intro">
+  <div class="ey">KONNEXT · 施工人员 Webapp（3 级账号）</div>
+  <h1>工人手机上只有这一个入口</h1>
+  <p>不能进后台、只有上报权限（含外包同款）。下面是可点的功能演示——底部四个标签都能切，勾选、打卡、签字都能试。</p>
+</div>
+
+<div class="phone"><div class="screen">
+  <div class="notch"><i></i></div>
+
+  <!-- 登录 -->
+  <div class="scr on" id="s-login">
+    <div class="login">
+      <div class="logo">KON<span>NEXT</span> 施工端</div>
+      <p class="hint" style="margin:8px 0 30px">全系统无密码 · 澳洲手机号短信验证码登录</p>
+      <input type="text" value="0455 002 331" readonly style="text-align:center;font-size:16px" aria-label="手机号">
+      <button class="btn" onclick="document.getElementById('otp').style.display='block'">获取验证码</button>
+      <div id="otp" style="display:none">
+        <input type="text" placeholder="6 位验证码" style="text-align:center;font-size:16px;margin-top:8px;letter-spacing:.4em">
+        <button class="btn ok" onclick="appGo('today')">进入（演示）</button>
+      </div>
+      <p class="hint" style="margin-top:26px">忘了登不上？找管理员重置（留痕）——施工账号不能自助找回</p>
+    </div>
+  </div>
+
+  <!-- 今日任务 -->
+  <div class="scr" id="s-today">
+    <div class="top"><b>今日任务</b><span class="who">小陈 · 施工 · 08/02</span></div>
+    <div class="body">
+      <div class="card">
+        <div class="row"><h4 style="flex:1"><span class="mono">KX-2026-0188</span> 林宅</h4><span class="pill p-b">安装调试</span></div>
+        <div class="hint">📍 11 Bond St, Mosman NSW　<a style="color:var(--accent)">导航 ▸</a></div>
+        <div class="hint">今日安装项 4 项 · 负责人 陈工 · 同行 阿强</div>
+        <button class="btn sec" onclick="appGo('punch')">到场打卡 →</button>
+      </div>
+      <div class="card">
+        <div class="row"><h4 style="flex:1"><span class="mono">KX-2026-0180</span> 陈宅</h4><span class="pill p-w">维护上门</span></div>
+        <div class="hint">📍 22 Rosamond St, Hornsby NSW · 预约 14:00</div>
+        <div class="hint">报修：二楼调光模块无响应（客户原话）</div>
+        <button class="btn sec" onclick="appGo('mt')">开始维护单 →</button>
+      </div>
+      <div class="card" style="border-style:dashed">
+        <div class="hint">📦 待确认提货：KNX 四联面板 ×6（出库单 OUT-0188-07）<br>
+        收到提货短信后回 <b>YES</b>，或在这里确认 —— 物料从这一刻记到你手里</div>
+        <button class="btn sec" onclick="this.textContent='已确认提货 ✓';this.disabled=true">确认提货</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="on"><span class="ic">📋</span>今日</button>
+      <button onclick="appGo('punch')"><span class="ic">📍</span>打卡</button>
+      <button onclick="appGo('report')"><span class="ic">✍️</span>上报</button>
+      <button onclick="appGo('me')"><span class="ic">👤</span>我的</button>
+    </div>
+  </div>
+
+  <!-- 打卡 -->
+  <div class="scr" id="s-punch">
+    <div class="top"><b>考勤打卡</b><span class="who">KX-2026-0188 林宅</span></div>
+    <div class="body">
+      <div class="geo">📍 GPS 定位正常 · 距项目围栏圆心 <b>43 米</b>（围栏 100 米内 ✓）</div>
+      <button class="btn bigpunch" id="pin" onclick="punch()">到场打卡</button>
+      <div class="card" style="margin-top:12px">
+        <h4>今天的轨迹</h4>
+        <div class="hint" id="plog">07:58 出发（家 → 林宅，路上时间自动算）</div>
+      </div>
+      <div class="note">路上时间、午餐（自动扣 30 分钟）系统自己算，不用填。
+      围栏外打卡会被标注，需负责人确认——定位失败不扣钱，但当天挂起待补录。</div>
+    </div>
+    <div class="tabs">
+      <button onclick="appGo('today')"><span class="ic">📋</span>今日</button>
+      <button class="on"><span class="ic">📍</span>打卡</button>
+      <button onclick="appGo('report')"><span class="ic">✍️</span>上报</button>
+      <button onclick="appGo('me')"><span class="ic">👤</span>我的</button>
+    </div>
+  </div>
+
+  <!-- 安装清单（从今日任务进入） -->
+  <div class="scr" id="s-install">
+    <div class="top"><b>安装清单 · 林宅</b><span class="who">SM4 已过 · 可施工</span></div>
+    <div class="body">
+      <div class="card">
+        <div class="chk"><input type="checkbox" checked><span>客厅 KNX 四联面板 ×3 安装接线</span><span class="cam">📷 已拍 2</span></div>
+        <div class="chk"><input type="checkbox" checked><span>餐厅调光模块入柜</span><span class="cam">📷 已拍 1</span></div>
+        <div class="chk"><input type="checkbox"><span>二楼走廊感应器对码</span><span class="cam">📷 拍照</span></div>
+        <div class="chk"><input type="checkbox"><span>花园廊架灯控接线（变更 VAR-0188）</span><span class="cam">📷 拍照</span></div>
+      </div>
+      <div class="card">
+        <h4>做不了的项</h4>
+        <div class="hint">选原因（必填）——取消 / 挂起（卡在谁）/ 转变更。挂起示例：「二楼地暖联动 · 等空调队」</div>
+        <button class="btn sec">标记做不了 + 填原因</button>
+      </div>
+      <div class="note">每项拍照留痕。全部清零（做完/取消/挂起/转变更）后，完工确认由<b>负责人</b>在后台做——工人端不做完工判断。</div>
+    </div>
+    <div class="tabs">
+      <button class="on" onclick="appGo('today')"><span class="ic">📋</span>今日</button>
+      <button onclick="appGo('punch')"><span class="ic">📍</span>打卡</button>
+      <button onclick="appGo('report')"><span class="ic">✍️</span>上报</button>
+      <button onclick="appGo('me')"><span class="ic">👤</span>我的</button>
+    </div>
+  </div>
+
+  <!-- 每日上报 -->
+  <div class="scr" id="s-report">
+    <div class="top"><b>每日上报</b><span class="who">08/02 · 一人一天一条</span></div>
+    <div class="body">
+      <div class="card">
+        <h4><span class="mono">KX-2026-0188</span> 林宅 · <span class="hint">在场 08:12–12:30</span></h4>
+        <textarea rows="2">客厅/餐厅面板安装完毕，走廊感应器对码一半，明天继续。</textarea>
+      </div>
+      <div class="card">
+        <h4><span class="mono">KX-2026-0180</span> 陈宅 · <span class="hint">在场 14:02–15:40</span></h4>
+        <textarea rows="2">更换二楼调光模块，测试正常，客户已签字。</textarea>
+      </div>
+      <button class="btn" onclick="this.textContent='已提交 ✓ （当夜 0 点随日结一起定格）';this.disabled=true">提交今日上报</button>
+      <div class="note">当天跨了几个项目就写几段——这是工资和项目成本的数据源。
+      不写的话当天工资<b>挂起不发</b>（不扣钱，负责人补录才放行，并进 KPI）。</div>
+    </div>
+    <div class="tabs">
+      <button onclick="appGo('today')"><span class="ic">📋</span>今日</button>
+      <button onclick="appGo('punch')"><span class="ic">📍</span>打卡</button>
+      <button class="on"><span class="ic">✍️</span>上报</button>
+      <button onclick="appGo('me')"><span class="ic">👤</span>我的</button>
+    </div>
+  </div>
+
+  <!-- 维护单：现场三样 -->
+  <div class="scr" id="s-mt">
+    <div class="top"><b>维护单 MT-0180-04</b><span class="who">陈宅 · 已交付项目</span></div>
+    <div class="body">
+      <div class="card">
+        <h4>① 故障归因（当着客户面确认）</h4>
+        <div class="seg" id="cause">
+          <button onclick="pick(this)">人为损坏</button>
+          <button onclick="pick(this)" class="on">产品缺陷</button>
+          <button onclick="pick(this)">自然老化</button>
+          <button onclick="pick(this)">远程可解</button>
+        </div>
+        <div class="hint">产品缺陷/老化在免责期内全免；人为损坏正常计费——定价由财务做，现场不谈钱</div>
+      </div>
+      <div class="card">
+        <h4>② 当日服务内容（客户签的就是这段）</h4>
+        <textarea rows="2">检查二楼调光模块，确认固件故障，更换备件 GW-200，测试恢复正常。</textarea>
+      </div>
+      <div class="card">
+        <h4>③ 客户签字</h4>
+        <canvas class="sig" id="sig" width="330" height="120" aria-label="客户签字板"></canvas>
+        <div class="row" style="margin-top:6px">
+          <a class="hint" style="color:var(--accent);cursor:pointer" onclick="clearSig()">清除重签</a>
+        </div>
+      </div>
+      <button class="btn ok" id="mtdone" onclick="mtFinish()">完成任务（三样齐才能点）</button>
+      <div class="note">三样缺一不可，否则任务点不了完成、人不能走。完成后办公室按归因+时长定价开票。</div>
+    </div>
+    <div class="tabs">
+      <button onclick="appGo('today')"><span class="ic">📋</span>今日</button>
+      <button onclick="appGo('punch')"><span class="ic">📍</span>打卡</button>
+      <button onclick="appGo('report')"><span class="ic">✍️</span>上报</button>
+      <button onclick="appGo('me')"><span class="ic">👤</span>我的</button>
+    </div>
+  </div>
+
+  <!-- 我的 -->
+  <div class="scr" id="s-me">
+    <div class="top"><b>我的</b><span class="who">小陈 · 月薪制</span></div>
+    <div class="body">
+      <div class="card"><h4>本月出工</h4>
+        <div class="hint">出工 21 天 · 挂起 2 天（07/29–30 无记录，等陈工补录）· 倒休余额 12.5h</div></div>
+      <div class="card"><h4>我的工资</h4>
+        <div class="hint">月薪制：金额只显示给你自己和财务。日结当夜 0 点定格，补录滚下月。</div></div>
+      <div class="card"><h4>提货在手</h4>
+        <div class="hint">KNX 四联面板 ×13（王宅 · 未退）——退料要及时，没退的会进 S4 跟客户结算。</div></div>
+      <div class="card" style="border-style:dashed"><div class="hint">施工端没有别的了——看不了后台、看不了金额、看不了别人。
+        需要什么找负责人。</div></div>
+    </div>
+    <div class="tabs">
+      <button onclick="appGo('today')"><span class="ic">📋</span>今日</button>
+      <button onclick="appGo('punch')"><span class="ic">📍</span>打卡</button>
+      <button onclick="appGo('report')"><span class="ic">✍️</span>上报</button>
+      <button class="on"><span class="ic">👤</span>我的</button>
+    </div>
+  </div>
+
+</div></div>
+
+<p class="caption">正式版=网页 App（手机浏览器打开即用，无需装应用）。以上界面对应契约里已定的表：
+work_log 打卡 · daily_report 每日上报 · install_item 安装项 · maintenance_case 现场三样 · 出库提货确认。
+「今日任务」里点安装卡片可进<a style="color:var(--accent);cursor:pointer" onclick="appGo('install')">安装清单</a>演示。</p>
+
+<script>
+function appGo(s){document.querySelectorAll('.scr').forEach(x=>x.classList.remove('on'));
+  document.getElementById('s-'+s).classList.add('on');}
+function punch(){const b=document.getElementById('pin');
+  if(b.textContent.includes('到场')){b.textContent='离场打卡';b.style.background='var(--warn)';
+    document.getElementById('plog').innerHTML='07:58 出发 → <b>08:12 到场 ✓</b>（围栏内 43m）· 在场计时中…';}
+  else{b.textContent='今日已完成 ✓';b.disabled=true;
+    document.getElementById('plog').innerHTML='07:58 出发 → 08:12 到场 → <b>16:31 离场 ✓</b> · 在场 8.3h（午餐已自动扣 30 分钟）';}}
+function pick(el){[...el.parentNode.children].forEach(x=>x.classList.remove('on'));el.classList.add('on');}
+/* 签字板 */
+const cv=document.getElementById('sig'),cx=cv.getContext('2d');let draw=false,has=false;
+cx.lineWidth=2;cx.lineCap='round';cx.strokeStyle='#1f2933';
+function pos(e){const r=cv.getBoundingClientRect();const t=e.touches?e.touches[0]:e;
+  return [(t.clientX-r.left)*cv.width/r.width,(t.clientY-r.top)*cv.height/r.height];}
+function dstart(e){draw=true;has=true;const [x,y]=pos(e);cx.beginPath();cx.moveTo(x,y);e.preventDefault();}
+function dmove(e){if(!draw)return;const [x,y]=pos(e);cx.lineTo(x,y);cx.stroke();e.preventDefault();}
+cv.addEventListener('mousedown',dstart);cv.addEventListener('mousemove',dmove);
+window.addEventListener('mouseup',()=>draw=false);
+cv.addEventListener('touchstart',dstart,{passive:false});cv.addEventListener('touchmove',dmove,{passive:false});
+cv.addEventListener('touchend',()=>draw=false);
+function clearSig(){cx.clearRect(0,0,cv.width,cv.height);has=false;}
+function mtFinish(){if(!has){const b=document.getElementById('mtdone');const t=b.textContent;
+    b.textContent='③ 客户还没签字 —— 三样缺一不可';setTimeout(()=>b.textContent=t,1800);return;}
+  const b=document.getElementById('mtdone');b.textContent='已完成 ✓ 已通知财务定价开票';b.disabled=true;}
+</script>
+</body>
+</html>
