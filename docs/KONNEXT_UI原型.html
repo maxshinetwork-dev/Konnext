@@ -938,7 +938,7 @@ const SM_DEF=[
  {no:4,name:'SM4 封板核对',goal:'封板前最后核对 · 完成即可发起 S3 人工款'},
 ];
 const SM_CHK={
- 1:['围栏坐标核对','项目档案打印','分包商联系表'],
+ 1:['围栏圆心首次到场校准','项目档案打印','分包商联系表'],
  2:['布线图（最新版）','线材清单（按方案）','KNX 测试仪 ◇有KNX','地暖联动清单 ◇有地暖'],
  3:['布线图对照表','变更登记表','签字板'],
  4:['封板核对单','点位照片存档','S3 请款条件确认'],
@@ -946,13 +946,17 @@ const SM_CHK={
 /* 每项目 SM 状态（演示；与 FINPAY sm3/sm4 一致）：done/by/photos/chk[] · sched=已排期 · na=不适用(原因) */
 const SMD={
  'KX-2026-0203':{sol:'KNX · 有线 · 无地暖',sm:[
-   {done:'2026/07/20 09:40',by:'陈工',photos:5,chk:[1,1,1]},
+   {done:'2026/07/20 09:40',by:'陈工',photos:5,chk:[1,1,1],
+    att:[{who:'陈工',io:'08:55–09:52'},{who:'小陈',io:'08:58–09:50'}]},
    {sched:'2026/08/05 09:00',chk:[1,1,1]},
    {chk:[0,0,0]},{chk:[0,0,0]}]},
  'KX-2026-0188':{sol:'KNX · 有线 · 有地暖',sm:[
-   {done:'2026/06/10 08:30',by:'陈工',photos:6,chk:[1,1,1]},
-   {done:'2026/06/24 09:00',by:'陈工',photos:9,chk:[1,1,1,1]},
-   {done:'2026/07/24 10:15',by:'陈工',photos:12,chk:[1,1,1],elecSign:'Leo · VoltPro'},
+   {done:'2026/06/10 08:30',by:'陈工',photos:6,chk:[1,1,1],
+    att:[{who:'陈工',io:'08:12–09:05'}]},
+   {done:'2026/06/24 09:00',by:'陈工',photos:9,chk:[1,1,1,1],
+    att:[{who:'陈工',io:'08:50–10:20'},{who:'Leo(电工)',io:'08:55–10:18'}]},
+   {done:'2026/07/24 10:15',by:'陈工',photos:12,chk:[1,1,1],elecSign:'Leo · VoltPro',
+    att:[{who:'陈工',io:'09:40–11:32'},{who:'Leo(电工)',io:'09:45–11:30'},{who:'阿强',io:'09:41–11:28',flag:'围栏外打卡·已确认'}]},
    {sched:'2026/08/12 09:00',chk:[0,0,0]}]},
  'KX-2026-0170':{sol:'C-Bus · 有线 · 无地暖',sm:[
    {done:'2026/05/12 09:00',by:'陈工',photos:4,chk:[1,1,1]},
@@ -2551,11 +2555,15 @@ ${ops([
  return `<h2>Site Meeting <span class="pill p-cyan">S 是钱 · SM 是会 —— 四场会一页管</span></h2>
  <div class="page-sub">方案：${d.sol} · 完成时刻定格不可改 · SM3/SM4 完成即解锁 S2/S3 收款门禁 · 说明看左下「帮助」</div>
  ${ops([
-  ['排期','按顺序开会（门禁：SM(n-1) 未完成不能先完成 SMn）','进派工排班 + 工人 App 今日任务'],
+  ['排期','按顺序开会（门禁：SM(n-1) 未完成不能先完成 SMn）','进派工排班 + 工人 App 今日任务——参会人当天各自打卡入场/离场（每人·每任务）'],
   ['完成会议','SM3 需电工签字（默认带出项目电工）· 出发前清单未勾完只提醒不拦','完成时刻定格 🔒 · SM3→通知财务开 S2、采购库管预告 · SM4→通知财务开 S3'],
   ['SM3 现场登记变更','类型 加/减/移位 · 描述必填 · 金额和工时 SM3 都不碰（移位=整改不计费，填金额财务端直接拒）','自动知会 设计/采购/财务 · 并入 S4 估价'],
   ['标不适用','老项目/特殊情况 · 必填原因留痕','该场会跳过，不卡后续门禁'],
  ])}
+ ${helpNote(`<b>入场离场是底层通用动作，不属于任何一场会</b>：每人 × 每天 × 每个任务（SM 会议 / 安装 /
+   交付 / 维护上门）都在工人 App 打卡入场、离场（围栏 100m，拍照兜底带异常标记）——SM 这页只<b>展示</b>本场的
+   到场记录，采集永远在 App；出勤自动进日结工资与项目人力消耗。SM1 清单里的「围栏圆心首次到场校准」
+   是校准立项坐标，不是打卡本身。`)}
  ${helpNote(`<b>这页怎么用</b>：四张卡=四场会，按顺序开。每张卡上：出发前清单（按方案自动增减 KNX/地暖条件项，
    在「设置」维护模板）→ 排期（进派工与工人 App）→ 开完点「完成」（时刻定格不可改）。
    <b>SM3 完成的那一刻，财务端 S2 按钮解锁</b>；SM4 解锁 S3——S 是钱、SM 是会，两套东西这里交棒。`)}
@@ -2580,7 +2588,11 @@ ${ops([
        ${chk.map((c,i)=>{const on=s.chk&&s.chk[i];
          return `<span class="pill ${on?'p-green':'p-grey'}"${st==='done'?'':` style="cursor:pointer" onclick="smToggleChk('${p.code}',${def.no},${i})"`}>${on?'✓ ':''}${c.replace(' ◇有KNX','').replace(' ◇有地暖','')}</span>`;}).join('')}
       </div></div>
-     ${st==='done'?`<div class="hint">完成人 ${s.by} · 现场照片 ${s.photos} 张${s.elecSign?` · 电工签字：${s.elecSign}`:''}</div>`:''}
+     ${st==='done'?`<div class="hint">完成人 ${s.by} · 现场照片 ${s.photos} 张${s.elecSign?` · 电工签字：${s.elecSign}`:''}</div>
+      <div style="margin-top:6px"><span class="muted" style="font-size:var(--fs-xs)">到场打卡（每人 · 本场任务 · App 采集）</span>
+       <div class="hint">${(s.att&&s.att.length)?s.att.map(a=>`${a.who} ${a.io}${a.flag?` <span style="color:#b45309">⚠ ${a.flag}</span>`:' ✓'}`).join(' · ')
+         :'—（打卡记录在工程流水账 / 每日上报）'}</div></div>`
+      :`<div class="hint" style="margin-top:6px">开会当天参会人各自在 App 打卡<b>入场 / 离场</b>（每人 · 每任务 · 围栏内）——出勤自动进日结与项目人力</div>`}
      ${def.no===3?(st==='done'
        ?`<div style="margin-top:8px"><span class="muted" style="font-size:var(--fs-xs)">本场登记的变更（金额工时都不碰，S4 财务估价）</span>
           ${(f&&f.vars.filter(v=>v.src==='SM3').length)?`<table style="margin-top:4px">${f.vars.filter(v=>v.src==='SM3').map(v=>`

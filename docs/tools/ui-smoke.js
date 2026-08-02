@@ -861,6 +861,20 @@ const { chromium } = require('playwright');
   ok(r37.finUnlocked&&r37.gateGreen,'SM3 完成未解锁财务 S2 门禁（联动失效）');
   ok(r37.logOk&&r37.noti,'SM3 完成未留日志（rel 含 fin）/未发通知');
   ok(r37.finBtn,'财务端 S2 按钮未随 SM3 完成解锁');
+  // 三十八轮：入场离场=每人×每天×每任务——SM 每场会显示到场打卡（App 采集，这页只展示）
+  const w38=await page.evaluate(()=>{
+    loginAs('eng'); pj=PROJECTS.findIndex(x=>x.code==='KX-2026-0188'); go('eng','Site Meeting');
+    const h=document.getElementById('main').innerHTML;
+    loginAs('finance');
+    return JSON.stringify({
+      att:h.includes('到场打卡（每人 · 本场任务 · App 采集）')&&h.includes('Leo(电工) 09:45–11:30'),
+      flag:h.includes('围栏外打卡·已确认'),
+      layer:JSON.stringify(HELP['eng/Site Meeting']||{}).includes('入场离场是底层通用动作'),
+      collect:h.includes('开会当天参会人各自在 App 打卡')});});
+  const r38=JSON.parse(w38);
+  ok(r38.att,'SM 已完成卡缺到场打卡记录（每人·本场任务）');
+  ok(r38.flag,'围栏外异常标记未显示');
+  ok(r38.layer&&r38.collect,'帮助/未完成卡缺「入场离场=通用层，采集在 App」说明');
   const plChk=await page.evaluate(()=>{go('fin','项目列表');pjFilter=null;renderAll();
     const h=document.getElementById('main').innerHTML;pjFilter=null;
     return h.includes('<b>王宅</b>');});

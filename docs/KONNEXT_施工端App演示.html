@@ -129,18 +129,29 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
     </div>
   </div>
 
-  <!-- 打卡 -->
+  <!-- 打卡：★每人 × 每天 × 每个任务 都要入场/离场（SM 会议 / 安装 / 维护上门 全一样） -->
   <div class="scr" id="s-punch">
-    <div class="top"><b>考勤打卡</b><span class="who">KX-2026-0188 林宅</span></div>
+    <div class="top"><b>考勤打卡</b><span class="who">按任务打卡 · 一天几个任务打几次</span></div>
     <div class="body">
-      <div class="geo">📍 GPS 定位正常 · 距项目围栏圆心 <b>43 米</b>（围栏 100 米内 ✓）</div>
-      <button class="btn bigpunch" id="pin" onclick="punch()">到场打卡</button>
-      <div class="card" style="margin-top:12px">
-        <h4>今天的轨迹</h4>
-        <div class="hint" id="plog">07:58 出发（家 → 林宅，路上时间自动算）</div>
+      <div class="geo">📍 GPS 定位正常 · 距当前任务围栏圆心 <b>43 米</b>（围栏 100 米内 ✓）</div>
+      <div class="card">
+        <div class="row"><h4 style="flex:1">① 安装 · 林宅</h4><span class="pill p-b">在场中</span></div>
+        <div class="hint">📍 11 Bond St, Mosman · <b>08:12 入场 ✓</b>（围栏内 43m）· 在场计时中…</div>
+        <button class="btn bigpunch" id="pin" onclick="punch()">离场打卡</button>
       </div>
-      <div class="note">路上时间、午餐（自动扣 30 分钟）系统自己算，不用填。
-      围栏外打卡会被标注，需负责人确认——定位失败不扣钱，但当天挂起待补录。</div>
+      <div class="card">
+        <div class="row"><h4 style="flex:1">② 维护上门 · 陈宅</h4><span class="pill p-w">未入场</span></div>
+        <div class="hint">📍 22 Rosamond St, Hornsby · 预约 14:00 —— 到场后先<b>入场打卡</b>再开维护单；
+        离场打卡前维护单三样要齐</div>
+        <button class="btn sec" disabled>入场打卡（到围栏内才能点）</button>
+      </div>
+      <div class="card">
+        <h4>今天的轨迹（自动）</h4>
+        <div class="hint" id="plog">07:58 出发（家 → 林宅，路上时间自动算）→ 08:12 入场林宅 ✓ · 在场中</div>
+      </div>
+      <div class="note">★入场/离场跟着<b>任务</b>走：SM 会议、安装、维护上门，每个任务各打各的——
+      一天跑两个工地就是两组入场离场，运维同学也一样。路上时间、午餐（自动扣 30 分钟）系统自己算。
+      围栏外打卡会被标注需负责人确认；定位失败不扣钱，但当天挂起待补录。</div>
     </div>
     <div class="tabs">
       <button onclick="appGo('today')"><span class="ic">📋</span>今日</button>
@@ -267,7 +278,9 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
         </div>
       </div>
       <button class="btn ok" id="mtdone" onclick="mtFinish()">完成任务（三样齐才能点）</button>
-      <div class="note">三样缺一不可，否则任务点不了完成、人不能走。完成后办公室按归因+时长定价开票。</div>
+      <div class="note">三样缺一不可，否则任务点不了完成、人不能走。完成后办公室按归因+时长定价开票。
+      ★维护上门也是一个任务：到场先在「打卡」页<b>入场</b>，三样齐、完成任务后再<b>离场</b>——
+      在场时长就是财务定价的工时依据。</div>
     </div>
     <div class="tabs">
       <button onclick="appGo('today')"><span class="ic">📋</span>今日</button>
@@ -308,10 +321,9 @@ work_log 打卡 · daily_report 每日上报 · install_item 安装项 · mainte
 function appGo(s){document.querySelectorAll('.scr').forEach(x=>x.classList.remove('on'));
   document.getElementById('s-'+s).classList.add('on');}
 function punch(){const b=document.getElementById('pin');
-  if(b.textContent.includes('到场')){b.textContent='离场打卡';b.style.background='var(--warn)';
-    document.getElementById('plog').innerHTML='07:58 出发 → <b>08:12 到场 ✓</b>（围栏内 43m）· 在场计时中…';}
-  else{b.textContent='今日已完成 ✓';b.disabled=true;
-    document.getElementById('plog').innerHTML='07:58 出发 → 08:12 到场 → <b>16:31 离场 ✓</b> · 在场 8.3h（午餐已自动扣 30 分钟）';}}
+  if(b.textContent.includes('离场')){b.textContent='本任务已完成 ✓';b.disabled=true;
+    document.getElementById('plog').innerHTML='07:58 出发 → 08:12 入场林宅 → <b>12:31 离场林宅 ✓</b> 在场 4.3h'+
+      '（午餐自动扣 30 分钟）· 13:40 路上 → 陈宅（维护任务待入场）';}}
 function pick(el){[...el.parentNode.children].forEach(x=>x.classList.remove('on'));el.classList.add('on');}
 let expHasShot=false;
 function expShot(){ expHasShot=true;
