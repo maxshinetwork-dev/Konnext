@@ -472,11 +472,35 @@ const { chromium } = require('playwright');
   const exp24=await page.evaluate(()=>{go('fin','项目报销');
     const h=document.getElementById('main').innerHTML;
     return JSON.stringify({no:!h.includes('>餐费<')&&!h.includes('>办公<'),
-      cat:h.includes('交通递送')&&h.includes('材料 / 工具 / 交通递送'),
+      cat:h.includes('材料补购 · 交通递送 · 工具采购')&&h.includes('<td>工具采购</td>')&&!h.includes('<td>工具</td>'),
       addr:h.includes('项目 · 地址')&&h.includes('11 Bond St, Mosman NSW')});});
   const e24=JSON.parse(exp24);
-  ok(e24.no&&e24.cat,'报销类别未收窄为 材料/工具/交通递送');
+  ok(e24.no&&e24.cat,'报销类别未正名为 材料补购/交通递送/工具采购');
   ok(e24.addr,'报销表缺项目昵称+完整地址列');
+  // 6.12) 三十四轮：收据=图片链接（预览弹层/弹层内批准/下载本地）· 付款不走本系统
+  const w34=await page.evaluate(()=>{go('fin','项目报销');
+    const h=document.getElementById('main').innerHTML;
+    const link=h.includes('📷 查看')&&h.includes('download="EX-070-收据.svg"');
+    const pay=h.includes('付款不走本系统');
+    expImg('EX-071');
+    const box=document.getElementById('imgbox');
+    const open=box.style.display==='block'&&box.innerHTML.includes('data:image/svg')
+      &&box.innerHTML.includes('⬇ 下载到本地')&&box.innerHTML.includes('expImgOk');
+    imgClose();
+    expImg('EX-070');
+    const open2=box.innerHTML.includes('已批准')&&!box.innerHTML.includes('expImgOk');
+    imgClose();
+    expImg('EX-071'); expImgOk('EX-071');
+    const e=EXP.find(x=>x.id==='EX-071');
+    const okd=e.st==='已批准'&&document.getElementById('imgbox').style.display==='none';
+    e.st='待审批'; e.by=undefined; renderAll();
+    return JSON.stringify({link,pay,open,open2,okd});});
+  const r34=JSON.parse(w34);
+  ok(r34.link,'收据列缺 📷 查看链接/已批准行缺下载快捷链接');
+  ok(r34.pay,'页面未写明「付款不走本系统」口径');
+  ok(r34.open,'收据预览弹层缺图/下载/批准入口');
+  ok(r34.open2,'已批准单的弹层不该再有批准按钮');
+  ok(r34.okd,'弹层内批准未生效/弹层未关闭');
   const s424=await page.evaluate(()=>{go('fin','尾款结算S4与Var');
     const h=document.getElementById('main').innerHTML;
     return h.includes('未退料 ⓘ')&&h.includes('结算未退料')&&h.includes('未退料（库管未填写）')&&h.includes('财务不手填');});
