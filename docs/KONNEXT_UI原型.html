@@ -918,6 +918,14 @@ function mtPrice(id){ const c=MCASES.find(x=>x.id===id);
 function mtRecv(id){ const c=MCASES.find(x=>x.id===id);
   c.paid=c.amt; c.st='已结案';
   opLog(c.code,'维护单收款结案',c.id+' · 收 '+A$(c.amt),['fin','mt']); renderAll(); }
+/* 成本页项目分布地图（三十五轮）：真经纬度等比落位的示意图——正式系统换 Google 地图，交互同款
+   （Artifact 沙箱屏蔽外部请求，Google 瓦片进不来，这里自绘悉尼上北区示意底图） */
+const GEO={'Cherrybrook':[-33.722,151.043],'Hornsby':[-33.703,151.099],'Castle Hill':[-33.732,151.005],
+ 'Ryde':[-33.815,151.106],'Epping':[-33.773,151.082],'Chatswood':[-33.797,151.183],
+ 'Mosman':[-33.828,151.244],'Killara':[-33.766,151.162],'Denistone':[-33.797,151.088]};
+const geoXY=(lat,lng)=>[Math.round(30+(lng-150.96)/0.32*840),Math.round(30+(-33.68-lat)/0.19*460)];
+let mapSel=null;
+function mapPick(code){ mapSel=(mapSel===code?null:code); renderAll(); }
 /* 项目报销：非正常采购进项目成本 · 不能自己审批自己 */
 const EXP=[
  {id:'EX-071',who:'陈工',dept:'工程管理',pj:'KX-2026-0142',cat:'材料补购',amt:186.5,st:'待审批',at:'2026/07/31',rc:true,note:'现场缺 2 个 86 底盒 · Bunnings 自购'},
@@ -3457,7 +3465,51 @@ ${ops([
    <td class="num">${can('margin')?r.lab:'— —'}</td><td class="num">${can('margin')?(r.exp||'—'):'— —'}</td>
    <td class="num">${can('margin')?(r.mnet||'—'):'— —'}</td>
    <td class="num">${can('margin')?`<span class="pill ${r.cls}">${r.pr}</span>`:'— —'}</td>
-   <td class="hint">${r.note}</td></tr>`).join('')}</tbody></table>`;
+   <td class="hint">${r.note}</td></tr>`).join('')}</tbody></table>
+ <div class="panel" style="margin-top:var(--sp-4)"><div class="panel-head">项目分布地图 · 颜色=利润率档
+   <span class="muted" style="font-weight:400">点色点看项目 · 再点一次或点空白处关闭</span>
+   <span id="maplegend" style="margin-left:auto;display:flex;gap:10px;font-size:11px;font-weight:400;align-items:center">
+     ${[['#047857','healthy ≥55%'],['#b45309','warning 45–55%'],['#dc2626','breach/loss'],['#94a3b8','不显示/参考']]
+       .map(([c,l])=>`<span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:4px;vertical-align:-1px"></i>${l}</span>`).join('')}
+   </span></div>
+  <div class="panel-body" style="overflow-x:auto">
+  <svg id="pmap" width="900" height="520" style="min-width:900px;background:#f2f5f8;border-radius:8px">
+    <rect width="900" height="520" fill="#eef2f6" onclick="mapPick(null)"/>
+    <path d="M845,0 L900,0 L900,520 L820,520 L830,430 L845,300 Z" fill="#cfe3f2"/>
+    <text x="868" y="260" font-size="11" fill="#7b93a8" transform="rotate(90 868 260)">Tasman Sea</text>
+    <path d="M900,430 L700,442 Q640,450 600,455 L200,468 L200,478 L610,466 Q650,462 705,455 L900,446 Z" fill="#cfe3f2"/>
+    <path d="M830,432 Q780,410 755,392 Q748,386 752,380 L762,384 Q790,404 838,424 Z" fill="#cfe3f2"/>
+    <text x="700" y="438" font-size="11" fill="#7b93a8">悉尼港 / Parramatta River</text>
+    <line x1="${geoXY(-33.815,151.106)[0]}" y1="${geoXY(-33.815,151.106)[1]}" x2="${geoXY(-33.732,151.005)[0]}" y2="${geoXY(-33.732,151.005)[1]}" stroke="#d3dbe3" stroke-width="4" stroke-dasharray="1 7" stroke-linecap="round"/>
+    <line x1="${geoXY(-33.703,151.099)[0]}" y1="${geoXY(-33.703,151.099)[1]}" x2="${geoXY(-33.797,151.183)[0]}" y2="${geoXY(-33.797,151.183)[1]}" stroke="#d3dbe3" stroke-width="4" stroke-dasharray="1 7" stroke-linecap="round"/>
+    <circle cx="678" cy="485" r="5" fill="#b9c6d2"/><text x="690" y="489" font-size="11" fill="#7b93a8">Sydney CBD</text>
+    <circle cx="138" cy="455" r="5" fill="#b9c6d2"/><text x="150" y="459" font-size="11" fill="#7b93a8">Parramatta</text>
+    ${(()=>{const COL={'p-green':'#047857','p-amber':'#b45309','p-red':'#dc2626','p-grey':'#94a3b8'};
+      const pts=R.map(r=>{const p=PROJECTS.find(x=>x.code===r.c); if(!p||!GEO[p.suburb]) return null;
+        const [x,y]=geoXY(GEO[p.suburb][0],GEO[p.suburb][1]);
+        return {r,p,x,y,col:COL[r.cls]||'#94a3b8'};}).filter(Boolean);
+      const dots=pts.map(o=>`
+        <circle cx="${o.x}" cy="${o.y}" r="${mapSel===o.r.c?11:8}" fill="${o.col}" stroke="#fff" stroke-width="2"
+          style="cursor:pointer" onclick="mapPick('${o.r.c}')"><title>${o.p.nick} · ${o.p.suburb}</title></circle>
+        <text x="${o.x+13}" y="${o.y+4}" font-size="11" fill="#3c4b5a" style="cursor:pointer" onclick="mapPick('${o.r.c}')">${o.p.nick}</text>`).join('');
+      const s=pts.find(o=>o.r.c===mapSel); if(!s) return dots;
+      const bx=s.x>600?s.x-268:s.x+16, by=s.y<130?s.y+16:s.y-104;
+      return dots+`
+       <g style="pointer-events:none">
+        <rect x="${bx}" y="${by}" width="252" height="88" rx="8" fill="#ffffff" stroke="#c9d4de"
+          style="filter:drop-shadow(0 4px 10px rgba(16,24,40,.18))"/>
+        <text x="${bx+14}" y="${by+24}" font-size="13" font-weight="bold" fill="#1a2633">${s.p.nick}
+          <tspan font-weight="normal" font-size="11" fill="#5f6b76">${s.r.c}</tspan></text>
+        <text x="${bx+14}" y="${by+44}" font-size="11" fill="#3c4b5a">📍 ${s.p.street}, ${s.p.suburb} ${s.p.state}</text>
+        <text x="${bx+14}" y="${by+64}" font-size="11" fill="#3c4b5a">利润率 <tspan font-weight="bold" fill="${(({'p-green':'#047857','p-amber':'#b45309','p-red':'#dc2626'})[s.r.cls])||'#5f6b76'}">${can('margin')?s.r.pr:'— —'}</tspan>
+          <tspan fill="#8a97a3">· ${s.p.status}</tspan></text>
+        <text x="${bx+14}" y="${by+80}" font-size="10" fill="#8a97a3">${s.r.note}</text>
+       </g>`;})()}
+  </svg>
+  <div class="hint" style="margin-top:6px">示意地图：按真实经纬度等比落位（悉尼上北区）——正式系统接
+    <b>Google 地图</b>（与「路程预估」共用一个 API Key，部署时配置），色点与点选弹窗交互同款 ·
+    地图只当导览：数字以上表为准</div>
+  </div></div>`;
 },
 
 'fin/设置':()=>`

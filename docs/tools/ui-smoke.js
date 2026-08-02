@@ -771,6 +771,27 @@ const { chromium } = require('playwright');
   const cmChk=await page.evaluate(()=>{go('fin','成本与利润率');
     return document.getElementById('main').innerHTML.includes('<b>张宅</b>');});
   ok(cmChk,'成本利润率页昵称未按口径');
+  // 6.13) 三十五轮：项目分布地图（经纬度落位 · 利润率四档色点 · 点选弹窗）
+  const w35=await page.evaluate(()=>{go('fin','成本与利润率');
+    const h=document.getElementById('main').innerHTML;
+    const svg=document.getElementById('pmap');
+    const dots=svg?svg.querySelectorAll('circle[style]').length:0;   // 项目色点（带 cursor 样式）
+    const colors=h.includes('fill="#dc2626"')&&h.includes('fill="#047857"')&&h.includes('fill="#b45309"');
+    const legend=!!document.getElementById('maplegend');
+    mapPick('KX-2026-0142');
+    const h2=document.getElementById('pmap').innerHTML;
+    const bubble=h2.includes('王宅')&&h2.includes('8 Franklin Rd, Cherrybrook NSW')&&h2.includes('59.1%');
+    mapPick('KX-2026-0142');                            // 再点=关闭
+    const closed=!document.getElementById('pmap').innerHTML.includes('8 Franklin Rd, Cherrybrook NSW');
+    const gnote=document.getElementById('main').innerHTML.includes('Google 地图');
+    return JSON.stringify({dots,colors,legend,bubble,closed,gnote});});
+  const r35=JSON.parse(w35);
+  ok(r35.dots===9,`分布图应 9 个项目色点，实际 ${r35.dots}`);
+  ok(r35.colors,'色点未按利润率四档配色（缺红/绿/橙）');
+  ok(r35.legend,'缺利润率颜色图例');
+  ok(r35.bubble,'点选弹窗缺 昵称/完整地址/利润率');
+  ok(r35.closed,'再点一次未关闭弹窗');
+  ok(r35.gnote,'缺「正式系统接 Google 地图」说明');
   const plChk=await page.evaluate(()=>{go('fin','项目列表');pjFilter=null;renderAll();
     const h=document.getElementById('main').innerHTML;pjFilter=null;
     return h.includes('<b>王宅</b>');});
