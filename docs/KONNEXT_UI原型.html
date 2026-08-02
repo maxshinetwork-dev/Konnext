@@ -321,6 +321,10 @@ tbody tr:hover{background:var(--bg-elevated)}
 <div id="rmbox" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:89;
   background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
   width:min(680px,94vw);max-height:88vh;overflow-y:auto;padding:18px 20px" ></div>
+<div id="lvback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:88" onclick="leaveClose()"></div>
+<div id="lvbox" style="display:none;position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:89;
+  background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
+  width:min(430px,92vw);padding:18px 20px"></div>
 <aside class="drawer" id="drawer">
   <div class="drawer-head">
     <b style="flex:1">待办中心</b>
@@ -627,7 +631,7 @@ const finStage=f=>{ for(const m of f.ms.slice(0,3)){ if(!m.settled){
   return {m:null,gate:null}; };   // S1~S3 已清 → 去 S4 线
 /* 财务设置（演示；正式=eng_setting write_depts=finance） */
 let finSet={overdueDays:30, gstBank:10, gstCash:0, suspendDays:90, otRates:{weekday:1.0,sat:1.0,sun:1.0,ph:1.0}};
-let finQ='', finF='全部', FINOPEN={}, s4Open={}, nodeF='全部';
+let finQ='', finF='全部', FINOPEN={}, s4Open={}, nodeF='全部', hrOpen={}, payGridOpen=false;
 /* 通知记录（演示）：内外责任人 · 手动确认接收（外部付款人=短信回 YES；内部=待办已知悉） */
 const NOTIF=[
  {at:'2026/07/28 10:02',pj:'KX-2026-0203',what:'S1 定金 Invoice 已开出（外部系统）· 应收 A$48,000',
@@ -662,10 +666,17 @@ function finPeople(code){ const out=[];
   (f&&f.cand||[]).forEach(c=>{ if(!out.some(x=>x.src===c.src&&x.name===c.name)) out.push(c); });
   const pj=PROJECTS.find(x=>x.code===code);
   if(pj){ if(pj.builder&&pj.builder!=='—'){ const s=pj.builder.split(' · ');
-            out.push({src:'Builder',name:s[0],company:s[1]||'',title:'Builder'}); }
+            out.push({src:'Builder',name:s[0],company:s[1]||'',title:'Builder',...(PARTY_CONTACT[s[0]]||{})}); }
           if(pj.elec&&pj.elec!=='—'){ const s=pj.elec.split(' · ');
-            out.push({src:'电工',name:s[0],company:s[1]||'',title:'电工'}); } }
+            out.push({src:'电工',name:s[0],company:s[1]||'',title:'电工',...(PARTY_CONTACT[s[0]]||{})}); } }
   return out; }
+/* 参建方联系方式（演示）：来自售前采集——三十一轮起录人处都带邮箱栏（选填不强制），催款/付款人/通知都用得上 */
+const PARTY_CONTACT={
+ 'Mike':{phone:'0422 000 111',email:'mike@buildco.com.au'},
+ 'Sam' :{phone:'0422 300 400',email:'sam@northbuild.com.au'},
+ 'Ken' :{phone:'0422 500 600',email:'ken@metrocon.com.au'},
+ 'Tony':{phone:'0422 000 222',email:'tony@spark.com.au'},
+ 'Leo' :{phone:'0422 700 800',email:'leo@voltpro.com.au'}};
 /* 付款人单元格：姓名/电话/邮箱/公司/title 全显示（有则显）+ 下拉换人 + 保存留痕 */
 function payerCell(f){ const ppl=finPeople(f.code); const cur=(f.payerSrc||'')+'|'+f.payer;
   return `<div><b>${f.payer}</b>${f.payerSrc?` <span class="pill p-grey">${f.payerSrc}</span>`:''}
@@ -921,11 +932,136 @@ function expNo(id){ uiPrompt('驳回原因（留痕）：',why=>{ if(!why||!Stri
   opLog(e.pj,'驳回报销',e.id+' · '+e.who+' · '+A$(e.amt)+' · '+e.note,['fin']); renderAll(); }); }
 /* 工资演示（真发工资在外部系统——这里只整理总结） */
 const STAFF=[
- {name:'小陈', sys:'月薪',   base:'A$5,800/月', costHr:34.9, ot:'加班→倒休', toil:12.5},
- {name:'老李', sys:'月薪',   base:'A$6,200/月', costHr:37.3, ot:'加班→倒休', toil:4},
- {name:'阿强', sys:'时薪',   base:'A$42/h',     costHr:42,   ot:'按倍数付(现 1.0)', toil:0},
- {name:'Tony', sys:'外包日薪',base:'A$510/天',  costHr:51,   ot:'无加班概念', toil:0, ref:'参考时间 10h'},
+ {name:'小陈', sys:'月薪',   base:'A$5,800/月', costHr:34.9, ot:'加班→倒休', phone:'0433 880 001', join:'2025/03/03', active:true},
+ {name:'老李', sys:'月薪',   base:'A$6,200/月', costHr:37.3, ot:'加班→倒休', phone:'0433 880 002', join:'2025/06/16', active:true},
+ {name:'阿强', sys:'时薪',   base:'A$42/h',     costHr:42,   ot:'按倍数付(现 1.0)', phone:'0433 880 003', join:'2025/09/01', active:true,
+  rateHist:[{from:'2026/08/01',costHr:42},{from:'',costHr:40}]},   // 阶段时薪演示：08/01 起 40→42
+ {name:'Tony', sys:'外包日薪',base:'A$510/天',  costHr:51,   ot:'无加班概念', ref:'参考时间 10h', phone:'0422 000 222', join:'2025/10/01', active:true},
 ];
+/* ── 三十一轮：工资数据=数据平台 ──
+   倒休不存余额存流水（只增不改）——余额现算；负数=休假扣减，forced=财务强制（红字留痕） */
+const TOIL=[
+ {who:'小陈',at:'2026/05/31',delta:9,  why:'05 月加班转倒休（日结定格加总）'},
+ {who:'小陈',at:'2026/06/30',delta:3.5,why:'06 月加班转倒休'},
+ {who:'老李',at:'2026/06/30',delta:4,  why:'06 月加班转倒休'},
+];
+const toilBal=n=>Math.round(TOIL.filter(x=>x.who===n).reduce((a,x)=>a+x.delta,0)*10)/10;
+let LEAVES=[];   // {who,from,to,hrs,st:'待回复'|'已确认'|'强制扣减',at}
+/* 阶段时薪：成本时薪按「当天生效」的那一档取——调薪只影响之后的天，已定格的日结不回溯 */
+const rateOf=(who,ymd)=>{ const s=STAFF.find(x=>x.name===who); if(!s) return 0;
+  if(s.rateHist){ for(const r of s.rateHist) if(!r.from||ymd>=r.from) return r.costHr; }
+  return s.costHr; };
+/* 工资周期：上月 21 → 本月 20；周期视图每月 21 号自动滚动 */
+function periodStart(){ const d=new Date();
+  return d.getDate()>=21? new Date(d.getFullYear(),d.getMonth(),21)
+                        : new Date(d.getFullYear(),d.getMonth()-1,21); }
+const _z2=n=>String(n).padStart(2,'0');
+const ymdS=d=>d.getFullYear()+'/'+_z2(d.getMonth()+1)+'/'+_z2(d.getDate());
+const mdS=d=>_z2(d.getMonth()+1)+'/'+_z2(d.getDate());
+/* 本周期日结流水（演示生成：固定排班，周日休）——当夜 0 点定格；到 0 点仍挂起＝不可补录（定案零工时） */
+const PLAN={
+ '小陈':{pj:'KX-2026-0203',h:8,  phase:'build'},
+ '老李':{pj:'KX-2026-0188',h:8,  phase:'build'},
+ '阿强':{pj:'KX-2026-0188',h:9.5,phase:'build'},
+ 'Tony':{pj:'KX-2026-0142',h:10, lab:'整日',phase:'mt'},
+};
+const HANG={'小陈':['07/29','07/30']};   // 无记录挂起（0 点已过 → 不可补录）
+function worklog(){ const out=[]; const t0=new Date(); t0.setHours(0,0,0,0);
+  for(let d=new Date(periodStart()); d<=t0; d.setDate(d.getDate()+1)){
+    const ymd=ymdS(d), md=mdS(d), isToday=(d.getTime()===t0.getTime());
+    for(const s of STAFF){ if(!s.active) continue; const pl=PLAN[s.name]; if(!pl) continue;
+      if(d.getDay()===0){ out.push({d:ymd,md,who:s.name,rest:true}); continue; }
+      if((HANG[s.name]||[]).includes(md)){ out.push({d:ymd,md,who:s.name,hang:true}); continue; }
+      const rate=rateOf(s.name,ymd);
+      const amt=s.sys==='月薪'?null:(s.sys==='外包日薪'?510:Math.round(pl.h*rate*100)/100);
+      out.push({d:ymd,md,who:s.name,pj:pl.pj,phase:pl.phase,hLab:pl.lab||pl.h+'h',hEff:pl.h,
+                cost:Math.round(pl.h*rate*100)/100,amt,today:isToday});
+  } } return out; }
+/* 项目人力消耗：历史=日结定格逐日加总（基数，截至上周期末）；本周期流水现算续在其上。
+   est=售前签约时填的「预测工时」。成本=每天工时×当天该人成本时薪（阶段时薪）。今天的段未定格、明天才计入 */
+const PJLABOR={
+ 'KX-2026-0203':{est:180,base:[{who:'小陈',bh:64, bc:2233.6},{who:'阿强',bh:38, bc:1520}]},
+ 'KX-2026-0188':{est:620,base:[{who:'阿强',bh:210,bc:8400},  {who:'老李',bh:96, bc:3580.8},{who:'Tony',bh:120,bc:6120}]},
+ 'KX-2026-0170':{est:300,base:[{who:'小陈',bh:110,bc:3839},  {who:'老李',bh:88, bc:3282.4}]},
+ 'KX-2026-0142':{est:560,base:[{who:'阿强',bh:300,bc:12000}, {who:'Tony',bh:220,bc:11220},{who:'小陈',bh:120,bc:4188}],
+                 mbase:[{who:'Tony',mh:22,mc:1122},{who:'老李',mh:6,mc:223.8}]},
+ 'KX-2026-0180':{est:420,base:[{who:'老李',bh:300,bc:11190}, {who:'阿强',bh:180,bc:7200}],
+                 mbase:[{who:'小陈',mh:9,mc:314.1}]},
+ 'KX-2026-0121':{est:260,base:[{who:'Tony',bh:210,bc:10710}],mbase:[{who:'Tony',mh:14,mc:714}]},
+};
+function hrAgg(code){ const L=PJLABOR[code]||{est:null,base:[]}; const P={};
+  const slot=w=>P[w]=P[w]||{bh:0,bc:0,mh:0,mc:0};
+  (L.base ||[]).forEach(r=>{const p=slot(r.who); p.bh+=r.bh; p.bc+=r.bc;});
+  (L.mbase||[]).forEach(r=>{const p=slot(r.who); p.mh+=r.mh; p.mc+=r.mc;});
+  worklog().forEach(w=>{ if(w.pj!==code||w.rest||w.hang||w.today) return; const p=slot(w.who);
+    if(w.phase==='mt'){p.mh+=w.hEff;p.mc+=w.cost;} else {p.bh+=w.hEff;p.bc+=w.cost;} });
+  const T={bh:0,bc:0,mh:0,mc:0};
+  Object.values(P).forEach(p=>{T.bh+=p.bh;T.bc+=p.bc;T.mh+=p.mh;T.mc+=p.mc;});
+  ['bh','bc','mh','mc'].forEach(k=>T[k]=Math.round(T[k]*100)/100);
+  return {est:L.est,P,T}; }
+const Hh=n=>(Math.round(n*10)/10)+' h';
+/* ── 倒休休假：弹窗填 从→至（年月日时）→ 员工短信回 Y 自动扣减；不回复财务可强制扣减（红字） ── */
+let lvWho=null;
+const lvFmt=v=>v?v.replace('T',' ').replace(/-/g,'/'):'';
+function leaveOpen(name){ lvWho=name;
+  document.getElementById('lvbox').innerHTML=
+   '<div style="font-weight:600;margin-bottom:10px">倒休休假 · '+name+
+   ' <span class="pill p-cyan">当前余额 '+toilBal(name)+' h</span></div>'+
+   '<div class="field"><label>从（年月日时）</label><input id="lv-from" type="datetime-local" oninput="lvCalc()"></div>'+
+   '<div class="field"><label>至（年月日时）</label><input id="lv-to" type="datetime-local" oninput="lvCalc()"></div>'+
+   '<div id="lv-hrs" class="hint">扣减时长：先把两端时间填完整</div>'+
+   '<div class="hint" style="margin-top:6px">确认后员工收到短信，回 Y 系统自动扣减倒休余额；'+
+     '不回复时财务可<b style="color:#c62828">强制扣减</b>（红字留痕）· 不能透支余额</div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">'+
+   '<button class="btn" onclick="leaveClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="leaveConfirm()">确认并发短信</button></div>';
+  document.getElementById('lvback').style.display='block';
+  document.getElementById('lvbox').style.display='block'; }
+function leaveClose(){ document.getElementById('lvback').style.display='none';
+  document.getElementById('lvbox').style.display='none'; }
+function lvCalc(){ const f=document.getElementById('lv-from'),tt=document.getElementById('lv-to');
+  if(!f||!tt||!f.value||!tt.value) return null;
+  const h=Math.round((new Date(tt.value)-new Date(f.value))/36e5*10)/10;
+  const el=document.getElementById('lv-hrs');
+  if(el) el.innerHTML=h>0?('扣减时长：<b>'+h+' h</b>（'+lvFmt(f.value)+' → '+lvFmt(tt.value)+'）')
+                        :'「至」必须晚于「从」';
+  return h; }
+function leaveConfirm(){ const h=lvCalc();
+  if(h==null){ uiAlert('请把「从/至」两端时间都填完整'); return; }
+  if(h<=0){ uiAlert('「至」必须晚于「从」——请检查时间区间'); return; }
+  const bal=toilBal(lvWho);
+  if(h>bal){ uiAlert('扣减 '+h+' h 超过 '+lvWho+' 的倒休余额 '+bal+' h —— 倒休不能透支，请缩短区间'); return; }
+  const f=document.getElementById('lv-from').value, tt=document.getElementById('lv-to').value;
+  LEAVES.unshift({who:lvWho,from:lvFmt(f),to:lvFmt(tt),hrs:h,st:'待回复',at:nowTs()});
+  notifAdd('','倒休休假确认：'+lvWho+' '+lvFmt(f)+' → '+lvFmt(tt)+'（扣 '+h+' h）',
+    [{who:'员工 '+lvWho,how:'短信',ok:false}]);
+  opLog('','发起倒休休假',lvWho+' '+lvFmt(f)+' → '+lvFmt(tt)+' · 扣 '+h+' h · 短信已发，等员工回 Y',['fin','eng']);
+  leaveClose(); renderAll();
+  uiAlert('已向 '+lvWho+' 发送休假确认短信（演示）\n回 Y 自动扣减；不回复时财务可在「倒休 · 休假流水」里强制扣减'); }
+function leaveYes(i){ const r=LEAVES[i]; if(!r||r.st!=='待回复') return;
+  r.st='已确认'; TOIL.push({who:r.who,at:todayS(),delta:-r.hrs,why:'休假 '+r.from+' → '+r.to+'（员工回 Y 确认）'});
+  opLog('','倒休扣减（员工确认）',r.who+' 回 Y · −'+r.hrs+' h · 余额 '+toilBal(r.who)+' h',['fin','eng']); renderAll(); }
+function leaveForce(i){ const r=LEAVES[i]; if(!r||r.st!=='待回复') return;
+  uiConfirm(r.who+' 未回复确认短信。\n强制扣减 '+r.hrs+' h 倒休（红字留痕，进操作日志）？',ok=>{ if(!ok) return;
+    r.st='强制扣减';
+    TOIL.push({who:r.who,at:todayS(),delta:-r.hrs,why:'休假 '+r.from+' → '+r.to+'（员工未回复 · 财务强制扣减）',forced:true});
+    opLog('','倒休强制扣减',r.who+' 未回复 · −'+r.hrs+' h（强制）· 余额 '+toilBal(r.who)+' h',['fin','eng']); renderAll(); }); }
+/* ── 工资发放人员管理（财务在「设置」页操作）：加人=成本时薪必填（门禁）；删=只停用留痕 ── */
+function finStaffAdd(){ const v=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
+  const name=v('stf-name'), cost=parseFloat(v('stf-cost'));
+  if(!name){ uiAlert('姓名未填写，无法添加人员'); return; }
+  if(STAFF.some(s=>s.name===name)){ uiAlert('已有同名人员「'+name+'」——请区分姓名（如加姓氏或编号）'); return; }
+  if(!(cost>0)){ uiAlert('人工换算时薪（成本时薪）未填写，人员无法建立 —— 项目人力成本核算全靠它'); return; }
+  STAFF.push({name,sys:v('stf-sys')||'时薪',base:v('stf-base')||'—',costHr:cost,ot:'跟全局倍数',
+    phone:v('stf-phone'),join:todayS(),active:true});
+  opLog('','添加工资人员',name+' · '+v('stf-sys')+' · 成本时薪 A$'+cost,['fin','eng']); renderAll();
+  uiAlert('已添加 '+name+'（演示）——正式系统同步建施工端 App 账号（三级 · 只有上报权限）'); }
+function finStaffToggle(i){ const s=STAFF[i]; if(!s) return;
+  uiConfirm(s.active?('停用 '+s.name+'？\n停用后不再进排班与日结，历史工资与项目成本照算、留痕可查。')
+                    :('重新启用 '+s.name+'？'),ok=>{ if(!ok) return;
+    s.active=!s.active;
+    opLog('',(s.active?'启用':'停用')+'工资人员',s.name+(s.active?' 恢复在职':' 停用（历史照算 · 留痕）'),['fin','eng']);
+    renderAll(); }); }
 /* 大表行内直改：改前值→后值 全留痕；注释改动会把对方部门置回「未读」 */
 function preEdit(code,field,value,label){ const p=BIGPD.find(x=>x.code===code); if(!p) return;
   const old=p[field]; if(String(old||'')===String(value||'')) return;
@@ -1116,8 +1252,8 @@ let detContacts=[
  {lab:'关系人',nm:'',nk:'',ph:'',em:'',role:''}];
 let detFam=[{t:'成人',age:'40',note:''},{t:'成人',age:'38',note:''},
  {t:'儿童',age:'8',note:'二楼儿童房'},{t:'老人',age:'70',note:'一层主卧 · 夜灯感应'}];
-let detParties=[{tr:'Builder',co:'BuildCo',nm:'Mike',ph:'0422 000 111'},
- {tr:'电工',co:'Spark 电气',nm:'Tony',ph:'0422 000 222'}];
+let detParties=[{tr:'Builder',co:'BuildCo',nm:'Mike',ph:'0422 000 111',em:'mike@buildco.com.au'},
+ {tr:'电工',co:'Spark 电气',nm:'Tony',ph:'0422 000 222',em:'tony@spark.com.au'}];
 let detSol={wiring:'有线',proto:'KNX',budget:'480,000',knx:true,fh:false};
 let detFloors={b:'无',l1:'双砖',l2:'轻钢',l3:'无',l4:'无',roof:'瓦顶'};
 let FLOOR_OPTS=['无','双砖','轻钢','木结构','混凝土','砖木','其他'];       // 楼层用途（设置可调）
@@ -1128,9 +1264,9 @@ setTimeout(()=>{ OPT_LABEL.set(roleOpts,'角色'); OPT_LABEL.set(tradeOpts,'工�
   OPT_LABEL.set(houseTypeOpts,'房屋类型'); OPT_LABEL.set(buildStageOpts,'施工阶段');
   OPT_LABEL.set(FLOOR_OPTS,'楼层用途'); OPT_LABEL.set(roofOpts,'屋顶'); },0);
 const FAM_TYPES=['成人','老人','儿童','保姆','司机','清洁工','宠物','其他'];
-function detFamAdd(){ detFam.push({t:'成人',age:'',note:''}); detPaint(); }
+function detFamAdd(){ detFam.push({t:'成人',age:'',em:'',note:''}); detPaint(); }
 function detFamDel(i){ detFam.splice(i,1); detPaint(); }
-function detPartyAdd(){ detParties.push({tr:tradeOpts[0]||'其他',co:'',nm:'',ph:''}); detPaint(); }
+function detPartyAdd(){ detParties.push({tr:tradeOpts[0]||'其他',co:'',nm:'',ph:'',em:''}); detPaint(); }
 function detPartyDel(i){ detParties.splice(i,1); detPaint(); }
 function detPaint(){
  const sel=(opts,cur,oc)=>`<select style="width:auto" onchange="${oc}">${
@@ -1148,21 +1284,23 @@ function detPaint(){
      <td>${sel(['—',...roleOpts],c.role||'—',`detContacts[${i}].role=this.value`)}</td></tr>`).join('')}</tbody></table>
   <div class="panel-head" style="padding:0 0 8px 0">家庭成员
     <span class="muted" style="font-weight:400">设计输入 · 可增删</span></div>
-  <table style="margin-bottom:8px"><thead><tr><th>类型</th><th>年龄</th><th>备注</th><th></th></tr></thead>
+  <table style="margin-bottom:8px"><thead><tr><th>类型</th><th>年龄</th><th>邮箱（选填）</th><th>备注</th><th></th></tr></thead>
    <tbody>${detFam.map((m,i)=>`<tr>
      <td>${sel(FAM_TYPES,m.t,`detFam[${i}].t=this.value`)}</td>
      <td><input class="mono" style="width:56px" value="${m.age}" oninput="detFam[${i}].age=this.value"></td>
-     <td><input style="width:200px" value="${m.note}" oninput="detFam[${i}].note=this.value"></td>
+     <td><input style="width:130px" value="${m.em||''}" placeholder="可空" oninput="detFam[${i}].em=this.value"></td>
+     <td><input style="width:150px" value="${m.note}" oninput="detFam[${i}].note=this.value"></td>
      <td><a class="delx" onclick="detFamDel(${i})" title="删除本行">✕</a></td></tr>`).join('')}</tbody></table>
   <button class="btn" style="margin-bottom:14px" onclick="detFamAdd()">＋ 添加成员</button>
   <div class="panel-head" style="padding:0 0 8px 0">参建方 <span class="pill p-cyan">下游硬依赖</span>
     <span class="muted" style="font-weight:400">可增删 · 工种选项在「设置」维护</span></div>
-  <table style="margin-bottom:8px"><thead><tr><th>工种</th><th>公司</th><th>联系人</th><th>电话</th><th></th></tr></thead>
+  <table style="margin-bottom:8px"><thead><tr><th>工种</th><th>公司</th><th>联系人</th><th>电话</th><th>邮箱（选填）</th><th></th></tr></thead>
    <tbody>${detParties.map((p,i)=>`<tr>
      <td>${sel(tradeOpts,p.tr,`detParties[${i}].tr=this.value`)}</td>
-     <td><input style="width:112px" value="${p.co}" oninput="detParties[${i}].co=this.value"></td>
-     <td><input style="width:82px" value="${p.nm}" oninput="detParties[${i}].nm=this.value"></td>
-     <td><input style="width:120px" value="${p.ph}" oninput="detParties[${i}].ph=this.value"></td>
+     <td><input style="width:104px" value="${p.co}" oninput="detParties[${i}].co=this.value"></td>
+     <td><input style="width:74px" value="${p.nm}" oninput="detParties[${i}].nm=this.value"></td>
+     <td><input style="width:108px" value="${p.ph}" oninput="detParties[${i}].ph=this.value"></td>
+     <td><input style="width:150px" value="${p.em||''}" placeholder="可空" oninput="detParties[${i}].em=this.value"></td>
      <td><a class="delx" onclick="detPartyDel(${i})" title="删除本行">✕</a></td></tr>`).join('')}</tbody></table>
   <button class="btn" style="margin-bottom:14px" onclick="detPartyAdd()">＋ 添加参建方</button>
   <div class="panel-head" style="padding:0 0 8px 0">方案倾向
@@ -2261,18 +2399,21 @@ ${ops([
    </div>
    <div id="wizs3" style="display:none">
     <div class="panel-head" style="padding:0 0 var(--sp-2) 0">家庭成员（数量不定，逐个添加）</div>
-    <table style="margin-bottom:var(--sp-2)"><thead><tr><th>类型</th><th>年龄</th><th>备注</th><th></th></tr></thead>
+    <table style="margin-bottom:var(--sp-2)"><thead><tr><th>类型</th><th>年龄</th><th>邮箱（选填）</th><th>备注</th><th></th></tr></thead>
       <tbody><tr><td><select><option>成人</option><option>老人</option><option>儿童</option><option>保姆</option>
         <option>司机</option><option>清洁工</option><option>宠物</option><option>其他</option></select></td>
         <td><input class="mono" style="width:60px" placeholder="岁"></td>
+        <td><input placeholder="可空" style="width:130px"></td>
         <td><input placeholder="如：轮椅出行"></td>
         <td><button class="btn" onclick="uiAlert('演示：立项时可连续加行；建档后在大表行内「修改」里随时增删')">＋ 再加一位</button></td></tr></tbody></table>
     <div class="panel-head" style="padding:var(--sp-2) 0">参建方（★下游硬依赖：出库提货/Builder告知/SM签字）</div>
-    <table><thead><tr><th>工种</th><th>公司</th><th>联系人</th><th>电话</th><th></th></tr></thead>
+    <table><thead><tr><th>工种</th><th>公司</th><th>联系人</th><th>电话</th><th>邮箱（选填）</th><th></th></tr></thead>
       <tbody><tr><td><select>${tradeOpts.map(t=>`<option>${t}</option>`).join('')}</select></td>
         <td><input placeholder="公司名"></td><td><input placeholder="姓名"></td>
-        <td><input placeholder="04xx…"></td><td><button class="btn" onclick="uiAlert('演示：立项时可连续加行；建档后在大表行内「修改」里随时增删')">＋ 再加一方</button></td></tr></tbody></table>
-    <div class="hint">现在不全没关系，SM1 现场见到分包商还会往里采集 —— 但 Builder 和电工越早录越好</div>
+        <td><input placeholder="04xx…"></td><td><input placeholder="可空"></td>
+        <td><button class="btn" onclick="uiAlert('演示：立项时可连续加行；建档后在大表行内「修改」里随时增删')">＋ 再加一方</button></td></tr></tbody></table>
+    <div class="hint">现在不全没关系，SM1 现场见到分包商还会往里采集 —— 但 Builder 和电工越早录越好；
+      凡录人的地方都留邮箱栏（<b>选填不强制</b>）——付款人指定、催款邮件、告知函都用得上</div>
    </div>
    <div id="wizs4" style="display:none">
     <div class="split" style="gap:var(--sp-3)">
@@ -2923,39 +3064,126 @@ ${ops([
 },
 
 'fin/工资数据':()=>{
- return `<h2>工资数据 <span class="pill p-cyan">真正发工资在外部系统 · 这里做整理与总结</span></h2>
- <div class="page-sub">三种制度 · 日结当夜 0 点定格 · 月度只做日结加总 · 说明看左下「？ 帮助」</div>
+ const wl=worklog();
+ const scope=PROJECTS.filter(p=>['施工中','项目交付','项目维护中'].includes(p.status));
+ const psLab=mdS(periodStart());
+ const hangRows=wl.filter(w=>w.hang);
+ const rec=wl.filter(w=>!w.rest&&!w.hang).slice().reverse().slice(0,6);
+ const days=[...new Set(wl.map(w=>w.md))];
+ const gridStaff=STAFF.filter(s=>s.active&&PLAN[s.name]);
+ const aggs=scope.map(p=>({p,a:hrAgg(p.code)}));
+ const TT={est:0,bh:0,bc:0,mh:0};
+ aggs.forEach(x=>{ if(x.a.est) TT.est+=x.a.est; TT.bh+=x.a.T.bh; TT.bc+=x.a.T.bc; TT.mh+=x.a.T.mh; });
+ return `<h2>工资数据 <span class="pill p-cyan">真正发工资在外部系统 · 这里是数据平台：整理与总结</span></h2>
+ <div class="page-sub">项目视角人力消耗 · 三种制度 · 日结当夜 0 点定格 · 月度只做日结加总 · 说明看左下「？ 帮助」</div>
  ${ops([
-  ['改人员薪酬字段（时薪/成本时薪）','人工换算时薪不填 → 建人直接被拒','当天起生效 · 已定格的日结不回溯'],
-  ['21 日封账 · 生成工资汇总单','挂起未补录的日结会卡封账','拿汇总单去外部工资系统发钱 —— 本系统不碰钱'],
-  ['改加班倍数','在「设置」页 · 不许低于 1 · 改倍数=改钱全进审计','只影响以后的日结（当天倍数随日结定格）'],
+  ['查看项目人力消耗','范围=施工中 / 项目交付 / 项目维护中 · 人成本只有财务与管理层可见','—'],
+  ['休假（扣倒休）','只有倒休余额>0 且在职的人显示按钮 · 不能透支','员工短信回 Y 自动扣减；不回复财务可强制扣减（红字留痕）'],
+  ['本周期全员日结','周期=上个 21 号 → 今天 · 每月 21 号自动滚动','—'],
+  ['21 日封账 · 生成工资汇总单','挂起未定案的日结会卡封账（0 点已过不可补录，负责人填说明定案）','拿汇总单去外部工资系统发钱 —— 本系统不碰钱'],
+  ['添加 / 停用工资人员','在左栏「设置」页 · 成本时薪不填建人直接被拒','人员变动通知工程管理'],
  ])}
+ ${helpNote(`本页是<b>数据平台</b>，不发钱：人力消耗按项目归集——<b>售前预计人工</b>=签约「预测工时」，
+   <b>已消耗</b>=日结定格逐日加总（今天的段未定格、明天计入），<b>人成本</b>=每天工时×当天该人<b>阶段时薪</b>
+   （调薪只影响调薪之后的天，已定格的日结不回溯）。`)}
  ${helpNote(`三种制度一张表：<b>月薪</b>=固定月薪，加班攒<b>倒休</b>不发钱；<b>时薪</b>=付薪时长×时薪，加班按倍数付（现全 1.0）；
    <b>外包</b>=固定日薪去了就一天，无加班概念，成本时薪=日薪÷参考时间自动算。周末/公共假日整天算加班（NSW 名单已录）。`)}
- ${helpNote(`日结<b>当夜 0 点定格，定格即不可改</b> —— 补录只能滚到下月补发。没打卡那天不扣钱（Fair Work 不允许惩罚性扣薪）
-   但<b>挂起不发</b>：负责人补录+填说明才放行，并永久进 KPI。月度周期=上月 21 → 本月 20，21 日封账。`)}
+ ${helpNote(`日结<b>当夜 0 点定格</b>；到 0 点仍挂起（无记录）＝<b>不可补录</b>，定案零工时——没打卡那天不扣钱
+   （Fair Work 不允许惩罚性扣薪：月薪不受影响，时薪/外包当天本就无可发），但需工程负责人填说明定案后封账才放行，并永久进 KPI。
+   月度周期=上月 21 → 本月 20，21 日封账。`)}
+ ${helpNote(`倒休：流水只增不改、余额现算。休假=财务点人员表「休假」填 从→至（年月日时），确认即给员工发短信；
+   回 Y 系统自动扣减；不回复不影响假期本身——财务可<b>强制扣减</b>（红字留痕）。倒休不能透支。`)}
+ <div class="panel"><div class="panel-head">项目人力消耗 <span class="pill p-cyan">施工中 · 项目交付 · 项目维护中</span>
+   <span class="muted" style="font-weight:400">已消耗＝日结定格逐日加总（今天的段明天计入）· 人成本＝工时 × 当天阶段时薪</span></div>
+  <div style="overflow-x:auto"><table id="hrtbl"><thead><tr><th>项目编号</th><th>立项时间</th><th>项目 · 地址</th><th>状态</th>
+    <th style="text-align:right">售前预计人工</th><th style="text-align:right">交付已消耗人工</th>
+    <th style="text-align:right">交付前人工成本</th><th style="text-align:right">维护已消耗人工</th><th></th></tr></thead>
+  <tbody>${aggs.map(({p,a})=>{
+    const over=a.est!=null&&a.T.bh>a.est;
+    return `<tr>
+     <td class="mono">${p.code}</td><td class="mono">${p.opened}</td>
+     <td><b>${p.nick}</b><div class="hint">${p.street}, ${p.suburb} ${p.state}</div></td>
+     <td><span class="pill ${p.band}">${p.status}</span></td>
+     <td class="num">${a.est!=null?Hh(a.est):'—'}</td>
+     <td class="num">${over?`<span style="color:#c62828;font-weight:600">${Hh(a.T.bh)} · 超预计 ${Hh(a.T.bh-a.est)}</span>`
+        :`${Hh(a.T.bh)}${a.est!=null?` <span class="hint">余 ${Hh(a.est-a.T.bh)}</span>`:''}`}</td>
+     <td class="num">${can('salary')?A$2(Math.round(a.T.bc*100)/100):'— —'}</td>
+     <td class="num">${a.T.mh?Hh(a.T.mh):'—'}</td>
+     <td><button class="btn" style="padding:2px 8px;font-size:11px"
+        onclick="hrOpen['${p.code}']=!hrOpen['${p.code}'];renderAll()">${hrOpen[p.code]?'▾ 收起':'▸ 每人明细'}</button></td></tr>
+    ${hrOpen[p.code]?`<tr><td colspan="9" style="background:var(--bg-elevated);padding:8px 14px">
+      <table style="margin:4px 0"><thead><tr><th>人员</th><th>参与</th>
+        <th style="text-align:right">交付工时</th><th style="text-align:right">维护工时</th>
+        <th style="text-align:right">总工时</th><th style="text-align:right">人成本（阶段时薪累计）</th></tr></thead>
+      <tbody>${Object.entries(a.P).map(([who,q])=>{const s=STAFF.find(x=>x.name===who)||{};
+        return `<tr><td><b>${who}</b>${s.rateHist?`<div class="hint">阶段时薪：07/31 前 A$40 · 08/01 起 A$42（调薪只影响之后的天）</div>`:''}</td>
+        <td>${q.bh?'<span class="pill p-cyan">交付</span>':''}${q.mh?' <span class="pill p-green">维护</span>':''}</td>
+        <td class="num">${q.bh?Hh(q.bh):'—'}</td><td class="num">${q.mh?Hh(q.mh):'—'}</td>
+        <td class="num"><b>${Hh(q.bh+q.mh)}</b></td>
+        <td class="num">${can('salary')?A$2(Math.round((q.bc+q.mc)*100)/100):'— —'}</td></tr>`;}).join('')}</tbody></table>
+      </td></tr>`:''}`;}).join('')}
+   <tr style="font-weight:600"><td colspan="4">合计（${scope.length} 个项目）</td>
+     <td class="num">${Hh(TT.est)}</td><td class="num">${Hh(TT.bh)}</td>
+     <td class="num">${can('salary')?A$2(Math.round(TT.bc*100)/100):'— —'}</td>
+     <td class="num">${Hh(TT.mh)}</td><td></td></tr></tbody></table></div>
+  <div class="panel-body hint">售前预计人工=签约时填的「预测工时」· 超预计标红＝吃工程利润率，不挂客户 ·
+    人成本按<b>成本时薪</b>算（≠实发工资：外包按参考时长折算——差额见月度封账）</div></div>
  <div class="split">
-  <div class="panel"><div class="panel-head">人员与薪酬 <span class="muted" style="font-weight:400">薪酬字段=财务写 · 其余=工程管理写</span></div>
-   <table><thead><tr><th>姓名</th><th>制度</th><th style="text-align:right">基准</th><th style="text-align:right">成本时薪</th><th>加班</th><th style="text-align:right">倒休余额</th></tr></thead>
-   <tbody>${STAFF.map(s=>`<tr><td><b>${s.name}</b>${s.ref?`<div class="hint">${s.ref}</div>`:''}</td><td>${s.sys}</td>
+  <div class="panel"><div class="panel-head">人员与薪酬 <span class="muted" style="font-weight:400">薪酬字段=财务写 · 添加/停用在左栏「设置」</span></div>
+   <table><thead><tr><th>姓名</th><th>制度</th><th style="text-align:right">基准</th><th style="text-align:right">成本时薪</th><th>加班</th><th style="text-align:right">倒休余额</th><th></th></tr></thead>
+   <tbody>${STAFF.map(s=>{const bal=toilBal(s.name);
+     return `<tr style="${s.active?'':'opacity:.45'}"><td><b>${s.name}</b>${s.ref?`<div class="hint">${s.ref}</div>`:''}${s.active?'':'<div class="hint">已停用</div>'}</td><td>${s.sys}</td>
      <td class="num">${can('salary')?s.base:'— —'}</td>
      <td class="num">${can('salary')?('A$'+s.costHr):'— —'}</td>
      <td style="font-size:var(--fs-xs)">${s.ot}</td>
-     <td class="num">${s.toil?s.toil+' h':'—'}</td></tr>`).join('')}</tbody></table>
-   <div class="panel-body hint">倒休不存余额存流水（只增不改），余额现算 · 离职清算：未休倒休×离职时成本时薪，系统算数、实付人定、不一致填原因</div></div>
-  <div class="panel"><div class="panel-head">日结近况 <span class="muted" style="font-weight:400">当夜 0 点定格 🔒</span></div>
-   <table><thead><tr><th>日期</th><th>人</th><th>项目</th><th style="text-align:right">付薪时长</th><th style="text-align:right">日结</th><th>状态</th></tr></thead>
-   <tbody>
-    <tr><td class="mono">07/31</td><td>阿强</td><td class="mono">0188</td><td class="num">9.5h</td><td class="num">${can('salary')?'A$399.00':'— —'}</td><td><span class="pill p-green">🔒 已定格</span></td></tr>
-    <tr><td class="mono">07/31</td><td>Tony</td><td class="mono">0142</td><td class="num">整日</td><td class="num">${can('salary')?'A$510.00':'— —'}</td><td><span class="pill p-green">🔒 已定格</span></td></tr>
-    <tr><td class="mono">07/30</td><td>小陈</td><td class="mono">—</td><td class="num">—</td><td class="num">—</td><td><span class="pill p-red">挂起 · 无记录</span></td></tr>
-    <tr><td class="mono">07/29</td><td>小陈</td><td class="mono">—</td><td class="num">—</td><td class="num">—</td><td><span class="pill p-red">挂起 · 无记录</span></td></tr>
-   </tbody></table>
-   <div class="panel-body hint">挂起=不扣钱但不发：需工程负责人补录+说明放行（进 KPI）—— 21 日封账被这 2 天卡着</div></div>
+     <td class="num">${bal?bal+' h':'—'}</td>
+     <td>${bal>0&&s.active?`<button class="btn" style="padding:2px 8px;font-size:11px" onclick="leaveOpen('${s.name}')">休假</button>`:''}</td></tr>`;}).join('')}</tbody></table>
+   <div class="panel-body hint">倒休不存余额存流水（只增不改），余额现算 · 有余额的人亮「休假」按钮 ·
+     离职清算：未休倒休×离职时成本时薪，系统算数、实付人定、不一致填原因</div></div>
+  <div class="panel"><div class="panel-head">日结近况 <span class="muted" style="font-weight:400">当夜 0 点定格 🔒</span>
+    <button class="btn${payGridOpen?' btn-primary':''}" style="margin-left:auto;font-size:11px"
+      onclick="payGridOpen=!payGridOpen;renderAll()">${payGridOpen?'收起周期视图':'本周期全员日结（'+psLab+' → 今天）'}</button></div>
+   <table id="dayrecent"><thead><tr><th>日期</th><th>人</th><th>项目</th><th style="text-align:right">付薪时长</th><th style="text-align:right">日结</th><th>状态</th></tr></thead>
+   <tbody>${rec.map(w=>{const p=PROJECTS.find(x=>x.code===w.pj)||{};
+     return `<tr><td class="mono">${w.md}</td><td>${w.who}</td>
+     <td><b>${p.nick||'—'}</b><div class="hint">${p.street||''}${p.street?', ':''}${p.suburb||''} ${p.state||''}</div></td>
+     <td class="num">${w.hLab}</td>
+     <td class="num">${w.amt==null?'—':(can('salary')?A$2(w.amt):'— —')}</td>
+     <td>${w.today?'<span class="pill p-cyan">⏳ 今天 · 0 点定格</span>':'<span class="pill p-green">🔒 已定格</span>'}</td></tr>`;}).join('')}
+   ${hangRows.map(w=>`<tr><td class="mono">${w.md}</td><td>${w.who}</td><td>—</td><td class="num">—</td><td class="num">—</td>
+     <td><span class="pill p-red">挂起 · 无记录（不可补录）</span></td></tr>`).join('')}</tbody></table>
+   <div class="panel-body hint">到当夜 0 点仍挂起＝<b>不可补录</b>，定案零工时（不扣钱：月薪不受影响，时薪/外包当天无可发）——
+     需负责人填说明定案后封账才放行，并永久进 KPI · 月薪的日结只记出勤与成本归集，钱月度封账才算 —— 21 日封账被挂起 2 天卡着</div></div>
  </div>
+ ${payGridOpen?`<div class="panel"><div class="panel-head">本周期全员日结 <span class="pill p-cyan">${psLab} → 今天 · 每月 21 号自动滚动</span>
+    <span class="muted" style="font-weight:400">数字=已定格工时 · <b style="color:#c62828">挂</b>=无记录 · 休=周日 · ⏳=今天未定格</span></div>
+  <div style="overflow-x:auto"><table id="paygrid"><thead><tr><th>人员</th>${days.map(d=>`<th class="mono" style="text-align:center">${d}</th>`).join('')}<th style="text-align:right">周期合计</th></tr></thead>
+  <tbody>${gridStaff.map(s=>{const rows=wl.filter(w=>w.who===s.name); let tot=0;
+    const cells=rows.map(w=>{
+      if(w.rest) return '<td style="text-align:center" class="muted">休</td>';
+      if(w.hang) return '<td style="text-align:center"><b style="color:#c62828">挂</b></td>';
+      if(w.today) return '<td style="text-align:center">⏳</td>';
+      tot+=w.hEff; return `<td class="mono" style="text-align:center">${w.hEff}</td>`;}).join('');
+    return `<tr><td><b>${s.name}</b><div class="hint">${s.sys}</div></td>${cells}
+    <td class="num"><b>${Hh(tot)}</b>${(HANG[s.name]||[]).length?` <span style="color:#c62828;font-size:11px">挂 ${(HANG[s.name]||[]).length} 天</span>`:''}</td></tr>`;}).join('')}</tbody></table></div>
+  <div class="panel-body hint">每月 21 号自动滚动到新周期 —— 财务随时看「上个 21 号 → 今天」全员日结；历史周期正式系统按月归档可查</div></div>`:''}
+ <div class="panel"><div class="panel-head">倒休 · 休假流水
+    <span class="muted" style="font-weight:400">流水只增不改 · 余额现算：${STAFF.filter(s=>toilBal(s.name)>0).map(s=>s.name+' '+toilBal(s.name)+' h').join(' · ')||'—'}</span></div>
+  <table><thead><tr><th>时间</th><th>人</th><th>内容</th><th style="text-align:right">变动</th><th>状态 / 操作</th></tr></thead>
+  <tbody>${LEAVES.map((r,i)=>`<tr><td class="mono">${r.at}</td><td>${r.who}</td>
+    <td>休假 ${r.from} → ${r.to}</td><td class="num">−${r.hrs} h</td>
+    <td>${r.st==='待回复'?`<span class="pill p-amber">短信已发 · 等回 Y</span>
+        <button class="btn" style="padding:2px 8px;font-size:11px" onclick="leaveYes(${i})">模拟员工回 Y</button>
+        <button class="btn" style="padding:2px 8px;font-size:11px;color:#c62828;border-color:#c62828" onclick="leaveForce(${i})">强制扣减</button>`
+      :r.st==='已确认'?'<span class="pill p-green">已确认 · 已扣减</span>'
+      :`<b style="color:#c62828">强制扣减（员工未回复）</b>`}</td></tr>`).join('')}
+  ${TOIL.slice().reverse().map(x=>`<tr${x.forced?' style="color:#c62828"':''}><td class="mono">${x.at}</td><td>${x.who}</td>
+    <td>${x.why}</td><td class="num">${x.delta>0?'+':''}${x.delta} h</td>
+    <td>${x.forced?`<b style="color:#c62828">强制扣减留痕</b>`:x.delta>0?'<span class="pill p-grey">加班累计</span>':'<span class="pill p-grey">休假扣减</span>'}</td></tr>`).join('')}</tbody></table>
+  <div class="panel-body hint">员工短信回 Y 才自动扣；不回复不影响假期本身 —— 财务可强制扣减（红字留痕，进操作日志）· 倒休不能透支</div></div>
  <div class="panel"><div class="panel-head">月度封账 · 外部工资系统用的汇总单
     <span class="muted" style="font-weight:400">周期 07/21 → 08/20 · 21 日封账即发放</span>
-    <button class="btn btn-primary" style="margin-left:auto" onclick="uiAlert('演示：汇总单=日结加总，不再存一遍明细\\n（挂起 2 天补录放行后才能真封账）')">生成汇总单</button></div>
+    <button class="btn btn-primary" style="margin-left:auto" onclick="uiAlert('演示：汇总单=日结加总，不再存一遍明细\\n（挂起 2 天需负责人填说明定案后才能真封账）')">生成汇总单</button></div>
   <table><thead><tr><th>人</th><th>制度</th><th style="text-align:right">日结加总</th><th style="text-align:right">加班(倍数 1.0)</th><th style="text-align:right">倒休变动</th><th style="text-align:right">应发合计</th></tr></thead>
   <tbody>
    <tr><td>小陈</td><td>月薪</td><td class="num">${can('salary')?'A$5,800.00':'— —'}</td><td class="num">—</td><td class="num">+3.5h</td><td class="num">${can('salary')?'<b>A$5,800.00</b>':'— —'}</td></tr>
@@ -3114,6 +3342,31 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
     <div class="hint">需要某阶段完全独立的模版时，正式系统按阶段加覆盖行即可（先用变量适配）</div>
    </div>
   </div>
+ </div></div>
+<div class="panel" style="max-width:860px"><div class="panel-head">工资发放人员
+  <span class="muted" style="font-weight:400">财务添加 / 停用 · 薪酬字段=财务写，其余=工程管理写</span></div>
+ <div class="panel-body">
+  <table style="margin-bottom:10px"><thead><tr><th>姓名</th><th>手机（登录 / 短信确认）</th><th>制度</th>
+    <th style="text-align:right">基准</th><th style="text-align:right">成本时薪</th><th>入职</th><th>状态</th><th></th></tr></thead>
+   <tbody>${STAFF.map((s,i)=>`<tr style="${s.active?'':'opacity:.45'}">
+    <td><b>${s.name}</b>${s.ref?`<div class="hint">${s.ref}</div>`:''}</td>
+    <td class="mono">${s.phone||'—'}</td><td>${s.sys}</td>
+    <td class="num">${can('salary')?s.base:'— —'}</td>
+    <td class="num">${can('salary')?('A$'+s.costHr):'— —'}</td>
+    <td class="mono">${s.join||'—'}</td>
+    <td>${s.active?'<span class="pill p-green">在职</span>':'<span class="pill p-grey">已停用</span>'}</td>
+    <td><button class="btn" style="padding:2px 8px;font-size:11px" onclick="finStaffToggle(${i})">${s.active?'停用':'启用'}</button></td></tr>`).join('')}</tbody></table>
+  <div class="panel-head" style="padding:6px 0">＋ 添加人员</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <div class="field" style="margin:0"><label>姓名</label><input id="stf-name" style="width:90px"></div>
+    <div class="field" style="margin:0"><label>手机</label><input id="stf-phone" style="width:120px" placeholder="04xx xxx xxx"></div>
+    <div class="field" style="margin:0"><label>制度</label><select id="stf-sys" style="width:auto"><option>月薪</option><option>时薪</option><option>外包日薪</option></select></div>
+    <div class="field" style="margin:0"><label>基准（月薪/时薪/日薪）</label><input id="stf-base" style="width:110px" placeholder="如 A$42/h"></div>
+    <div class="field" style="margin:0"><label>成本时薪 A$（必填）</label><input id="stf-cost" class="mono" style="width:90px"></div>
+    <button class="btn btn-primary" onclick="finStaffAdd()">添加</button></div>
+  <div class="hint" style="margin-top:8px">成本时薪不填 → 建人直接被拒（项目人力成本核算全靠它）·
+    有日结历史的人不能删除，只能<b>停用</b>留痕——历史工资与项目成本照算 · 外包日薪填参考时间，成本时薪=日薪÷参考时间 ·
+    添加后正式系统同步建施工端 App 账号（三级 · 只有上报权限）· 增删与改动全进操作日志并通知工程管理</div>
  </div></div>
 <div class="panel" style="max-width:560px"><div class="panel-head">加班倍数（全局默认 · 可按人覆盖）</div>
  <div class="panel-body">
@@ -3528,7 +3781,7 @@ const STUCK={
   {pj:'KX-2026-0142',what:'变更待估价 3 条',why:'S4 开票前必须估完 —— 不估完 S4 Invoice 开不出',h:60,p:'尾款结算S4与Var'},
   {pj:'KX-2026-0142',what:'未退料 A$2,013.83 未结算',why:'「标记 S4 已请款」被禁用，直接开会少收这笔',h:52,p:'尾款结算S4与Var'},
   {pj:'KX-2026-0160',what:'超期应收 A$214K · 业主拒付',why:'仅收 S1 · 已停工 —— 催账还是停服需要决策',h:'',p:'催账和停服'},
-  {pj:'',what:'日结挂起 2 天未补录',why:'月度封账（21 日）被卡，需负责人补录并填说明',h:'',p:'工资数据'},
+  {pj:'',what:'日结挂起 2 天（小陈 07/29–30）· 0 点已过不可补录',why:'月度封账（21 日）被卡 —— 需负责人填说明定案（零工时）后放行 · 进 KPI',h:'',p:'工资数据'},
  ],
  eng:[
   {pj:'KX-2026-0180',what:'交付后停留 30 天未移交运维',why:'状态停留超阈值 —— 运维接管与订阅都没启动',h:720,p:'交付'},
