@@ -522,10 +522,10 @@ const { chromium } = require('playwright');
   ok(b31.ppl,'每人明细人员/人成本列缺失');
   const w31c=await page.evaluate(()=>{const d=document.getElementById('dayrecent').innerHTML;
     return JSON.stringify({noCode:!d.includes('KX-2026'),addr:d.includes('罗宅')&&d.includes('Springdale'),
-      hang:d.includes('挂起 · 无记录（不可补录）'),lock:d.includes('🔒 已定格')});});
+      hang:d.includes('挂起 · 无记录')&&d.includes('>补录</button>'),lock:d.includes('🔒 已定格')});});
   const c31=JSON.parse(w31c);
   ok(c31.noCode&&c31.addr,'日结近况项目列应为 昵称+完整地址（不用编号）');
-  ok(c31.hang,'日结近况缺「挂起 · 无记录（不可补录）」（0 点定格新规）');
+  ok(c31.hang,'日结近况挂起行缺「补录」按钮（三十二轮）');
   ok(c31.lock,'日结近况缺已定格标');
   const w31d=await page.evaluate(()=>{payGridOpen=true;renderAll();
     const g=document.getElementById('paygrid');
@@ -611,6 +611,53 @@ const { chromium } = require('playwright');
   ok(g31.wiz,'立项引导第3步缺邮箱（选填）栏（家庭成员/参建方）');
   ok(g31.dr,'修改抽屉缺邮箱列/参建方邮箱种子');
   ok(g31.cand,'付款人候选 Builder 未带电话邮箱（售前参建方采集）');
+  // 6.11) 三十二轮：挂起补录（工程负责人 · 原因必填 · 滚下月补发 · 财务只读）
+  const w32=await page.evaluate(()=>{
+    go('fin','工资数据');
+    bfOpen('小陈','07/29','2026/07/29');                       // 财务点 → 门禁拦（弹窗不开）
+    const finBlocked=!document.getElementById('bf-note');
+    loginAs('admin'); go('fin','工资数据');
+    bfOpen('小陈','07/29','2026/07/29');
+    const opened=!!document.getElementById('bf-note');
+    document.getElementById('bf-h').value='8';
+    document.getElementById('bf-cat').value='';
+    document.getElementById('bf-note').value='x';
+    const n0=Object.keys(BACKFILL).length;
+    bfConfirm('小陈','07/29','2026/07/29');                    // 类别空 → 拒
+    const gCat=Object.keys(BACKFILL).length===n0;
+    document.getElementById('bf-cat').value='忘打卡';
+    bfConfirm('小陈','07/29','2026/07/29');                    // 说明<10字 → 拒
+    const gNote=Object.keys(BACKFILL).length===n0;
+    document.getElementById('bf-note').value='早上直接去了罗宅现场布线，忘记在 App 打卡，负责人核实确有出工';
+    document.getElementById('bf-pj').value='KX-2026-0203';
+    const bh0=hrAgg('KX-2026-0203').T.bh;
+    bfConfirm('小陈','07/29','2026/07/29');                    // → 成功定格
+    const done=!!BACKFILL['小陈|07/29'];
+    const grow=hrAgg('KX-2026-0203').T.bh-bh0===8;
+    const h=document.getElementById('main').innerHTML;
+    const pill=h.includes('已补录 · 滚下月补发')&&h.includes('忘打卡：');
+    const still=h.includes('挂起 · 无记录');                    // 07/30 还挂着
+    const log=OPLOG[0].action==='补录日结'&&OPLOG[0].detail.includes('忘打卡');
+    const noti=NOTIF[0].what.includes('日结补录');
+    payGridOpen=true; renderAll();
+    const gh=document.getElementById('paygrid').innerHTML;
+    const mark=gh.includes('°')&&gh.includes('挂 1 天');        // 补录角标 + 剩 1 天挂
+    payGridOpen=false;
+    delete BACKFILL['小陈|07/29']; NOTIF.shift();
+    loginAs('finance'); go('fin','工资数据');
+    const restore=document.getElementById('main').innerHTML.split('挂起 · 无记录').length-1===2;
+    return JSON.stringify({finBlocked,opened,gCat,gNote,done,grow,pill,still,log,noti,mark,restore});});
+  const r32=JSON.parse(w32);
+  ok(r32.finBlocked,'财务点补录未被拦（应提示 日结表归工程写·财务只读）');
+  ok(r32.opened,'管理员打开补录弹窗失败');
+  ok(r32.gCat,'原因类别空未被拒');
+  ok(r32.gNote,'详细说明<10字未被拒');
+  ok(r32.done&&r32.grow,'补录未定格/未续进人力消耗（0203 应 +8h）');
+  ok(r32.pill,'补录行缺琥珀标（已补录·滚下月补发+原因悬停）');
+  ok(r32.still,'未补录的 07/30 应仍显示挂起');
+  ok(r32.log&&r32.noti,'补录未留操作日志/未通知财务');
+  ok(r32.mark,'周期网格缺补录角标°/剩余挂天数未更新');
+  ok(r32.restore,'补录测试后演示态未还原（应恢复 2 行挂起）');
   // 6.8) 二十二轮：付款人全息+下拉换人 · 昵称/完整地址 · 财务节点分布过滤
   await page.evaluate(()=>go('fin','项目收款S1-S3'));
   fh=await page.evaluate(()=>document.getElementById('main').innerHTML);
