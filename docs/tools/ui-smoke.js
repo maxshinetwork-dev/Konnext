@@ -809,6 +809,58 @@ const { chromium } = require('playwright');
   ok(r36.updown,'财务操作日志缺上下游事件（签约/未退料/维护完成/出库/SM3）');
   ok(r36.helpAll,'九个财务页面的帮助缺「这页怎么用」总结');
   ok(r36.noQ&&r36.noQ2,'「？」未去干净（左栏按钮或页内引用）');
+  // 7) 三十七轮：工程 Site Meeting（旗舰）——顺序门禁 · 完成定格 · 财务门禁联动 · SM3 变更 · 不适用
+  const w37=await page.evaluate(()=>{
+    loginAs('eng');
+    pj=PROJECTS.findIndex(x=>x.code==='KX-2026-0121'); go('eng','Site Meeting');
+    const naOk=(document.getElementById('main').innerHTML.match(/不适用/g)||[]).length>=4;
+    pj=PROJECTS.findIndex(x=>x.code==='KX-2026-0201'); renderAll();
+    const preOk=document.getElementById('main').innerHTML.includes('还没进工程线');
+    pj=PROJECTS.findIndex(x=>x.code==='KX-2026-0203'); renderAll();
+    const h=document.getElementById('main').innerHTML;
+    const cards=h.includes('SM1 进场')&&h.includes('SM2 布线交流')&&h.includes('SM3 检查布线')&&h.includes('SM4 封板核对');
+    const gateShown=h.includes('被 SM3 卡住——财务端按钮灰')&&h.includes('被 SM4 卡住');
+    const f=finOf('KX-2026-0203');
+    smComplete('KX-2026-0203',3);                       // SM2 未完成 → 拦
+    const seqBlocked=!SMD['KX-2026-0203'].sm[2].done&&f.sm3===false;
+    document.getElementById('smvty').value='移位';
+    document.getElementById('smvde').value='主卧面板从床头移到门口';
+    const nv0=f.vars.length; smVarAdd('KX-2026-0203');
+    const nv=f.vars[f.vars.length-1];
+    const varReg=f.vars.length===nv0+1&&nv.billable===false&&nv.amt===0&&nv.src==='SM3';
+    smComplete('KX-2026-0203',2); uiOk();               // 完成 SM2（清单已全勾）
+    const sm2done=!!SMD['KX-2026-0203'].sm[1].done;
+    smComplete('KX-2026-0203',3);                       // → 电工签字 uiPrompt
+    document.getElementById('uiinput').value='Leo · VoltPro'; uiOk();
+    uiOk();                                             // 完成确认
+    const sm3done=!!SMD['KX-2026-0203'].sm[2].done;
+    const finUnlocked=f.sm3===true&&finStage(f).gate===null;
+    const sign=SMD['KX-2026-0203'].sm[2].elecSign==='Leo · VoltPro';
+    const logOk=OPLOG[0].action==='SM3 检查布线完成'&&OPLOG[0].rel.includes('fin');
+    const noti=NOTIF[0].what.includes('SM3 完成');
+    const gateGreen=document.getElementById('main').innerHTML.includes('门禁已解锁（SM3 ✓）');
+    loginAs('finance'); go('fin','项目收款S1-S3');
+    const finBtn=!document.getElementById('main').innerHTML.includes('SM3 未完成，不能发起 S2');
+    loginAs('eng');
+    const d=SMD['KX-2026-0203'];
+    d.sm[1]={sched:'2026/08/05 09:00',chk:[1,1,1]};
+    d.sm[2]={chk:[0,0,0]};
+    f.sm3=false; f.vars.pop(); NOTIF.shift(); NOTIF.shift();
+    loginAs('finance'); go('fin','财务节点');
+    const restore=finStage(finOf('KX-2026-0203')).gate===null===false||true;
+    return JSON.stringify({naOk,preOk,cards,gateShown,seqBlocked,varReg,sm2done,sm3done,
+      finUnlocked,sign,logOk,noti,gateGreen,finBtn,restore});});
+  const r37=JSON.parse(w37);
+  ok(r37.cards,'SM 四卡未渲染齐');
+  ok(r37.naOk,'老项目四场「不适用」未显示（刘宅）');
+  ok(r37.preOk,'售前阶段项目缺空态提示');
+  ok(r37.gateShown,'下游门禁现状条缺失（S2/S3 卡点）');
+  ok(r37.seqBlocked,'顺序门禁失效（SM2 未完成竟能完成 SM3）');
+  ok(r37.varReg,'SM3 现场变更登记失败/移位未标不计费');
+  ok(r37.sm2done&&r37.sm3done&&r37.sign,'SM2/SM3 完成定格或电工签字缺失');
+  ok(r37.finUnlocked&&r37.gateGreen,'SM3 完成未解锁财务 S2 门禁（联动失效）');
+  ok(r37.logOk&&r37.noti,'SM3 完成未留日志（rel 含 fin）/未发通知');
+  ok(r37.finBtn,'财务端 S2 按钮未随 SM3 完成解锁');
   const plChk=await page.evaluate(()=>{go('fin','项目列表');pjFilter=null;renderAll();
     const h=document.getElementById('main').innerHTML;pjFilter=null;
     return h.includes('<b>王宅</b>');});
