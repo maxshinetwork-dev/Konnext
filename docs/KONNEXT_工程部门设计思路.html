@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KONNEXT 工程部门 · 设计思路与业务流</title>
+<style>
+:root{
+  --bg:#f5f7fa; --panel:#ffffff; --border:#d8e0e8; --text:#1f2933; --muted:#5f6b76;
+  --accent:#2563eb; --accent-soft:#e8effc; --ok:#047857; --ok-soft:#e6f4ef;
+  --gate:#dc2626; --gate-soft:#fdecec; --mark:#b45309; --mark-soft:#fdf3e2;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#10161d; --panel:#1a222c; --border:#2a3542; --text:#e7edf3; --muted:#93a1b0;
+  --accent:#6ea8ff; --accent-soft:#1d2a41; --ok:#4cc397; --ok-soft:#15302a;
+  --gate:#f07575; --gate-soft:#3a1d1f; --mark:#e2b25f; --mark-soft:#332818;
+}}
+:root[data-theme="dark"]{
+  --bg:#10161d; --panel:#1a222c; --border:#2a3542; --text:#e7edf3; --muted:#93a1b0;
+  --accent:#6ea8ff; --accent-soft:#1d2a41; --ok:#4cc397; --ok-soft:#15302a;
+  --gate:#f07575; --gate-soft:#3a1d1f; --mark:#e2b25f; --mark-soft:#332818;
+}
+:root[data-theme="light"]{
+  --bg:#f5f7fa; --panel:#ffffff; --border:#d8e0e8; --text:#1f2933; --muted:#5f6b76;
+  --accent:#2563eb; --accent-soft:#e8effc; --ok:#047857; --ok-soft:#e6f4ef;
+  --gate:#dc2626; --gate-soft:#fdecec; --mark:#b45309; --mark-soft:#fdf3e2;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.85 -apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif}
+.wrap{max-width:880px;margin:0 auto;padding:40px 20px 72px}
+header.hd{border-bottom:2px solid var(--text);padding-bottom:22px;margin-bottom:34px}
+.hd .ey{font-size:12px;letter-spacing:.22em;color:var(--accent);font-weight:700;margin-bottom:10px}
+.hd h1{margin:0 0 10px;font-size:clamp(26px,4.6vw,38px);line-height:1.25;letter-spacing:.01em;text-wrap:balance}
+.hd .sub{color:var(--muted);max-width:46em}
+.hd .meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px;font-size:12.5px;color:var(--muted)}
+.hd .meta b{color:var(--text);font-weight:600}
+h2{font-size:21px;margin:52px 0 6px;letter-spacing:.01em}
+h2 .no{font-family:var(--mono);color:var(--accent);font-size:15px;margin-right:10px}
+.lede{color:var(--muted);margin:0 0 18px;max-width:46em}
+p{max-width:46em}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin:14px 0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:14px 0}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+.card h3{margin:0 0 6px;font-size:15.5px}
+.card p{margin:0;font-size:13.5px;color:var(--muted);max-width:none}
+.tag{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;vertical-align:1px}
+.t-sm{background:var(--accent-soft);color:var(--accent)}
+.t-s{background:var(--ok-soft);color:var(--ok)}
+.t-gate{background:var(--gate-soft);color:var(--gate)}
+.t-mark{background:var(--mark-soft);color:var(--mark)}
+/* 竖向业务流 */
+.flow{margin:20px 0;padding-left:4px}
+.step{display:grid;grid-template-columns:34px 1fr;gap:14px;position:relative;padding-bottom:22px}
+.step:last-child{padding-bottom:0}
+.step::before{content:"";position:absolute;left:16px;top:30px;bottom:-2px;width:2px;background:var(--border)}
+.step:last-child::before{display:none}
+.dot{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:12px;font-weight:700;flex-shrink:0;position:relative;z-index:1}
+.d-sm{background:var(--accent-soft);color:var(--accent);border:1.5px solid var(--accent)}
+.d-s{background:var(--ok-soft);color:var(--ok);border:1.5px solid var(--ok)}
+.d-x{background:var(--panel);color:var(--muted);border:1.5px solid var(--border)}
+.step h4{margin:3px 0 3px;font-size:15.5px}
+.step .who{font-size:11.5px;color:var(--muted);letter-spacing:.08em;font-weight:600}
+.step p{margin:2px 0 0;font-size:13.5px;color:var(--muted);max-width:none}
+.gatebar{display:flex;gap:8px;align-items:baseline;background:var(--gate-soft);border-left:3px solid var(--gate);
+  border-radius:0 8px 8px 0;padding:7px 12px;margin:8px 0 0;font-size:13px}
+.gatebar b{color:var(--gate);font-size:11.5px;letter-spacing:.1em;flex-shrink:0}
+.gatebar span{font-family:var(--mono);font-size:12.5px}
+.firebar{display:flex;gap:8px;align-items:baseline;background:var(--ok-soft);border-left:3px solid var(--ok);
+  border-radius:0 8px 8px 0;padding:7px 12px;margin:8px 0 0;font-size:13px}
+.firebar b{color:var(--ok);font-size:11.5px;letter-spacing:.1em;flex-shrink:0}
+table{border-collapse:collapse;width:100%;font-size:13.5px;background:var(--panel)}
+.tbox{border:1px solid var(--border);border-radius:10px;overflow-x:auto;margin:14px 0}
+th{background:var(--accent-soft);color:var(--text);text-align:left;font-size:12.5px;letter-spacing:.04em;padding:9px 13px;white-space:nowrap}
+td{border-top:1px solid var(--border);padding:9px 13px;vertical-align:top}
+td.g{font-family:var(--mono);font-size:12.5px}
+.note{background:var(--mark-soft);border-left:3px solid var(--mark);border-radius:0 8px 8px 0;padding:10px 14px;font-size:13.5px;margin:14px 0}
+.note b{color:var(--mark)}
+footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted)}
+.mono{font-family:var(--mono)}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hd">
+  <div class="ey">KONNEXT 办公管理平台 · 部门蓝图</div>
+  <h1>工程部门：设计思路与主要业务流</h1>
+  <div class="sub">给工程负责人的一页说明——系统里工程管什么、现场流程怎么走、
+    哪些地方会被卡、做完一步谁会收到通知。看完欢迎直接提意见，规则都还能改。</div>
+  <div class="meta">
+    <span>面向 <b>工程负责人</b></span>
+    <span>依据 <b>项目决策记录 · 数据库契约 v0.33</b></span>
+    <span>整理日 <b>2026-08-02</b></span>
+  </div>
+</header>
+
+<h2><span class="no">01</span>系统怎么想工程这件事（三句话）</h2>
+<div class="grid2">
+  <div class="card"><h3>现场顺序 = 系统硬卡</h3>
+    <p>SM 会议、出库、安装、交付的先后不是"建议"，是数据库里的门禁：
+    上一步没做完，下一步的按钮就是灰的，谁都按不动——包括老板。这样避免"先干了再补手续"。</p></div>
+  <div class="card"><h3>留痕代替扯皮</h3>
+    <p>签字、变更、完工原因、每天去了哪，全部当场记录。系统不裁判争议，
+    只保证事后能拿出"谁、何时、确认了什么"。</p></div>
+  <div class="card"><h3>S 是钱，SM 是会</h3>
+    <p><span class="tag t-s">S1~S4</span> 是四笔收款（定金10% / 物料款40% / 人工款40% / 尾款10%）；
+    <span class="tag t-sm">SM1~SM4</span> 是四次现场会议。两套编号永不混用。
+    工程做完关键 SM，财务那边才收得了对应的钱。</p></div>
+</div>
+
+<h2><span class="no">02</span>主业务流（工程视角，从进场到交付）</h2>
+<p class="lede">绿色=触发别的部门 · 红色=门禁原句（系统就是这么报错的，原样弹给操作人）</p>
+<div class="flow">
+
+  <div class="step"><div class="dot d-x">S1</div><div>
+    <div class="who">前置 · 财务</div><h4>定金 10% 结清</h4>
+    <div class="gatebar"><b>门禁</b><span>定金没到 → 工程不能进场（SM1 排不了）</span></div>
+  </div></div>
+
+  <div class="step"><div class="dot d-sm">SM1</div><div>
+    <div class="who">工程 · 现场会议</div><h4>进场</h4>
+    <p>与业主/Builder 首次现场碰面，采集缺的参建方联系人。出发前有检查清单——
+    没勾完不能完成本次 SM（防止人到了现场缺东西）。</p>
+  </div></div>
+
+  <div class="step"><div class="dot d-sm">SM2</div><div>
+    <div class="who">工程 · 现场会议</div><h4>布线交流（交底给电工）</h4>
+    <p>把 Finish 方案交底给电工，<b>电工要签字</b>。带线清单由售前录的"方案倾向"决定（有无 KNX、地暖）。
+    之后电工自行 Rough-in 布线，这段不占我们的人。</p>
+    <div class="gatebar"><b>门禁</b><span>SM1 未完成且未标记不适用，不能完成 SM2（顺序硬卡）</span></div>
+  </div></div>
+
+  <div class="step"><div class="dot d-sm">SM3</div><div>
+    <div class="who">工程 · 现场会议 · ★关键节点</div><h4>检查布线 · 双向签字 · 登记变更</h4>
+    <p>验电工的活，<b>双方签字</b>。业主现场提的加减改动，<b>只在这一步登记变更</b>（拍照留痕，不谈钱）。</p>
+    <div class="firebar"><b>触发</b><span>SM3 完成 → 财务收到待办「开 S2 物料款 Invoice」；变更同时知会设计 / 采购 / 财务</span></div>
+    <div class="gatebar"><b>门禁</b><span>SM3 未完成，不能发起 S2 物料款</span></div>
+  </div></div>
+
+  <div class="step"><div class="dot d-s">S2</div><div>
+    <div class="who">财务 · 收款</div><h4>物料款 40% 结清</h4>
+    <div class="gatebar"><b>门禁</b><span>S2 物料款未结清，采购不能下单 ／ 库管不能出库放货</span></div>
+  </div></div>
+
+  <div class="step"><div class="dot d-x">出库</div><div>
+    <div class="who">库管 → 工程</div><h4>物料落到项目 · 预配 · 发货 · 封板</h4>
+    <p>出库那一刻物料才算这个项目的（提货人短信确认）。工程做预配、发货到场，等封板。
+    领了没退的料以后会按出库价进 S4 结算——所以退料要及时。</p>
+  </div></div>
+
+  <div class="step"><div class="dot d-sm">SM4</div><div>
+    <div class="who">工程 · 现场会议</div><h4>封板核对出线</h4>
+    <div class="firebar"><b>触发</b><span>SM4 完成 → 财务可发起 S3 人工款（与电工补线解耦，互不等）</span></div>
+    <div class="gatebar"><b>门禁</b><span>SM4 未完成，不能发起 S3 人工款 ／ 安装调试必须在 SM4 之后</span></div>
+  </div></div>
+
+  <div class="step"><div class="dot d-x">安装</div><div>
+    <div class="who">工程 · 多趟任务</div><h4>安装调试 → 整体完工</h4>
+    <p>一趟一趟去，每趟记录做了哪些安装项。<b>整体完工 = 剩余清零 + 负责人确认，两个都要</b>——
+    清零不等于全做完：取消/挂起/转变更都算清，但必须填原因。</p>
+    <div class="gatebar"><b>门禁</b><span>还有 N 项安装内容未清零(未做完/未取消/未挂起/未转变更)，不能确认安装完工</span></div>
+  </div></div>
+
+  <div class="step"><div class="dot d-s">S4</div><div>
+    <div class="who">财务 · 收款</div><h4>尾款 10% + 可计费变更 + 未退料</h4>
+    <p>SM3 登记的变更在这里跟客户结账（金额由财务外部算好填回）；移位属电工整改，不计费。</p>
+  </div></div>
+
+  <div class="step"><div class="dot d-x">交付</div><div>
+    <div class="who">工程管理 · 人肉确认</div><h4>Handover 交付</h4>
+    <p>系统不代替判断——工程管理看「工程流水账」确认条件齐了，但每一步留痕。</p>
+    <div class="gatebar"><b>门禁</b><span>S4 尾款未结清，不能安排交付（硬卡无后门）＋ 需已确认 ready ＋ 客户签收</span></div>
+    <div class="firebar"><b>触发</b><span>交付完成瞬间：回写交付日 · 工程利润率定格 · 运维接管（免责维保起算）· 交付过程中签业主订阅</span></div>
+  </div></div>
+
+</div>
+
+<h2><span class="no">03</span>工程的四类任务（顺序 = 现场先后）</h2>
+<div class="grid2">
+  <div class="card"><h3>① Site Meeting <span class="tag t-sm">SM1~4</span></h3>
+    <p>四次现场会议，顺序硬卡、出发前清单、该签字的必须签字。SM3/SM4 直接决定财务能不能收钱。</p></div>
+  <div class="card"><h3>② 安装调试</h3>
+    <p>SM4 之后一趟趟去。安装项清单化：做完打勾，做不了写原因（取消/挂起/转变更）。</p></div>
+  <div class="card"><h3>③ 交付</h3>
+    <p>S4 结清 + ready 确认 + 客户签收，三样齐才走。交付日定格利润率、开启免责维保。</p></div>
+  <div class="card"><h3>④ 技术维护（配合运维）</h3>
+    <p>只有已交付项目才受理维护。现场三样缺一不可：当着客户面确认故障归因、
+    写清当日服务内容、客户签字——否则任务点不了完成，人不能走。</p></div>
+</div>
+
+<h2><span class="no">04</span>每天要做的两件小事</h2>
+<div class="panel">
+  <p style="margin-top:0"><b>打卡</b>：到场/离场打卡，项目坐标带考勤围栏（默认 100 米，负责人可按项目调）。
+  路上时间、午餐（自动扣 30 分钟，短工日不扣）系统自己算，不用填。</p>
+  <p style="margin-bottom:0"><b>每日上报</b>：一人一天一条，当天跨了几个项目就写几段。这是工资和项目成本的数据源。</p>
+</div>
+<div class="note"><b>没打卡没上报的那天：</b>不扣钱（Fair Work 不允许惩罚性扣薪，且打卡失败常常不是人的错），
+但那天的工资<b>挂起不发</b>——需要<b>负责人补录并填说明</b>才放行，同时永久进 KPI。压力在管理层，不在工人。</div>
+
+<h2><span class="no">05</span>变更 Variation：只在 SM3、只留痕</h2>
+<div class="tbox"><table>
+  <tr><th style="width:9em">类型</th><th>计费</th><th>规则</th></tr>
+  <tr><td>多加</td><td><span class="tag t-s">计费</span></td><td>客户变更，进 S4 跟客户结账</td></tr>
+  <tr><td>减少</td><td><span class="tag t-s">计费</span></td><td>负数冲减，同样进 S4</td></tr>
+  <tr><td>移位</td><td><span class="tag t-gate">不计费</span></td><td>电工装错位置属整改——照样登记留痕，但填金额系统直接拒</td></tr>
+</table></div>
+<p>工程在 SM3 只管<b>登记事实</b>（拍照、描述、谁提的），<b>金额和工时一律不碰</b>——
+估价由财务＋库管外部算好填回。人工不单列（物料售卖价里已含安装人工）；
+工时超支不挂客户，吃我们自己的工程利润率。S4 发票发出后变更就锁死，要改只能开 v2 重发。</p>
+
+<h2><span class="no">06</span>会卡住你的 / 你卡住别人的</h2>
+<div class="tbox"><table>
+  <tr><th>方向</th><th>门禁（系统原句）</th></tr>
+  <tr><td rowspan="3">卡工程</td><td class="g">门禁：定金(S1)未结清，不能安排 SM1 进场</td></tr>
+  <tr><td class="g">门禁：出发前清单还有 N 项未勾选，不能完成本次 SM</td></tr>
+  <tr><td class="g">门禁：S4 尾款未结清，不能安排交付</td></tr>
+  <tr><td rowspan="3">工程卡别人</td><td class="g">门禁：SM3 未完成，不能发起 S2 物料款 →（进而）采购不能下单、库管不能放货</td></tr>
+  <tr><td class="g">门禁：SM4 未完成，不能发起 S3 人工款</td></tr>
+  <tr><td class="g">门禁：项目尚未交付，不予受理维护单（运维那边建不了单）</td></tr>
+</table></div>
+<p>按钮变灰时，<b>鼠标悬停就能看到是哪条门禁卡的</b>——不用猜、不用问。</p>
+
+<h2><span class="no">07</span>工程在系统里的页面（左栏一览）</h2>
+<div class="tbox"><table>
+  <tr><th style="width:11em">页面</th><th>干什么</th></tr>
+  <tr><td>总览</td><td>本部门此刻卡在哪（卡点表），不是待办副本——待办统一在右上角 🔔</td></tr>
+  <tr><td>项目列表</td><td>全公司同一张列表，工程看自己关心的默认列</td></tr>
+  <tr><td>派工排班</td><td>谁明天去哪个项目干什么</td></tr>
+  <tr><td>Site Meeting</td><td>SM1~4 的创建、清单、签字、完成</td></tr>
+  <tr><td>安装调试 / 交付</td><td>安装项清单与完工确认；交付三条件与客户签收</td></tr>
+  <tr><td>工程流水账</td><td>项目从头到尾每一步的时间线（交付前人肉核对用）</td></tr>
+  <tr><td>每日上报 / 人员与外包</td><td>日报；人员档案（外包也在内：固定日薪、无加班概念）</td></tr>
+  <tr><td>文档库</td><td>版本化：对外发放要签收，客户文档交付时必须交齐</td></tr>
+  <tr><td>操作日志 / 设置</td><td>每一步操作留痕（只读）；围栏半径等工程自管参数</td></tr>
+</table></div>
+
+<h2><span class="no">08</span>现在到哪一步了</h2>
+<div class="panel">
+  <p style="margin-top:0">上面这套规则已经<b>全部写进数据库契约并通过验证</b>（61 张表、134 条自动拦截测试、73 条数据自检全绿）——
+  也就是说流程和门禁是定死的底座，不靠自觉。</p>
+  <p style="margin-bottom:0">界面目前做完了<b>售前（已定稿）</b>和<b>财务（迭代中）</b>；
+  工程的页面在财务之后按链路深化：SM1~4 → 出库 → 安装 → 交付。
+  <b>所以现在正是提意见的最好时机</b>——流程顺序、清单内容、签字环节、派工方式，
+  哪里和实际干活不一样，现在改成本最低。</p>
+</div>
+
+<footer>
+  依据：《KONNEXT 项目决策记录》§6 主链路 · §7.2 四类任务 · §7.3 变更 · §7.8 考勤 · §7.9 每日上报 ｜
+  数据库契约 v0.33（2026-08-02）｜ 可点击原型另有链接（切「陈工 · 工程管理」身份查看）
+</footer>
+
+</div>
+</body>
+</html>
