@@ -3187,7 +3187,7 @@ ${ops([
   ['休假（扣倒休）','只有倒休余额>0 且在职的人显示按钮 · 不能透支','员工短信回 Y 自动扣减；不回复财务可强制扣减（红字留痕）'],
   ['本周期全员日结','周期=上个 21 号 → 今天 · 每月 21 号自动滚动','—'],
   ['查看挂起 / 补录状态','补录在工程端「每日上报」由负责人操作 —— 财务这里只读','已补录亮琥珀标（悬停看原因）· 账目进下一个月工时计算'],
-  ['21 日封账 · 生成工资汇总单','挂起天按 0 计、不卡封账（补录进下月周期）','拿汇总单去外部工资系统发钱 —— 本系统不碰钱'],
+  ['查看月度汇总','汇总=日结定格逐日加总，随时最新、无需手动生成 · 周期 21 号自动滚动（即封账）· 挂起天按 0 计','发钱在外部工资系统操作 —— 本系统不碰钱'],
   ['添加 / 停用工资人员','在左栏「设置」页 · 成本时薪不填建人直接被拒','人员变动通知工程管理'],
  ])}
  ${helpNote(`本页是<b>数据平台</b>，不发钱：人力消耗按项目归集——<b>售前预计人工</b>=签约「预测工时」，
@@ -3298,9 +3298,8 @@ ${ops([
     <td>${x.why}</td><td class="num">${x.delta>0?'+':''}${x.delta} h</td>
     <td>${x.forced?`<b style="color:#c62828">强制扣减留痕</b>`:x.delta>0?'<span class="pill p-grey">加班累计</span>':'<span class="pill p-grey">休假扣减</span>'}</td></tr>`).join('')}</tbody></table>
   <div class="panel-body hint">员工短信回 Y 才自动扣；不回复不影响假期本身 —— 财务可强制扣减（红字留痕，进操作日志）· 倒休不能透支</div></div>
- <div class="panel"><div class="panel-head">月度封账 · 外部工资系统用的汇总单
-    <span class="muted" style="font-weight:400">周期 07/21 → 08/20 · 21 日封账即发放</span>
-    <button class="btn btn-primary" style="margin-left:auto" onclick="uiAlert('演示：汇总单=日结加总，不再存一遍明细\n（挂起天按 0 计不卡封账 —— 补录后进下月周期补发）')">生成汇总单</button></div>
+ <div class="panel"><div class="panel-head">月度汇总 · 外部工资系统发钱参考
+    <span class="muted" style="font-weight:400">周期 07/21 → 08/20 · 21 号自动滚动（即封账，无需手动操作）</span></div>
   <table><thead><tr><th>人</th><th>制度</th><th style="text-align:right">日结加总</th><th style="text-align:right">加班(倍数 1.0)</th><th style="text-align:right">倒休变动</th><th style="text-align:right">应发合计</th></tr></thead>
   <tbody>
    <tr><td>小陈</td><td>月薪</td><td class="num">${can('salary')?'A$5,800.00':'— —'}</td><td class="num">—</td><td class="num">+3.5h</td><td class="num">${can('salary')?'<b>A$5,800.00</b>':'— —'}</td></tr>
@@ -3308,6 +3307,8 @@ ${ops([
    <tr><td>阿强</td><td>时薪</td><td class="num">${can('salary')?'A$7,562.00':'— —'}</td><td class="num">${can('salary')?'A$378.00':'—'}</td><td class="num">—</td><td class="num">${can('salary')?'<b>A$7,940.00</b>':'— —'}</td></tr>
    <tr><td>Tony</td><td>外包</td><td class="num">${can('salary')?'A$11,220.00':'— —'}</td><td class="num">—</td><td class="num">—</td><td class="num">${can('salary')?'<b>A$11,220.00</b>':'— —'}</td></tr>
   </tbody></table>
+  <div class="panel-body hint">汇总=日结定格逐日加总（现算、随时最新，不需要「生成」动作）——20 号过完所有日结已定格，本表自然定型；
+    发钱拿这张表去外部工资系统操作，本系统不碰钱、也不再存一遍汇总 · 补录的账目在下一个周期出现</div>
   <div class="panel-body hint">⚠ 外包实付与摊入项目成本会有差额（发薪按整日薪、成本按成本时薪×实际在场）—— v_contractor_cost_gap 把偏差摊出来看得见</div></div>`;
 },
 
