@@ -445,6 +445,8 @@ const TODOS=[
  {dept:'eng', ev:'S1 定金已结清',      from:'财务',     act:'安排 SM1 进场',           h:9,  sla:24, pj:'KX-2026-0155',p:'Site Meeting'},
  {dept:'eng', ev:'盘点待审批',         from:'库管',     act:'复核并审批盘亏 A$255.60', h:26, sla:24, pj:'',p:'总览'},
  {dept:'mt',  ev:'项目交付完成',       from:'工程管理', act:'接管运维，启动免责维保',   h:14, sla:24, pj:'KX-2026-0180',p:'维保状态'},
+ {dept:'eng', ev:'日结挂起 2 天：小陈 07/29–30 未填写', from:'考勤系统',
+  act:'去「每日上报」补录（项目/时长/原因必填 · 进 KPI）· 补录进下月工时计算', h:48, sla:24, pj:'',p:'每日上报'},
 ];
 TODOS.forEach((t,i)=>t.id='s'+i);   // 稳定编号：三动作按它记状态（售前现算条目用 pre-项目编号）
 /* 售前管道里未进全公司项目列表演示数据的地址（补给待办抽屉显示） */
@@ -1080,7 +1082,7 @@ const BF_CATS=['忘打卡','围栏/GPS 异常','手机没电·设备问题','临
 let BACKFILL={};   // who|md → {pj,h,cat,note,by,at}
 function bfOpen(who,md,d){
   if(me!=='admin'&&me!=='eng'){
-    uiAlert('补录是工程负责人的操作（日结表归工程写）——财务只读。请通知工程负责人处理'); return; }
+    uiAlert('补录是工程负责人的操作（日结表归工程写）——财务只读。工程负责人在「工程管理 → 每日上报」里补录'); return; }
   const opts=PROJECTS.filter(p=>['施工中','项目交付','项目维护中'].includes(p.status))
     .map(p=>`<option value="${p.code}">${p.nick} · ${p.street}, ${p.suburb}</option>`).join('');
   document.getElementById('bfbox').innerHTML=
@@ -1123,7 +1125,7 @@ function bfConfirm(who,md,d){
     [{who:'财务 王姐',how:'待办',ok:false}]);
   bfClose(); renderAll();
   uiAlert('已补录并定格（演示）：'+who+' '+md+' '+h+'h —— '+(h>0?'工资滚到下月补发，':'定案零工时，')+
-    '挂起解除，封账不再被这天卡住'); }
+    '挂起解除，账目进入下一个月的工时计算；财务侧已显示为已补录'); }
 /* 大表行内直改：改前值→后值 全留痕；注释改动会把对方部门置回「未读」 */
 function preEdit(code,field,value,label){ const p=BIGPD.find(x=>x.code===code); if(!p) return;
   const old=p[field]; if(String(old||'')===String(value||'')) return;
@@ -2362,6 +2364,47 @@ ${ops([
      是下游硬依赖（出库提货人/Builder告知/SM电工签字/SM2带线清单）
    ⑥财务注释/工程注释：售前填 → 对应部门必读（已读标） */
 'presales/操作日志':()=>opLogPage('presales'),
+'eng/每日上报':()=>{
+ const wl=worklog();
+ const pend=wl.filter(w=>w.hang);
+ const done=wl.filter(w=>w.backfilled);
+ const recent=wl.filter(w=>!w.rest&&!w.hang&&!w.backfilled).slice().reverse().slice(0,8);
+ return `<h2>每日上报 <span class="pill p-cyan">员工 App 一人一天分段上报 · 当夜 0 点定格</span></h2>
+ <div class="page-sub">全员出勤与分段一览 · 挂起补录（负责人操作）· 说明看左下「？ 帮助」</div>
+ ${ops([
+  ['补录挂起日结','只有工程负责人/管理员能补 · 项目+付薪时长（0=定案没出工）+原因类别+详细说明（≥10 字）缺一不可 · 单日>14h 拦','补录即定格进 KPI · 通知财务 · 账目进下一个月工时计算（滚下月补发）'],
+  ['查看全员分段','今天的段 ⏳ 未定格（0 点定格后本人不可自改）','—'],
+ ])}
+ ${helpNote(`员工在施工端 App 一人一天分段上报（到场/离场打卡出时长）；没上报的那天＝<b>挂起</b>，
+   当夜 0 点定格后<b>本人不可自改</b>——系统在待办里提醒负责人来这里<b>补录</b>：
+   项目+付薪时长+原因类别+详细说明四样缺一不可，挂起与补录都<b>永久进 KPI</b>。`)}
+ ${helpNote(`补录即定格：计入项目人力消耗（按当天该人阶段时薪）；<b>账目进入下一个月的工时计算</b>
+   （工资滚下月补发）——当月封账不被挂起卡住。财务侧「工资数据」只显示状态（已补录琥珀标）。`)}
+ <div class="panel"><div class="panel-head">挂起待补录 ${pend.length?`<span class="pill p-red">${pend.length} 天</span>`:'<span class="pill p-green">0 · 全部已处理</span>'}</div>
+  <table id="engbf"><thead><tr><th>日期</th><th>员工</th><th>状态</th><th></th></tr></thead>
+  <tbody>${pend.length?pend.map(w=>`<tr><td class="mono">${w.md}</td><td><b>${w.who}</b></td>
+    <td><span class="pill p-red">挂起 · 无记录</span></td>
+    <td><button class="btn btn-primary" style="padding:2px 10px;font-size:11px"
+      onclick="bfOpen('${w.who}','${w.md}','${w.d}')">补录</button></td></tr>`).join('')
+    :'<tr><td colspan="4" class="muted">没有挂起 —— 全员日结齐了</td></tr>'}</tbody></table>
+  <div class="panel-body hint">补录弹窗四样必填；时长填 0=定案那天没出工 · 财务侧只读显示状态</div></div>
+ ${done.length?`<div class="panel"><div class="panel-head">已补录（本周期）</div>
+  <table><thead><tr><th>日期</th><th>员工</th><th>项目</th><th style="text-align:right">付薪时长</th><th>原因</th><th>补录人 / 时间</th></tr></thead>
+  <tbody>${done.map(w=>`<tr><td class="mono">${w.md}</td><td>${w.who}</td>
+    <td>${w.pj==='company'?'公司级':(x=>x?x.nick+' · '+x.street+', '+x.suburb:w.pj)(PROJECTS.find(x=>x.code===w.pj))}</td>
+    <td class="num">${w.hLab}</td>
+    <td style="font-size:var(--fs-xs)">${w.bf.cat}<div class="hint">${w.bf.note}</div></td>
+    <td class="mono" style="font-size:var(--fs-xs)">${w.bf.by} ${w.bf.at}</td></tr>`).join('')}</tbody></table>
+  <div class="panel-body hint">🔒 已定格 · 永久进 KPI · 账目进下一个月工时计算 · 财务已收到通知</div></div>`:''}
+ <div class="panel"><div class="panel-head">近几天分段一览 <span class="muted" style="font-weight:400">当夜 0 点定格 🔒</span></div>
+  <table><thead><tr><th>日期</th><th>人</th><th>项目</th><th style="text-align:right">付薪时长</th><th>状态</th></tr></thead>
+  <tbody>${recent.map(w=>{const p=PROJECTS.find(x=>x.code===w.pj)||{};
+    return `<tr><td class="mono">${w.md}</td><td>${w.who}</td>
+    <td><b>${p.nick||'—'}</b><div class="hint">${p.street||''}${p.street?', ':''}${p.suburb||''} ${p.state||''}</div></td>
+    <td class="num">${w.hLab}</td>
+    <td>${w.today?'<span class="pill p-cyan">⏳ 今天 · 0 点定格</span>':'<span class="pill p-green">🔒 已定格</span>'}</td></tr>`;}).join('')}</tbody></table>
+  <div class="panel-body hint">金额与成本口径在财务「工资数据」页 —— 这里只管出勤事实与补录</div></div>`;
+},
 'eng/操作日志':()=>opLogPage('eng'),
 'proc/操作日志':()=>opLogPage('proc'),
 'wh/操作日志':()=>opLogPage('wh'),
@@ -2962,7 +3005,7 @@ ${ops([
     <div class="card-foot">S1-S3 已清待 S4：${FINPAY.filter(f=>!finStage(f).m).length} 个</div></div>
   <div class="card"><div class="card-label">工资月度封账</div>
     <div class="card-value">21 日</div>
-    <div class="card-foot">周期 上月21 → 本月20 · 日结挂起 2 天</div></div>
+    <div class="card-foot">周期 上月21 → 本月20 · 挂起 ${worklog().filter(w=>w.hang).length} 天工程补录中（不卡封账）</div></div>
  </div>
  <div class="panel"><div class="panel-head">S1~S4 节点分布 <span class="muted" style="font-weight:400">点框框过滤下表 · 每个在途项目此刻停在哪</span>
    <span style="margin-left:auto"><button class="btn" onclick="go('fin','项目收款S1-S3')">收款 S1-S3 →</button>
@@ -3143,8 +3186,8 @@ ${ops([
   ['查看项目人力消耗','范围=施工中 / 项目交付 / 项目维护中 · 人成本只有财务与管理层可见','—'],
   ['休假（扣倒休）','只有倒休余额>0 且在职的人显示按钮 · 不能透支','员工短信回 Y 自动扣减；不回复财务可强制扣减（红字留痕）'],
   ['本周期全员日结','周期=上个 21 号 → 今天 · 每月 21 号自动滚动','—'],
-  ['补录挂起日结','只有工程负责人/管理员能补（财务只读）· 项目+时长+原因类别+详细说明（≥10 字）缺一不可 · 时长 0=定案没出工','补录即定格进 KPI · 工资滚下月补发 · 通知财务 · 挂起解除'],
-  ['21 日封账 · 生成工资汇总单','挂起未补录的日结会卡封账','拿汇总单去外部工资系统发钱 —— 本系统不碰钱'],
+  ['查看挂起 / 补录状态','补录在工程端「每日上报」由负责人操作 —— 财务这里只读','已补录亮琥珀标（悬停看原因）· 账目进下一个月工时计算'],
+  ['21 日封账 · 生成工资汇总单','挂起天按 0 计、不卡封账（补录进下月周期）','拿汇总单去外部工资系统发钱 —— 本系统不碰钱'],
   ['添加 / 停用工资人员','在左栏「设置」页 · 成本时薪不填建人直接被拒','人员变动通知工程管理'],
  ])}
  ${helpNote(`本页是<b>数据平台</b>，不发钱：人力消耗按项目归集——<b>售前预计人工</b>=签约「预测工时」，
@@ -3152,10 +3195,10 @@ ${ops([
    （调薪只影响调薪之后的天，已定格的日结不回溯）。`)}
  ${helpNote(`三种制度一张表：<b>月薪</b>=固定月薪，加班攒<b>倒休</b>不发钱；<b>时薪</b>=付薪时长×时薪，加班按倍数付（现全 1.0）；
    <b>外包</b>=固定日薪去了就一天，无加班概念，成本时薪=日薪÷参考时间自动算。周末/公共假日整天算加班（NSW 名单已录）。`)}
- ${helpNote(`日结<b>当夜 0 点定格</b>，定格后本人不可自改；挂起（无记录）由<b>工程负责人补录</b>：
-   项目 + 付薪时长（0=定案没出工）+ 原因类别 + 详细说明（≥10 字）缺一不可——补录即定格、<b>工资滚到下月补发</b>、
-   挂起与补录永久进 KPI；财务只读（日结表归工程写）。没打卡那天不扣钱（Fair Work 不允许惩罚性扣薪）。
-   挂起全部补录后 21 日封账才放行。月度周期=上月 21 → 本月 20。`)}
+ ${helpNote(`日结<b>当夜 0 点定格</b>，定格后本人不可自改；挂起（无记录）会给<b>工程负责人</b>发提醒任务，
+   由他在工程端「每日上报」补录（项目+时长+原因类别+详细说明四样必填）——<b>财务这里只显示状态</b>。
+   补录账目<b>进入下一个月的工时计算</b>（滚下月补发）；挂起天当月按 0 计、<b>不卡封账</b>。
+   没打卡那天不扣钱（Fair Work 不允许惩罚性扣薪）。月度周期=上月 21 → 本月 20。`)}
  ${helpNote(`倒休：流水只增不改、余额现算。休假=财务点人员表「休假」填 从→至（年月日时），确认即给员工发短信；
    回 Y 系统自动扣减；不回复不影响假期本身——财务可<b>强制扣减</b>（红字留痕）。倒休不能透支。`)}
  <div class="panel"><div class="panel-head">项目人力消耗 <span class="pill p-cyan">施工中 · 项目交付 · 项目维护中</span>
@@ -3222,11 +3265,10 @@ ${ops([
      <td><span class="pill p-amber" title="${w.bf.cat}：${w.bf.note}（${w.bf.by} ${w.bf.at}）">🔒 已补录 · ${w.hEff>0?'滚下月补发':'零工时定案'}</span></td></tr>`).join('')}
    ${hangRows.map(w=>`<tr><td class="mono">${w.md}</td><td>${w.who}</td><td>—</td><td class="num">—</td><td class="num">—</td>
      <td><span class="pill p-red">挂起 · 无记录</span>
-       <button class="btn" style="padding:2px 8px;font-size:11px${me==='finance'?';opacity:.55':''}"
-         title="${me==='finance'?'补录=工程负责人操作（日结表归工程写）——财务只读':'项目+时长+原因类别+详细说明必填 · 进 KPI'}"
-         onclick="bfOpen('${w.who}','${w.md}','${w.d}')">补录</button></td></tr>`).join('')}</tbody></table>
-   <div class="panel-body hint">0 点定格后本人不可自改——挂起由<b>工程负责人</b>点行内「补录」处理（财务只读，悬停按钮看原因）：
-     原因类别+详细说明必填、进 KPI，工资<b>滚到下月补发</b>；时长填 0=定案那天没出工 —— 21 日封账等挂起补完才放行</div></div>
+       <div class="hint">等工程负责人在「每日上报」补录</div></td></tr>`).join('')}</tbody></table>
+   <div class="panel-body hint">挂起=工程员工没交当日上报（0 点定格后本人不可自改）——系统给<b>工程负责人</b>发提醒任务，
+     补录在工程端「每日上报」页操作，<b>财务这里只显示状态</b>（已补录亮琥珀标，悬停看原因）；
+     补录账目<b>进入下一个月的工时计算</b>（滚下月补发）——当月封账不被挂起卡住，挂起天按 0 计</div></div>
  </div>
  ${payGridOpen?`<div class="panel"><div class="panel-head">本周期全员日结 <span class="pill p-cyan">${psLab} → 今天 · 每月 21 号自动滚动</span>
     <span class="muted" style="font-weight:400">数字=已定格工时 · 数字°=补录定格 · <b style="color:#c62828">挂</b>=无记录待补录 · 休=周日 · ⏳=今天未定格</span></div>
@@ -3234,7 +3276,7 @@ ${ops([
   <tbody>${gridStaff.map(s=>{const rows=wl.filter(w=>w.who===s.name); let tot=0;
     const cells=rows.map(w=>{
       if(w.rest) return '<td style="text-align:center" class="muted">休</td>';
-      if(w.hang) return '<td style="text-align:center"><b style="color:#c62828" title="待补录（工程负责人）">挂</b></td>';
+      if(w.hang) return '<td style="text-align:center"><b style="color:#c62828" title="待补录（工程负责人 · 每日上报）">挂</b></td>';
       if(w.today) return '<td style="text-align:center">⏳</td>';
       tot+=w.hEff;
       return `<td class="mono" style="text-align:center"${w.backfilled?` title="补录：${w.bf.cat}"`:''}>${w.hEff}${w.backfilled?'<span style="color:#b45309">°</span>':''}</td>`;}).join('');
@@ -3258,7 +3300,7 @@ ${ops([
   <div class="panel-body hint">员工短信回 Y 才自动扣；不回复不影响假期本身 —— 财务可强制扣减（红字留痕，进操作日志）· 倒休不能透支</div></div>
  <div class="panel"><div class="panel-head">月度封账 · 外部工资系统用的汇总单
     <span class="muted" style="font-weight:400">周期 07/21 → 08/20 · 21 日封账即发放</span>
-    <button class="btn btn-primary" style="margin-left:auto" onclick="uiAlert('演示：汇总单=日结加总，不再存一遍明细\n（挂起 2 天由工程负责人补录后才能真封账）')">生成汇总单</button></div>
+    <button class="btn btn-primary" style="margin-left:auto" onclick="uiAlert('演示：汇总单=日结加总，不再存一遍明细\n（挂起天按 0 计不卡封账 —— 补录后进下月周期补发）')">生成汇总单</button></div>
   <table><thead><tr><th>人</th><th>制度</th><th style="text-align:right">日结加总</th><th style="text-align:right">加班(倍数 1.0)</th><th style="text-align:right">倒休变动</th><th style="text-align:right">应发合计</th></tr></thead>
   <tbody>
    <tr><td>小陈</td><td>月薪</td><td class="num">${can('salary')?'A$5,800.00':'— —'}</td><td class="num">—</td><td class="num">+3.5h</td><td class="num">${can('salary')?'<b>A$5,800.00</b>':'— —'}</td></tr>
@@ -3856,12 +3898,11 @@ const STUCK={
   {pj:'KX-2026-0142',what:'变更待估价 3 条',why:'S4 开票前必须估完 —— 不估完 S4 Invoice 开不出',h:60,p:'尾款结算S4与Var'},
   {pj:'KX-2026-0142',what:'未退料 A$2,013.83 未结算',why:'「标记 S4 已请款」被禁用，直接开会少收这笔',h:52,p:'尾款结算S4与Var'},
   {pj:'KX-2026-0160',what:'超期应收 A$214K · 业主拒付',why:'仅收 S1 · 已停工 —— 催账还是停服需要决策',h:'',p:'催账和停服'},
-  {pj:'',what:'日结挂起 2 天（小陈 07/29–30）待补录',why:'月度封账（21 日）被卡 —— 工程负责人补录（项目/时长/原因类别/详细说明必填，进 KPI）后放行 · 工资滚下月补发',h:'',p:'工资数据'},
  ],
  eng:[
   {pj:'KX-2026-0180',what:'交付后停留 30 天未移交运维',why:'状态停留超阈值 —— 运维接管与订阅都没启动',h:720,p:'交付'},
   {pj:'KX-2026-0142',what:'安装剩余「二楼地暖联动」挂起',why:'等空调队（HVAC 分包）——「确认安装完工」被卡',h:480,p:'安装调试'},
-  {pj:'?',what:'7/29 小陈无打卡也无派工',why:'系统不猜 —— 需人工确认当天去向后才能补日结',h:48,p:'每日上报'},
+  {pj:'?',what:'日结挂起 2 天（小陈 07/29–30）',why:'无打卡也无派工，系统不猜 —— 去「每日上报」补录（项目/时长/原因类别/详细说明必填，进 KPI）· 补录进下月工时计算',h:48,p:'每日上报'},
   {pj:'',what:'盘点待审批 · 盘亏 A$255.60',why:'超审批线 A$200，盘点人不能自批',h:26,t:'wh',p:'盘点'},
  ],
  presales:[
