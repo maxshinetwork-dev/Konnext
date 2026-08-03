@@ -1500,6 +1500,32 @@ function smNa(code,no){
 /* ═══ 四十六轮：安装调试（SM4 之后 ~ 交付之前）═══
    工时占比＝已投入 ÷ 售前预计；四档配色（阈值在「设置」里由工程改）：
    <70 充裕 · 70~预警线 正常 · 预警线~100 接近超支（发预警）· >100 已超支（亏损，重点标） */
+/* 通用环形图：写不下的文字走悬停（SVG <title>），旁边配图例 */
+function donut(data,size,centerTop,centerSub){
+  const tot=data.reduce((a,d)=>a+d.val,0);
+  const cx=size/2, cy=size/2, r=size/2-4, ri=r*0.58;
+  if(!tot) return `<svg width="${size}" height="${size}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="#e6ebf1"/>
+    <circle cx="${cx}" cy="${cy}" r="${ri}" fill="var(--bg-panel)"/>
+    <text x="${cx}" y="${cy+4}" font-size="12" text-anchor="middle" fill="#8a97a3">暂无数据</text></svg>`;
+  let acc=0;
+  const arc=data.filter(d=>d.val>0).map(d=>{
+    const a0=acc/tot*2*Math.PI-Math.PI/2; acc+=d.val; const a1=acc/tot*2*Math.PI-Math.PI/2;
+    const pct=Math.round(d.val/tot*1000)/10;
+    const tip=`${d.label}：${d.txt||d.val}（${pct}%）`;
+    if(d.val===tot) return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${d.color}"><title>${tip}</title></circle>`;
+    const large=(a1-a0)>Math.PI?1:0;
+    const x0=cx+r*Math.cos(a0), y0=cy+r*Math.sin(a0), x1=cx+r*Math.cos(a1), y1=cy+r*Math.sin(a1);
+    return `<path d="M${cx},${cy} L${x0.toFixed(1)},${y0.toFixed(1)} A${r},${r} 0 ${large} 1 ${x1.toFixed(1)},${y1.toFixed(1)} Z"
+      fill="${d.color}" stroke="#fff" stroke-width="2"><title>${tip}</title></path>`;}).join('');
+  return `<svg width="${size}" height="${size}" style="flex:none">${arc}
+    <circle cx="${cx}" cy="${cy}" r="${ri}" fill="var(--bg-panel)"/>
+    <text x="${cx}" y="${cy-1}" font-size="20" font-weight="700" text-anchor="middle" fill="#1a2633" font-family="var(--mono)">${centerTop}</text>
+    <text x="${cx}" y="${cy+16}" font-size="10.5" text-anchor="middle" fill="#5f6b76">${centerSub}</text></svg>`; }
+function donutLegend(data,tot){ return `<table style="flex:1">${data.map(d=>`
+  <tr><td style="white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;
+      background:${d.color};margin-right:6px;vertical-align:-1px"></span>${d.label}</td>
+    <td class="num">${d.txt||d.val}</td>
+    <td class="num hint">${tot?Math.round(d.val/tot*1000)/10:0}%</td></tr>`).join('')}</table>`; }
 function hourBand(pct){
   const w=engSet.hourWarnPct||90;
   if(pct==null) return {k:'未填预计',cls:'p-grey',c:'#94a3b8'};
@@ -3512,20 +3538,39 @@ ${ops([
    <b>超支不挂客户</b>——实际 vs 预测的差额是我们效率问题，吃工程利润率（决策记录 §7.3 口径）。`)}
  ${helpNote(`没填「预测工时」的项目占比算不出来（显示未填预计）——那是售前签约时的必填项，
    缺了整个人工消耗率就没有分母。缺的话回售前项目列表补。`)}
- <div class="cards">
-  <div class="card"><div class="card-label">在装项目</div>
-    <div class="card-value">${rows.length}</div>
-    <div class="card-foot">SM4 已过 · 待交付</div></div>
-  <div class="card"><div class="card-label">工时超支</div>
-    <div class="card-value"${over.length?' style="color:var(--breach)"':''}>${over.length}</div>
-    <div class="card-foot">${over.length?over.map(r=>r.p.nick+' '+r.pct+'%').join(' · '):'没有超支项目'}</div></div>
-  <div class="card"><div class="card-label">接近超支（预警）</div>
-    <div class="card-value"${warn.length?' style="color:var(--warning)"':''}>${warn.length}</div>
-    <div class="card-foot">预警线 ${w}%（设置里可改）</div></div>
-  <div class="card"><div class="card-label">合计工时</div>
-    <div class="card-value">${totPct!=null?totPct+'%':'—'}</div>
-    <div class="card-foot">已投入 ${totUsed} h / 预计 ${totEst} h</div></div>
- </div>
+ ${(()=>{
+   const cnt=k=>rows.filter(r=>r.band.k===k).length;
+   const nm=rows.filter(r=>r.pct==null).length;
+   const d1=[{label:'充裕 <70%',val:cnt('充裕'),color:'#047857',txt:cnt('充裕')+' 个'},
+             {label:`正常 70~${w}%`,val:cnt('正常'),color:'#2563eb',txt:cnt('正常')+' 个'},
+             {label:`接近超支 ${w}~100% · 预警`,val:cnt('接近超支 · 预警'),color:'#b45309',txt:cnt('接近超支 · 预警')+' 个'},
+             {label:'已超支 >100% · 亏损',val:cnt('已超支 · 亏损'),color:'#dc2626',txt:cnt('已超支 · 亏损')+' 个'}]
+             .concat(nm?[{label:'未填预计工时',val:nm,color:'#94a3b8',txt:nm+' 个'}]:[]);
+   const over100=totPct!=null&&totPct>100;
+   const d2=over100
+     ?[{label:'预计总工时（预算内）',val:totEst,color:'#b45309',txt:totEst+' h'},
+       {label:'超出预算部分',val:Math.round((totUsed-totEst)*10)/10,color:'#dc2626',txt:Math.round((totUsed-totEst)*10)/10+' h'}]
+     :[{label:'已投入工时',val:totUsed,color:(hourBand(totPct).c),txt:totUsed+' h'},
+       {label:'剩余预算工时',val:Math.max(0,Math.round((totEst-totUsed)*10)/10),color:'#cbd5e1',
+        txt:Math.max(0,Math.round((totEst-totUsed)*10)/10)+' h'}];
+   return `<div class="split">
+    <div class="panel"><div class="panel-head">项目状态分布 <span class="muted" style="font-weight:400">按工时占比分档 · 悬停看明细</span></div>
+     <div class="panel-body" style="display:flex;gap:var(--sp-4);align-items:center">
+      ${donut(d1,150,rows.length,'在装项目')}
+      ${donutLegend(d1,rows.length)}
+     </div></div>
+    <div class="panel"><div class="panel-head">合计工时对比 <span class="muted" style="font-weight:400">已投入 vs 预计 · 悬停看明细</span></div>
+     <div class="panel-body" style="display:flex;gap:var(--sp-4);align-items:center">
+      ${donut(d2,150,(totPct!=null?totPct+'%':'—'),'已投入占比')}
+      <table style="flex:1">
+       ${donutLegend(d2,d2.reduce((a,x)=>a+x.val,0)).replace('<table style="flex:1">','').replace('</table>','')}
+       <tr><td class="hint">已投入合计</td><td class="num"><b>${totUsed} h</b></td><td></td></tr>
+       <tr><td class="hint">预计总工时</td><td class="num"><b>${totEst} h</b></td><td></td></tr>
+       <tr><td class="hint">${over100?'超出':'尚余'}</td>
+         <td class="num"><b style="color:${over100?'#dc2626':'#047857'}">${Math.abs(Math.round((totEst-totUsed)*10)/10)} h</b></td><td></td></tr>
+      </table>
+     </div></div>
+   </div>`;})()}
  <div class="panel">
   <div class="panel-head">在装项目 · 剩余工作量与工时消耗
     <span class="muted" style="font-weight:400">工时全部现算（日结定格逐日加总）· 竖线＝100% 位置</span></div>

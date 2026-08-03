@@ -1220,6 +1220,63 @@ const { chromium } = require('playwright');
   ok(r44.prevOk&&r44.saved,'起止时长自动算错（10:00–18:45 应 8.75h）');
   ok(r44.g2,'同一人当天时间重叠未被拦');
   ok(r44.g3,'不重叠的第二段应能排进去');
+  // 四十六~四十七轮：安装调试页（只列 SM4~交付前 · 工时占比四档 · 资源分配→排班 · 两张环形图）
+  const w46=await page.evaluate(()=>{
+    loginAs('eng'); go('eng','安装调试');
+    const h=document.getElementById('main').innerHTML;
+    const rows=document.querySelectorAll('#insttbl tbody tr').length;
+    const onlyInst=h.includes('赵宅')&&h.includes('周宅')&&h.includes('吴宅')
+      &&!h.includes('林宅')&&!h.includes('王宅');
+    const cols=h.includes('剩余工作量')&&h.includes('已投入工时')&&h.includes('预计总工时')&&h.includes('工时占比');
+    const pcts=h.includes('66%')&&h.includes('95%')&&h.includes('118.9%');
+    const bands=h.includes('正常')&&h.includes('接近超支 · 预警')&&h.includes('已超支 · 亏损');
+    const negLeft=h.includes('-34 h');
+    const remainAuto=h.includes('地暖联动剩 3 处未调')&&h.includes('来源：老李 08/01 的每日上报');
+    // 两张环形图（四十七轮）
+    const two=h.includes('项目状态分布')&&h.includes('合计工时对比')&&!h.includes('class="cards"');
+    const svgs=document.querySelectorAll('#main svg').length>=2;
+    const tips=(h.match(/<title>/g)||[]).length>=4;
+    const legend=(h.includes('充裕 &lt;70%')||h.includes('充裕 <70%'))
+      &&h.includes('已投入工时')&&h.includes('剩余预算工时');
+    const center=h.includes('89.1%');
+    // 改预警线 → 档位与图例跟着变
+    engSetVal('hourWarnPct','工时预警阈值%',97);
+    const h2=document.getElementById('main').innerHTML;
+    const rebanded=h2.includes('正常 70~97%')&&engSet.hourWarnPct===97;
+    engSetVal('hourWarnPct','工时预警阈值%',90); OPLOG.splice(0,2);
+    // 资源分配 → 写进排班表
+    const n0=SCH.length;
+    instO('KX-2026-0199');
+    const opened=!!document.getElementById('in-d');
+    const preFill=document.getElementById('in-note').value.includes('影音室联动未调');
+    const d=new Date(); d.setDate(d.getDate()+3); const ds=ymdS(d);
+    document.getElementById('in-d').value=ds.replace(/\//g,'-');
+    document.getElementById('in-st').value='08:00';
+    document.getElementById('in-et').value='16:30';
+    [...document.querySelectorAll('.in-who')].forEach(c=>{c.checked=(c.value==='阿强'||c.value==='老李');});
+    instSave();
+    const made=SCH.filter(x=>x.d===ds&&x.type==='安装'&&x.pj==='KX-2026-0199');
+    const schedOk=made.length===2&&made[0].st==='08:00'&&made[0].et==='16:30'
+      &&made.every(x=>x.ack===false)&&made[0].remain.includes('影音室联动未调');
+    const logOk=OPLOG[0].action==='资源分配（安装调试）'&&OPLOG[0].detail.includes('工时占比');
+    const notiOk=NOTIF[0].what.includes('安装派工');
+    SCH.splice(n0,2); OPLOG.shift(); NOTIF.shift(); renderAll(); loginAs('finance');
+    return JSON.stringify({rows,onlyInst,cols,pcts,bands,negLeft,remainAuto,two,svgs,tips,legend,center,
+      rebanded,opened,preFill,schedOk,logOk,notiOk});});
+  const r46=JSON.parse(w46);
+  ok(r46.rows===3&&r46.onlyInst,`安装调试应只列 SM4 后~交付前的项目（实际 ${r46.rows} 行）`);
+  ok(r46.cols,'缺 剩余工作量/已投入/预计总/工时占比 四列');
+  ok(r46.pcts,'工时占比算错（应 66% / 95% / 118.9%）');
+  ok(r46.bands,'四档配色未体现（正常/接近超支预警/已超支亏损）');
+  ok(r46.negLeft,'超支项目剩余工时应为负数并标红');
+  ok(r46.remainAuto,'剩余工作量未自动带出上次每日上报');
+  ok(r46.two&&r46.svgs,'四张卡未换成两张环形图');
+  ok(r46.tips,'环形图扇区缺悬停明细（<title>）');
+  ok(r46.legend&&r46.center,'环形图图例/中心数字缺失（四档 · 已投入/剩余预算 · 89.1%）');
+  ok(r46.rebanded,'改预警线后档位未重算');
+  ok(r46.opened&&r46.preFill,'资源分配浮窗未开/未按剩余工作预填内容');
+  ok(r46.schedOk,'资源分配未按人写进派工排班表（带剩余工作）');
+  ok(r46.logOk&&r46.notiOk,'资源分配未留痕/未通知本人');
   const plChk=await page.evaluate(()=>{go('fin','项目列表');pjFilter=null;renderAll();
     const h=document.getElementById('main').innerHTML;pjFilter=null;
     return h.includes('<b>王宅</b>');});
