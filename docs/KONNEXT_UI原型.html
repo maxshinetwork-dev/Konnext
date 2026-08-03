@@ -1103,16 +1103,21 @@ function schPaint(){ const o=schOpen; if(!o) return; const x=o.id?SCH.find(s=>s.
    '<div class="field"><label>工作类型</label><select id="sc-t" onchange="schPjToggle()">'+
      SCH_TYPES.map(s=>'<option'+(x&&x.type===s.k?' selected':'')+'>'+s.k+'</option>').join('')+'</select></div>'+
    '<div class="field" id="sc-pjwrap"><label>关联项目（必选 —— 不允许无项目关联的工作）</label>'+
-     '<select id="sc-pj"><option value="">— 请选择项目 —</option>'+
-     pjs.map(p=>'<option value="'+p.code+'"'+(x&&x.pj===p.code?' selected':'')+'>'+p.nick+' · '+p.street+', '+p.suburb+'</option>').join('')+
-     '</select></div>'+
+     '<input id="sc-pjq" class="search" placeholder="🔍 搜编号 / 昵称 / 地址…（项目多的时候先筛）" '+
+       'style="width:100%;padding:5px 8px;margin-bottom:5px" oninput="schPjFilter()">'+
+     '<select id="sc-pj" size="5" style="width:100%" onchange="schRemainPaint()"></select>'+
+     '<div class="hint" id="sc-pjn"></div></div>'+
    '<div class="field"><label>时长（分钟 · 15 分钟一档，≥60 自动按小时显示）</label>'+
      '<div style="display:flex;gap:8px;align-items:center">'+
      '<input id="sc-min" class="mono" type="number" step="15" min="15" style="width:110px" value="'+(x?x.min:480)+'" oninput="schMinPrev()">'+
      '<span id="sc-prev" class="hint"></span></div></div>'+
-   '<div class="field"><label>工作内容</label><input id="sc-note" value="'+(x?x.note:'')+'" placeholder="如：客厅面板接线"></div>'+
-   '<div class="field"><label>剩余工作（★只记剩余、不记已做——单维度锁定人员内容）</label>'+
-     '<textarea id="sc-rem" style="width:100%;min-height:56px;font-size:12px">'+(x?(x.remain||''):'')+'</textarea></div>'+
+   '<div class="field" id="sc-notewrap"><label>工作内容（多行 · 写清楚这次要干什么，方便自己回看核对）</label>'+
+     '<textarea id="sc-note" style="width:100%;min-height:96px;font-size:12px;line-height:1.7" '+
+       'placeholder="如：\n· 客厅 KNX 四联面板 ×3 安装接线\n· 餐厅调光模块入柜\n· 走廊感应器对码">'+(x?(x.note||''):'')+'</textarea></div>'+
+   '<div class="field" id="sc-remwrap"><label>剩余工作 <span class="muted" style="font-weight:400">（系统自动带出，不手填）</span></label>'+
+     '<div id="sc-rem" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;'+
+       'padding:8px 10px;font-size:12px;line-height:1.7;min-height:38px"></div>'+
+     '<div class="hint" id="sc-remsrc"></div></div>'+
    (x&&x.pj?'<div class="hint" style="margin-bottom:8px"><a style="color:var(--accent);cursor:pointer" onclick="schRepOpen(\''+x.pj+'\')">查看该项目此前的工程上报记录 →</a></div>':'')+
    '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
    (x?'<button class="btn" style="margin-right:auto;color:#c62828;border-color:#c62828" onclick="schDel(\''+x.id+'\')">删除任务</button>':'')+
@@ -1120,10 +1125,42 @@ function schPaint(){ const o=schOpen; if(!o) return; const x=o.id?SCH.find(s=>s.
    '<button class="btn btn-primary" onclick="schSave()">保存并通知</button></div>';
   document.getElementById('schback').style.display='block';
   document.getElementById('schbox').style.display='block';
-  schPjToggle(); schMinPrev(); }
+  schPjFilter(x?x.pj:''); schPjToggle(); schMinPrev(); }
+/* 项目下拉：可搜可筛（上百个项目手选不现实） */
+function schPjFilter(preset){ const q=((document.getElementById('sc-pjq')||{}).value||'').trim().toLowerCase();
+  const sel=document.getElementById('sc-pj'); if(!sel) return;
+  const cur=preset!==undefined?preset:sel.value;
+  const list=engScope().filter(p=>p.status!=='已烂尾')
+    .filter(p=>!q||`${p.code} ${p.nick} ${p.street} ${p.suburb} ${p.state}`.toLowerCase().includes(q));
+  sel.innerHTML=list.map(p=>`<option value="${p.code}"${p.code===cur?' selected':''}>${p.nick} · ${p.street}, ${p.suburb}（${p.code.slice(-4)}）</option>`).join('')
+    ||'<option value="">（没有匹配的项目）</option>';
+  if(list.some(p=>p.code===cur)) sel.value=cur;
+  else if(list.length===1) sel.value=list[0].code;   // 筛到唯一一个就自动选中（省一次点击）
+  else sel.value='';
+  const n=document.getElementById('sc-pjn');
+  if(n) n.textContent=`可选 ${list.length} 个${q?'（已筛选）':''} —— 只列进了工程线的项目`;
+  schRemainPaint(); }
+/* 剩余工作：按 类型 × 项目 自动带出（SM 无 · 施工/交付带上次 · 维护可空但上次没填要提醒） */
+function schRemainPaint(){ const ty=(document.getElementById('sc-t')||{}).value;
+  const pj=(document.getElementById('sc-pj')||{}).value;
+  const box=document.getElementById('sc-rem'), src=document.getElementById('sc-remsrc');
+  const wrap=document.getElementById('sc-remwrap'); if(!box||!wrap) return;
+  const r=schRemainFor(ty,pj);
+  wrap.style.display=r.show?'block':'none'; if(!r.show) return;
+  box.innerHTML=r.gap?`<b style="color:#b45309">${r.txt}</b>`
+    :(r.muted?`<span class="muted">${r.txt}</span>`:r.txt);
+  src.innerHTML=r.nopj?'剩余工作＝该项目上一次每日上报里留下的剩余（自动带出，不手填）'
+    :(r.from?`来源：${r.from} 的每日上报（最近一次）—— 只记剩余、不记已做`
+    :(ty==='维护'?'运维默认可空；<b>上一次没做完的话，这次必须带着上次的剩余工作记录</b>'
+      :'该项目还没有上报记录，本次为第一次进场'));}
 function schPjToggle(){ const ty=(document.getElementById('sc-t')||{}).value;
   const w=document.getElementById('sc-pjwrap'); if(!w) return;
-  w.style.display=(ty==='倒休')?'none':'block'; }
+  const toil=(ty==='倒休');
+  w.style.display=toil?'none':'block';
+  /* 倒休＝把余额用掉，不是干活：没有项目、没有工作内容、没有剩余工作 */
+  const nw=document.getElementById('sc-notewrap'); if(nw) nw.style.display=toil?'none':'block';
+  const rw=document.getElementById('sc-remwrap'); if(rw) rw.style.display=toil?'none':'block';
+  if(!toil) schRemainPaint(); schMinPrev(); }
 function schMinPrev(){ const e=document.getElementById('sc-min'), p=document.getElementById('sc-prev');
   if(!e||!p) return; const m=parseInt(e.value||0,10);
   const snap=Math.round(m/15)*15;
@@ -1134,7 +1171,7 @@ function schMinPrev(){ const e=document.getElementById('sc-min'), p=document.get
     +(SCH_NORM[ty]?' <span class="hint">合理时长参考 '+minLab(SCH_NORM[ty])+'</span>':'')):'请填时长'; }
 function schSave(){ const o=schOpen; if(!o) return;
   const v=id=>{const e=document.getElementById(id);return e?e.value:'';};
-  const ty=v('sc-t'), note=v('sc-note').trim(), rem=v('sc-rem').trim();
+  const ty=v('sc-t'); const note=ty==='倒休'?'':v('sc-note').trim();
   let min=Math.round(parseInt(v('sc-min')||0,10)/15)*15;
   if(!(min>0)){ uiAlert('门禁：时长必填，最小 15 分钟'); return; }
   const pjc=ty==='倒休'?'':v('sc-pj');
@@ -1142,6 +1179,10 @@ function schSave(){ const o=schOpen; if(!o) return;
   if(ty==='倒休'){ const bal=toilBal(o.who)*60;
     const used=SCH.filter(s=>s.who===o.who&&s.type==='倒休'&&s.id!==o.id).reduce((a,s)=>a+s.min,0);
     if(used+min>bal){ uiAlert('门禁：倒休余额不足——'+o.who+' 余额 '+toilBal(o.who)+' h，已排 '+minLab(used)+'，本次要排 '+minLab(min)); return; } }
+  const rInfo=schRemainFor(ty,pjc);
+  if(ty==='维护'&&rInfo.gap){
+    uiAlert('门禁：上一次维护没有留下剩余工作记录——第二次上门必须知道上次剩什么。\n请先让上次上门的人在「每日上报」补填剩余工作'); return; }
+  const rem=ty==='倒休'?'':(rInfo.muted&&!rInfo.gap?(rInfo.txt.replace(/^（|）$/g,'')):rInfo.txt);
   const pjLab=pjc?(PROJECTS.find(p=>p.code===pjc)||{}).nick:'（倒休）';
   if(o.id){ const x=SCH.find(s=>s.id===o.id); const old=x.type+' '+minLab(x.min);
     Object.assign(x,{type:ty,pj:pjc,min,note,remain:rem,sent:true,ack:false});   // 改了就要重新确认（红点）
@@ -1232,15 +1273,39 @@ function schLockWeek(){ const mon=ymdS(weekDays(schOff)[0]); SCH_WEEK[mon]=!SCH_
   renderAll();
   uiAlert(SCH_WEEK[mon]?'整周已锁定 ✓ 已下发：全员 App 收到本周日程':'整周已解锁——改动仍会逐条通知到人'); }
 /* 工程上报记录（工程师排到项目时可查此前进度） */
+/* ★ 剩余工作的唯一来源＝每日上报里「上一次留下的剩余」（四十三轮用户定：不手填、按规则自动带出）
+   kind 决定阶段口径：SM 阶段没有剩余工作；施工/交付有；维护默认可空，但上次没做完这次必须有记录 */
 const SCH_REPORTS={
- 'KX-2026-0188':[{d:'08/01',who:'阿强',txt:'客厅/餐厅面板安装完毕，走廊感应器对码一半，明天继续。'},
-   {d:'07/31',who:'老李',txt:'弱电箱整理完成，标签待贴。'},
-   {d:'07/24',who:'陈工',txt:'SM3 检查布线完成，电工签字；现场登记变更 1 条（花园廊架加 4 路灯控）。'}],
- 'KX-2026-0203':[{d:'08/01',who:'小陈',txt:'一层布线完成 70%，二层未开始；面板未到货。'},
-   {d:'07/20',who:'陈工',txt:'SM1 进场完成，围栏圆心校准，分包商联系表已采集。'}],
- 'KX-2026-0142':[{d:'08/02',who:'Tony',txt:'二楼调光模块更换完成，测试正常，客户已签字。'}],
- 'KX-2026-0180':[{d:'07/28',who:'陈工',txt:'交付前复核：点位清单全通过，订阅确认书待签。'}],
+ 'KX-2026-0188':[{d:'08/01',who:'阿强',kind:'安装',txt:'客厅/餐厅面板安装完毕，走廊感应器对码一半。',
+     remain:'二楼走廊感应器对码未完；花园廊架灯控接线未开始'},
+   {d:'07/31',who:'老李',kind:'安装',txt:'弱电箱整理完成。',remain:'弱电箱标签未贴'},
+   {d:'07/24',who:'陈工',kind:'Site Meeting',txt:'SM3 检查布线完成，电工签字；现场登记变更 1 条（花园廊架加 4 路灯控）。'}],
+ 'KX-2026-0203':[{d:'08/01',who:'小陈',kind:'安装',txt:'一层布线完成 70%。',
+     remain:'一层剩余 30% + 二层布线未开始；面板未到货等库管出库'},
+   {d:'07/20',who:'陈工',kind:'Site Meeting',txt:'SM1 进场完成，围栏圆心校准，分包商联系表已采集。'}],
+ 'KX-2026-0142':[{d:'08/02',who:'Tony',kind:'维护',txt:'二楼调光模块更换完成，测试正常，客户已签字。',
+     remain:'主卧面板偶发失联未复现，下次带备件 2 只再测'}],
+ 'KX-2026-0180':[{d:'07/28',who:'陈工',kind:'交付',txt:'交付前复核：点位清单全通过。',remain:'订阅确认书未签'}],
+ 'KX-2026-0121':[{d:'2026/06/18',who:'Tony',kind:'维护',txt:'年度巡检完成，全部正常。'}],   // 无 remain 字段＝上次没填
 };
+/* 按类型与项目算出「剩余工作」该显示什么（只读自动带出） */
+function schRemainFor(type,pj){
+  if(type==='倒休') return {show:false};
+  if(type==='Site Meeting') return {show:true,txt:'（SM 阶段不存在剩余工作）',muted:true};
+  if(!pj) return {show:true,txt:'（先选关联项目，系统自动带出上次剩余）',muted:true,nopj:true};
+  const rs=SCH_REPORTS[pj]||[];
+  if(type==='维护'){
+    const mt=rs.filter(r=>r.kind==='维护');
+    if(!mt.length) return {show:true,txt:'无（该项目第一次维护）',muted:true,optional:true};
+    const last=mt[0];
+    if(!('remain' in last)) return {show:true,txt:'⚠ 上一次维护（'+last.who+' '+last.d+'）没有留下剩余工作记录',
+      muted:true,optional:true,gap:true,from:last.who+' '+last.d};
+    return {show:true,txt:last.remain||'无（上次已做完）',from:last.who+' '+last.d,optional:true};
+  }
+  const last=rs.find(r=>r.kind==='安装'||r.kind==='交付');
+  if(!last) return {show:true,txt:'无（该项目还没有施工上报——第一次进场）',muted:true};
+  return {show:true,txt:last.remain||'无（上次已做完）',from:last.who+' '+last.d};
+}
 function schRepOpen(code){ schRepPj=code; const p=PROJECTS.find(x=>x.code===code)||{};
   const rs=SCH_REPORTS[code]||[];
   document.getElementById('rpbox').innerHTML=
@@ -2468,9 +2533,14 @@ ${ops([
  ${helpNote(`<b>这页怎么用</b>：一周一张表（周一~周日 × 人）。格子里点「＋」排任务：选类型（五类，颜色区分）、
    <b>必须选项目</b>（倒休除外——倒休是休假不是工作）、填时长（<b>最小 15 分钟</b>，≥60 分钟自动按小时显示）、
    写<b>剩余工作</b>。内容多的时候<b>鼠标悬停任务块看完整浮窗</b>。周五把下周排完，点「锁定整周」下发。`)}
- ${helpNote(`<b>只记剩余工作，不记今日已做</b>（单维度锁定人员内容）——今天做了什么在「每日上报」里由工人自己写，
-   这里只留「还剩什么没做」，下一个排到这个项目的人一眼知道接着干什么；点任务块里的「查看该项目此前的工程上报记录」
-   能看到历史进度。`)}
+ ${helpNote(`<b>只记剩余工作，不记今日已做</b>——而且<b>剩余工作不用手填</b>：系统自动带出
+   该项目<b>最近一次每日上报里留下的剩余</b>，下一个排到这个项目的人一眼知道接着干什么。
+   分阶段口径：<b>SM1~4 不存在剩余工作</b>；<b>施工 / 交付</b>自动带上次剩余（没有上报就是「第一次进场」）；
+   <b>维护</b>默认可空（有时确实没剩），但<b>上一次没做完的话，这次必须带着上次的剩余记录</b>——
+   上次没填就拦下来，让上次上门的人先在「每日上报」补填。`)}
+ ${helpNote(`弹层里的三个细节：<b>项目可搜</b>（编号/昵称/地址，项目上百个不靠手找）；
+   <b>工作内容是多行大框</b>（写完自己回看核对）；<b>倒休只填时长</b>——倒休是把余额用掉，
+   没有项目、没有工作内容、也没有剩余工作。`)}
  ${helpNote(`工时自动算：每天超过 8 小时的部分算加班——<b>月薪制转倒休</b>、<b>时薪制付加班费</b>（倍数在财务设置里）、
    <b>外包无加班概念</b>（整日日薪）。排「倒休」类型时系统按倒休余额校验，<b>不够扣直接拦</b>。
    人员名单/时薪/倒休余额都来自财务模块，这里不重复维护。`)}
@@ -2528,7 +2598,7 @@ ${ops([
            ${schDot(x)} <b>${x.type}</b> ${minLab(x.min)}<br>${x.pj?p.nick:'（休假）'}
            <div class="pop"><b>${x.type} · ${minLab(x.min)}</b> ${x.ack?'✅ 本人已回 Y':'🔴 等本人回 Y'}<br>
             ${x.pj?`项目：${p.nick} · ${p.street}, ${p.suburb}<br>`:'倒休（不关联项目）<br>'}
-            内容：${x.note||'—'}<br>剩余工作：${x.remain||'—'}<br>
+            ${x.type==='倒休'?'':`内容：${x.note||'—'}<br>剩余工作：${x.remain||'—'}<br>`}
             ${nh?nh+'<br>':''}日程已同步到本人 App（回不回都显示）<br>
             ${x.pj?'点块可改 · 弹层里可查该项目此前上报记录':'点块可改'}</div>
           </div>`;}).join('')}

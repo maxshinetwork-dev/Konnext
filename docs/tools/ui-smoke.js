@@ -1097,6 +1097,58 @@ const { chromium } = require('playwright');
   ok(r42.normUI&&r42.normOk,'合理时长未可在设置定义/未留痕');
   ok(r42.one,'工程总览「去处理」未直达只显示该项目（三十九轮 bug）');
   ok(r42.back&&r42.all,'点筛选 chip 未恢复该筛选完整内容');
+  // 四十三轮：排班弹层四修（倒休精简 · 项目可搜 · 内容多行 · 剩余工作自动生成）
+  const w43=await page.evaluate(()=>{
+    loginAs('eng'); schOff=1; go('eng','派工排班');
+    const fut=weekDays(1).map(d=>ymdS(d))[3];
+    schAdd('小陈',fut);
+    // 倒休：不该有项目/内容/剩余
+    document.getElementById('sc-t').value='倒休'; schPjToggle();
+    const toilOk=document.getElementById('sc-pjwrap').style.display==='none'
+      &&document.getElementById('sc-notewrap').style.display==='none'
+      &&document.getElementById('sc-remwrap').style.display==='none';
+    // 安装：项目可搜 + 剩余自动带出上次上报
+    document.getElementById('sc-t').value='安装'; schPjToggle();
+    const n0=document.getElementById('sc-pj').options.length;
+    document.getElementById('sc-pjq').value='mosman'; schPjFilter();
+    const n1=document.getElementById('sc-pj').options.length;
+    const filtered=n0>n1&&n1===1&&document.getElementById('sc-pj').value==='KX-2026-0188';
+    const remAuto=document.getElementById('sc-rem').textContent.includes('二楼走廊感应器对码未完')
+      &&document.getElementById('sc-remsrc').textContent.includes('阿强 08/01');
+    const multi=document.getElementById('sc-note').tagName==='TEXTAREA';
+    // SM：无剩余工作
+    document.getElementById('sc-t').value='Site Meeting'; schPjToggle();
+    const smNo=document.getElementById('sc-rem').textContent.includes('SM 阶段不存在剩余工作');
+    // 维护：第一次 → 无；有上次剩余 → 自动带；上次没填 → 门禁拦
+    document.getElementById('sc-t').value='维护'; schPjToggle();
+    document.getElementById('sc-pjq').value='王宅'; schPjFilter();
+    const mtCarry=document.getElementById('sc-rem').textContent.includes('主卧面板偶发失联');
+    document.getElementById('sc-pjq').value='刘宅'; schPjFilter();
+    const mtGap=document.getElementById('sc-rem').textContent.includes('没有留下剩余工作记录');
+    document.getElementById('sc-min').value='120';
+    const c0=SCH.length; schSave();
+    const mtBlocked=SCH.length===c0;                      // 上次没填 → 拦
+    document.getElementById('sc-pjq').value='王宅'; schPjFilter();
+    schSave();
+    const saved=SCH.length===c0+1&&SCH[SCH.length-1].remain.includes('主卧面板偶发失联');
+    // 倒休保存不带内容/剩余
+    schAdd('小陈',fut);                                   // 小陈倒休余额 12.5h（老李 4h 本周已排满）
+    document.getElementById('sc-t').value='倒休'; schPjToggle();
+    document.getElementById('sc-min').value='120'; schSave();
+    const tl=SCH[SCH.length-1];
+    const toilSaved=tl.type==='倒休'&&tl.pj===''&&tl.note===''&&tl.remain==='';
+    SCH.splice(c0,2); OPLOG.splice(0,2); NOTIF.splice(0,2); schOff=0; renderAll(); loginAs('finance');
+    return JSON.stringify({toilOk,filtered,remAuto,multi,smNo,mtCarry,mtGap,mtBlocked,saved,toilSaved});});
+  const r43=JSON.parse(w43);
+  ok(r43.toilOk,'倒休仍显示项目/工作内容/剩余工作（应只填时长）');
+  ok(r43.filtered,'关联项目不支持搜索过滤');
+  ok(r43.multi,'工作内容仍是单行输入（应多行大框）');
+  ok(r43.remAuto,'剩余工作未自动带出上次每日上报的剩余');
+  ok(r43.smNo,'SM 阶段未标明「不存在剩余工作」');
+  ok(r43.mtCarry,'维护未带出上次维护的剩余');
+  ok(r43.mtGap&&r43.mtBlocked,'上次维护没填剩余时未提示/未拦下派工');
+  ok(r43.saved,'保存后剩余工作未写入任务');
+  ok(r43.toilSaved,'倒休任务保存时不该带项目/内容/剩余');
   const plChk=await page.evaluate(()=>{go('fin','项目列表');pjFilter=null;renderAll();
     const h=document.getElementById('main').innerHTML;pjFilter=null;
     return h.includes('<b>王宅</b>');});

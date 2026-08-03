@@ -191,16 +191,24 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
     <div class="top"><b>每日上报</b><span class="who">08/02 · 一人一天一条</span></div>
     <div class="body">
       <div class="card">
-        <h4><span class="mono">KX-2026-0188</span> 林宅 · <span class="hint">在场 08:12–12:30</span></h4>
-        <textarea rows="2">客厅/餐厅面板安装完毕，走廊感应器对码一半，明天继续。</textarea>
+        <h4><span class="mono">KX-2026-0188</span> 林宅 · <span class="hint">安装 · 在场 08:12–12:30</span></h4>
+        <div class="hint">今天做了什么</div>
+        <textarea rows="2">客厅/餐厅面板安装完毕，走廊感应器对码一半。</textarea>
+        <div class="hint" style="margin-top:6px">★还剩什么没做（<b>剩余工作</b>）—— 下一个来的人接着干</div>
+        <textarea rows="2">二楼走廊感应器对码未完；花园廊架灯控接线未开始</textarea>
       </div>
       <div class="card">
-        <h4><span class="mono">KX-2026-0180</span> 陈宅 · <span class="hint">在场 14:02–15:40</span></h4>
+        <h4><span class="mono">KX-2026-0180</span> 陈宅 · <span class="hint">维护上门 · 在场 14:02–15:40</span></h4>
+        <div class="hint">今天做了什么</div>
         <textarea rows="2">更换二楼调光模块，测试正常，客户已签字。</textarea>
+        <div class="hint" style="margin-top:6px">★还剩什么没做（维护可留空 —— 真做完了就写「无」）</div>
+        <textarea rows="2">无</textarea>
       </div>
       <button class="btn" onclick="this.textContent='已提交 ✓ （当夜 0 点随日结一起定格）';this.disabled=true">提交今日上报</button>
       <div class="note">当天跨了几个项目就写几段——这是工资和项目成本的数据源。
-      不写的话当天工资<b>挂起不发</b>（不扣钱，负责人补录才放行，并进 KPI）。</div>
+      不写的话当天工资<b>挂起不发</b>（不扣钱，负责人补录才放行，并进 KPI）。<br>
+      ★<b>剩余工作要写</b>：办公室排下一班时会自动把它带出来给下一个人看
+      （SM 会议没有剩余工作这一说；维护没剩就写「无」——<b>但上次没做完又没写，下次派工会被系统拦下</b>）。</div>
     </div>
     <div class="tabs">
       <button onclick="appGo('today')"><span class="ic">📋</span>今日</button>
