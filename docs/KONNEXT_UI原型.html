@@ -406,6 +406,60 @@ const DEPT = {
   mt:      {label:'运维', pages:['总览','项目列表','报修受理','派工与上门','维护单跟踪','业主订阅','维保状态','操作日志']},
   decision:{label:'决策页', pages:['决策看板','风险看板','悬而未决','账号与权限','系统健康','审计日志','全局参数']},
 };
+/* ═══ 四十九轮：发送人身份（用户 2026-08-03 定 · 在总管理员「决策页 / 全局参数」里设置）═══
+   短信：全公司只有一个号码 —— 公司统一申请的澳洲手机号（Twilio）。
+        澳洲不许用字母发送者 ID（收件人看到 "KONNEXT" 那种）——那种号收不到任何回复，
+        客户回的 Y、员工回的 Yes 一条都拿不到，红点永远不变绿。
+   邮件：按业务性质分三个身份，谁经办都用同一个地址，客户永远认得出是 KONNEXT：
+        财务 accounts@ · 信息类 info@ · 工程管理 admin@
+   身份是公司的、署名是人的：经办人姓名只出现在正文末尾署名，发件地址永远是公司这三个之一。 */
+const SENDER={
+  sms:{num:'+61 468 331 700', name:'KONNEXT'},
+  mail:{
+    fin :{addr:'accounts@konnext.com.au', disp:'KONNEXT 财务',
+          use:'催款 · Invoice 告知 · 收款确认 · 对账 · 报销结果'},
+    info:{addr:'info@konnext.com.au',     disp:'KONNEXT',
+          use:'信息类：售前联络 · 通知与回执 · 订阅到期提醒 · 系统提醒'},
+    eng :{addr:'admin@konnext.com.au',    disp:'KONNEXT 工程管理',
+          use:'工程管理：交付预约 · 排期告知 · 施工告知 · 工程追加告知'},
+  }};
+/* 部门 → 用哪个邮件身份（六部门全覆盖；以后新部门默认走信息类） */
+const MAIL_OF={fin:'fin', eng:'eng', presales:'info', proc:'info', wh:'info', mt:'info'};
+const mailId=d=>SENDER.mail[MAIL_OF[d]||'info'];
+/* 发件身份：纯文本（进操作日志用）+ 一条横幅（发信弹窗里用，让人看得见这封从哪个身份出去） */
+function fromTxt(dept,ch){ const p=[];
+  if(ch!=='email') p.push('短信 '+SENDER.sms.num);
+  if(ch!=='sms')   p.push('邮件 '+mailId(dept).addr);
+  return p.join(' + '); }
+function fromBar(dept,ch){ const m=mailId(dept); const p=[];
+  const chip=t=>'<span style="white-space:nowrap">'+t+'</span>';
+  if(ch!=='email') p.push(chip('📱 短信 <b class="mono">'+SENDER.sms.num+'</b> <span class="muted">公司统一号码</span>'));
+  if(ch!=='sms')   p.push(chip('✉ 邮件 <b class="mono">'+m.addr+'</b> <span class="muted">'+m.disp+'</span>'));
+  return '<div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;'+
+    'padding:7px 10px;margin:10px 0;font-size:var(--fs-xs);line-height:1.9">'+
+    '<b>发件身份</b>　'+p.join('　')+
+    '<div class="muted" style="margin-top:1px">全公司统一 · 决策页「全局参数」里改（经办人只写署名）</div></div>'; }
+/* 改发送人身份（只有决策管理员能改；改完之后发的全部换新身份，已发出的记录不动） */
+function senderSms(v){ const nv=(v||'').trim();
+  if(WHO[me].tier!==1){ uiAlert('门禁：只有决策管理员能改发送人身份'); renderAll(); return; }
+  if(!/^[+0][0-9 ]{7,}$/.test(nv)){
+    uiAlert('门禁：号码格式不对 —— 澳洲号请写 +61 开头或 0 开头的手机号。\n'+
+      '发件号填错＝所有短信发不出去，而且系统不会报错，只是没人收到'); renderAll(); return; }
+  const old=SENDER.sms.num; if(old===nv){ renderAll(); return; }
+  SENDER.sms.num=nv;
+  opLog('','修改发送人身份','短信统一号码 '+old+' → '+nv+
+    '（催款/排班/交付/告知——之后所有短信改从新号发出，回 Y 回执也走新号）',['fin','eng','presales','proc','wh','mt']);
+  renderAll(); uiAlert('已保存：短信统一号码 '+old+' → '+nv+'\n之后所有短信都从新号发出；已发出的记录保留当时的号'); }
+function senderMail(k,v){ const nv=(v||'').trim().toLowerCase();
+  if(WHO[me].tier!==1){ uiAlert('门禁：只有决策管理员能改发送人身份'); renderAll(); return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nv)){
+    uiAlert('门禁：邮箱格式不对 —— 必须是「名字@域名」的完整地址。\n'+
+      '发件地址填错＝客户回信全部丢掉，系统不会报错'); renderAll(); return; }
+  const m=SENDER.mail[k]; const old=m.addr; if(old===nv){ renderAll(); return; }
+  m.addr=nv; const lb={fin:'财务',info:'信息类',eng:'工程管理'}[k];
+  opLog('','修改发送人身份',lb+'邮件身份 '+old+' → '+nv+'（该类之后所有邮件改从新地址发出）',
+    ['fin','eng','presales','proc','wh','mt']);
+  renderAll(); uiAlert('已保存：'+lb+' 发件地址 '+old+' → '+nv); }
 /* ★ 公司级页面（不属于任何项目）—— 其余一律是项目内页面
    混在一起做全局项目选择器，会让人误以为库存也是分项目的 */
 const COMPANY_PAGES=new Set([
@@ -691,11 +745,18 @@ let finQ='', finF='全部', FINOPEN={}, s4Open={}, nodeF='全部', hrOpen={}, pa
 /* 通知记录（演示）：内外责任人 · 手动确认接收（外部付款人=短信回 YES；内部=待办已知悉） */
 const NOTIF=[
  {at:'2026/07/28 10:02',pj:'KX-2026-0203',what:'S1 定金 Invoice 已开出（外部系统）· 应收 A$48,000',
+  from:'📱 +61 468 331 700',
   to:[{who:'付款人 罗先生',how:'短信',ok:true},{who:'售前 小林',how:'待办',ok:true},{who:'工程管理 陈工',how:'待办',ok:false}]},
  {at:'2026/07/31 09:15',pj:'KX-2026-0203',what:'S1 催款（第 1 次）',
+  from:'📱 +61 468 331 700 · ✉ accounts@konnext.com.au',
   to:[{who:'付款人 罗先生',how:'短信',ok:false}]},
 ];
-function notifAdd(pj,what,to){ NOTIF.unshift({at:nowTs(),pj,what,to}); }
+/* 发件身份随通知一起定格：改了身份只影响之后发的，历史记录仍是当时那个身份 */
+function notifFrom(to){ const hows=(to||[]).map(x=>x.how||'').join(' '); const out=[];
+  if(hows.includes('短信')) out.push('📱 '+SENDER.sms.num);
+  if(hows.includes('邮件')) out.push('✉ '+mailId(tab).addr);
+  return out.join(' · '); }
+function notifAdd(pj,what,to){ NOTIF.unshift({at:nowTs(),pj,what,to,from:notifFrom(to)}); }
 function notifOk(i,j){ NOTIF[i].to[j].ok=true;
   opLog(NOTIF[i].pj,'通知确认接收','「'+NOTIF[i].what+'」→ '+NOTIF[i].to[j].who+' 已确认',['fin']); renderAll(); }
 const daysSince=s=>s?Math.floor((Date.now()-new Date(s).getTime())/864e5):null;
@@ -860,8 +921,9 @@ function remindPaint(){ const f=finOf(RMD.code),m=f.ms[RMD.si];
      <span>语言：${[['zh','中文'],['en','English']].map(([v,lb])=>
        `<label style="margin-right:8px"><input type="radio" name="rmlg" style="width:auto"${RMD.lang===v?' checked':''}
          onchange="RMD.lang='${v}';remindPaint()"> ${lb}</label>`).join('')}</span>
-     <span>发送人：<input id="rm-sender" style="width:130px" value="${WHO[me].name}（${WHO[me].role}）"></span>
+     <span>署名（经办人）：<input id="rm-sender" style="width:130px" value="${WHO[me].name}（${WHO[me].role}）"></span>
    </div>
+   ${fromBar('fin',RMD.channel)}
    ${RMD.channel!=='email'?`<div class="field"><label>短信正文（可改，只影响本次；默认模版在「设置」里）</label>
      <textarea id="rm-sms" style="width:100%;min-height:76px;font-size:12px;line-height:1.6">${tplRender(T.sms,f,m,RMD.lang)}</textarea>
      <div class="hint">收件人可回 <b>Y</b> 作确认 —— <b>不回也不影响任何进展</b>，随时可再次催款</div></div>`:''}
@@ -886,7 +948,8 @@ function finRemindSend(){ const f=finOf(RMD.code),m=f.ms[RMD.si];
     :(document.getElementById('rm-etitle')||{value:''}).value;
   notifAdd(RMD.code,(RMD.level==='final'?'最终催款':m.s+' 催款')+'（第 '+m.remind.length+' 次 · '+how+' · '+(RMD.lang==='zh'?'中文':'EN')+'）',to);
   opLog(RMD.code,(RMD.level==='final'?'最终催款':m.s+' 催款'),
-    '第 '+m.remind.length+' 次 · '+how+' · '+(RMD.lang==='zh'?'中文':'English')+' · 发送人 '+sender+
+    '第 '+m.remind.length+' 次 · '+how+' · '+(RMD.lang==='zh'?'中文':'English')+' · 署名 '+sender+
+    ' · 发件 '+fromTxt('fin',RMD.channel)+
     (RMD.level==='final'?' · 含 7 日停服警告':''),['fin']);
   remindClose();
   uiAlert('已发出（'+how+'）✓\n短信可回 Y 作确认；邮件视为送达 —— 都只是记录，不回不影响任何进展，可随时再催');
@@ -1144,6 +1207,7 @@ function schPaint(){ const o=schOpen; if(!o) return; const x=o.id?SCH.find(s=>s.
        'padding:8px 10px;font-size:12px;line-height:1.7;min-height:38px"></div>'+
      '<div class="hint" id="sc-remsrc"></div></div>'+
    (x&&x.pj?'<div class="hint" style="margin-bottom:8px"><a style="color:var(--accent);cursor:pointer" onclick="schRepOpen(\''+x.pj+'\')">查看该项目此前的工程上报记录 →</a></div>':'')+
+   fromBar('eng','sms')+
    '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
    (x?'<button class="btn" style="margin-right:auto;color:#c62828;border-color:#c62828" onclick="schDel(\''+x.id+'\')">删除任务</button>':'')+
    '<button class="btn" onclick="schClose()">取消</button>'+
@@ -1669,7 +1733,9 @@ function delivNotifyPaint(){ if(!DLV) return; const code=DLV.code;
        (x.phone?'（'+x.phone+'）':'')+(x.email?' · '+x.email:'')+'</option>').join('')+'</select></div>'+
    '<div class="field"><label>渠道</label><div style="display:flex;gap:6px">'+
      chBtn('sms','只发短信')+chBtn('email','只发邮件')+chBtn('both','短信 + 邮件')+'</div></div>'+
-   '<div class="field"><label>发送人</label><input id="dlv-by" value="'+DLV.by+'" style="width:180px" oninput="DLV.by=this.value"></div>'+
+   '<div class="field"><label>署名（经办人 —— 只出现在正文末尾）</label>'+
+     '<input id="dlv-by" value="'+DLV.by+'" style="width:180px" oninput="DLV.by=this.value"></div>'+
+   fromBar('eng',DLV.ch)+
    (DLV.ch!=='email'?'<div class="field"><label>短信正文（可临时改 · 默认模版在下方说明）</label>'+
      '<textarea id="dlv-sms" style="width:100%;min-height:96px;font-size:12px;line-height:1.7">'+
      delivTplRender(DELIV_TPL.sms).replace(/<b>|<\/b>/g,'')+'</textarea></div>':'')+
@@ -1689,7 +1755,8 @@ function delivNotifySend(){ const code=DLV.code; const d=DELIV[code];
   const chCn=DLV.ch==='sms'?'短信':DLV.ch==='email'?'邮件':'短信+邮件';
   if(DLV.ch!=='sms'&&!to.email){ uiAlert('门禁：'+to.name+' 没有邮箱（售前没采集到）——改发短信，或先去售前补邮箱'); return; }
   d.contacted=true; d.contactAt=nowTs(); d.contactIdx=DLV.to; d.contactBy=DLV.by; d.contactCh=chCn;
-  opLog(code,'发出交付预约通知',chCn+' → '+to.src+' '+to.name+'（'+(to.phone||to.email)+'）· 发送人 '+DLV.by+
+  opLog(code,'发出交付预约通知',chCn+' → '+to.src+' '+to.name+'（'+(to.phone||to.email)+'）· 署名 '+DLV.by+
+    ' · 发件 '+fromTxt('eng',DLV.ch)+
     ' · 拟定 '+(d.sched||'未排期'),['eng']);
   notifAdd(code,'交付预约通知（'+chCn+'）→ '+to.name,[{who:'客户 '+to.name,how:chCn,ok:false}]);
   delivNotifyClose(); renderAll();
@@ -3471,6 +3538,10 @@ ${ops([
 'decision/全局参数':()=>`
 <h2>全局参数</h2>
 <div class="page-sub">改一处全公司生效 · 改动全部进审计日志</div>
+${helpNote(`<b>发送人身份</b>：全公司对外只有<b>一个短信号码</b>（公司统一申请的澳洲号）和<b>三个邮箱身份</b>——
+   财务 accounts@（催款/发票/对账）· 信息类 info@（售前联络/通知/提醒）· 工程管理 admin@（交付预约/排期/告知）。
+   经办人只写署名，发件身份系统按部门自动带；已发出的记录定格当时的身份，改了只影响以后。
+   短信号码<b>必须是真号码</b>，不能用字母发送者 ID——那种号收不到客户回的 Y，回执全丢。`)}
 <div class="panel">
   <div class="panel-head">★ 金额可见性（五类）</div>
   <table>
@@ -3492,6 +3563,33 @@ ${ops([
     <span class="muted">售前能看合同金额，因为签约价是他填的；库管能看库存成本，因为出库单价是他填的。
     各自只看本职需要的那部分钱。</span></div>
 </div>
+<div class="panel">
+  <div class="panel-head">★ 发送人身份（全公司统一）<span class="muted" style="font-weight:400;margin-left:10px">
+    对外发出的每一条短信、每一封邮件都用这里的身份 · 改动进审计日志</span></div>
+  <div class="panel-body">
+   <div class="field" style="max-width:560px"><label>短信发送号码 —— 全公司只有这一个</label>
+     <input class="mono" style="width:210px" value="${SENDER.sms.num}" onchange="senderSms(this.value)">
+     <span class="pill p-cyan" style="margin-left:8px">Twilio · 澳洲手机号</span>
+     <div class="hint">催款 · 排班 · 交付预约 · 施工与追加告知 —— <b>全部从这一个号发出</b>；
+       客户回的 <b>Y</b>、员工回的 <b>Yes</b> 也全回到这个号，系统据此把红点变绿、把倒休扣掉。<br>
+       ⚠ <b>不能用字母发送者 ID</b>（收件人看到 "KONNEXT" 那种）：澳洲的字母 ID <b>收不到任何回复</b>，
+       回执一条都拿不到，红点永远不变绿。</div></div>
+   <table style="margin-top:var(--sp-2)">
+     <thead><tr><th style="width:110px">邮件身份</th><th style="width:280px">发件地址</th><th>用在哪些事</th></tr></thead>
+     <tbody>${[['fin','财务'],['info','信息类'],['eng','工程管理']].map(([k,lb])=>`
+       <tr><td><b>${lb}</b></td>
+         <td><input class="mono" style="width:255px" value="${SENDER.mail[k].addr}" onchange="senderMail('${k}',this.value)"></td>
+         <td class="hint">${SENDER.mail[k].use}</td></tr>`).join('')}</tbody></table>
+   <div style="margin-top:var(--sp-3);font-size:var(--fs-xs);display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+     <b>哪个部门发信用哪个身份</b><span class="muted">（系统自动带，经办人不用选）：</span>
+     ${Object.keys(DEPT).filter(d=>d!=='decision').map(d=>`<span class="pill ${
+       MAIL_OF[d]==='fin'?'p-cyan':MAIL_OF[d]==='eng'?'p-green':'p-grey'}">${DEPT[d].label} → ${SENDER.mail[MAIL_OF[d]].addr}</span>`).join('')}
+   </div>
+   <div class="hint" style="margin-top:var(--sp-2)"><b>身份是公司的，署名是人的</b> ——
+     发件地址永远是上面三个之一；经办人姓名只出现在正文末尾的署名里（催款弹窗、交付通知里那个「署名」框）。
+     客户回信一律回到公司邮箱，经办人休假、离职都不会把信丢掉。<br>
+     已发出的记录存的是<b>当时那个身份</b>（定格）—— 改了以后只影响之后发的，历史不会被改写。</div>
+  </div></div>
 <div class="split">
   <div class="panel">
     <div class="panel-head">工时与考勤</div>
@@ -5133,6 +5231,9 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
        const s0=finStage(f0); const m0=(s0.m&&s0.m.inv)?s0.m:f0.ms[0];
        return tplRender(REMIND_TPL[tplTab][tplLang].sms,f0,m0,tplLang);})()}</div></div>
     <div class="hint">需要某阶段完全独立的模版时，正式系统按阶段加覆盖行即可（先用变量适配）</div>
+    <div class="hint" style="margin-top:var(--sp-2)">📮 <b>发件身份不在这里改</b>：财务发出去的邮件固定用
+      <b class="mono">${SENDER.mail.fin.addr}</b>，短信固定用公司统一号码 <b class="mono">${SENDER.sms.num}</b>
+      —— 全公司统一，在<b>决策页「全局参数」</b>里改（只有决策管理员能改）。模版里的署名才是经办人。</div>
    </div>
   </div>
  </div></div>
@@ -5323,7 +5424,8 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
        </div>
        <div><b style="font-size:var(--fs-sm)">通知与确认（外=短信回 YES · 内=待办已知悉）</b>
         <div style="margin-top:6px;display:flex;flex-direction:column;gap:6px">
-        ${nf.map(({n,i})=>`<div style="font-size:var(--fs-xs)"><span class="mono">${n.at}</span> · ${n.what}<br>
+        ${nf.map(({n,i})=>`<div style="font-size:var(--fs-xs)"><span class="mono">${n.at}</span> · ${n.what}
+          ${n.from?`<span class="muted">· 发件 ${n.from}</span>`:''}<br>
           ${n.to.map((p,j)=>p.ok?`<span class="pill p-green">${p.who} ✓已确认</span>`
             :`<span class="pill p-amber">${p.who} 未确认</span> <a style="cursor:pointer;color:var(--accent)" onclick="notifOk(${i},${j})">标记已确认</a>`).join(' ')}
         </div>`).join('')||'<span class="muted" style="font-size:var(--fs-xs)">还没有通知记录</span>'}
