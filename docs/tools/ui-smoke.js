@@ -972,6 +972,131 @@ const { chromium } = require('playwright');
   ok(r40.hasCand,'负责人候选下拉未带售前采集值');
   ok(r40.saved&&r40.pin,'指定负责人未保存/未固定为📌标注');
   ok(r40.lg&&r40.nt,'指定负责人未留前后痕/未通知下游');
+  // 四十一轮：派工排班（周视图 · 五类 · 15分钟 · 门禁 · 锁定 · 取消回Yes · 剩余工作 · 上报记录）
+  const w41=await page.evaluate(()=>{
+    loginAs('eng'); schOff=0; go('eng','派工排班');
+    const h=document.getElementById('main').innerHTML;
+    const grid=!!document.getElementById('schgrid');
+    const types=['Site Meeting','安装','交付','维护','倒休'].every(k=>h.includes('>'+k+'<'));
+    const rows=document.querySelectorAll('#schgrid tbody tr').length;      // 4 名在职
+    const cols=document.querySelectorAll('#schgrid thead th').length;      // 人员+7天+合计=9
+    const hasPop=h.includes('剩余工作：')&&h.includes('class="pop"');
+    const wk=h.includes('本周合计');
+    // 门禁①：过去的日子不能排
+    const days=weekDays(0).map(d=>ymdS(d));
+    const past=days.find(d=>d<todayS());
+    let g1=true; if(past){ schAdd('阿强',past); g1=!document.getElementById('sc-min'); }
+    // 正常新增（未来日）：必须选项目
+    const fut=weekDays(1).map(d=>ymdS(d))[2];
+    schAdd('阿强',fut);
+    const opened=!!document.getElementById('sc-min');
+    document.getElementById('sc-t').value='安装'; schPjToggle();
+    document.getElementById('sc-pj').value='';
+    document.getElementById('sc-min').value='90';
+    const n0=SCH.length; schSave();
+    const g2=SCH.length===n0;                                            // 无项目 → 拦
+    document.getElementById('sc-pj').value='KX-2026-0188';
+    document.getElementById('sc-min').value='95';                        // 非 15 倍数 → 自动对齐 90
+    document.getElementById('sc-note').value='花园廊架灯控';
+    document.getElementById('sc-rem').value='灯带未接线';
+    schSave();
+    const added=SCH.length===n0+1&&SCH[SCH.length-1].min===90&&SCH[SCH.length-1].pj==='KX-2026-0188';
+    const notiAdd=NOTIF[0].what.includes('新排工')&&NOTIF[0].to[0].how==='App 通知';
+    const logAdd=OPLOG[0].action==='新增排班';
+    // 倒休余额门禁：老李余额 4h，排 8h → 拦
+    schAdd('老李',fut);
+    document.getElementById('sc-t').value='倒休'; schPjToggle();
+    document.getElementById('sc-min').value='480';
+    const n1=SCH.length; schSave();
+    const g3=SCH.length===n1; schClose();
+    // 时长换算
+    const lab=minLab(90)==='1.5 h（1h30m）'&&minLab(45)==='45 分';
+    // 删除 → 取消待确认 + 回 Yes
+    const tid=SCH[SCH.length-1].id;
+    schEdit(tid); schDel(tid); uiOk();
+    const delOk=!SCH.some(s=>s.id===tid)&&SCH_CANCEL.length>0&&SCH_CANCEL[0].ack===false;
+    const notiDel=NOTIF[0].what.includes('排班取消')&&NOTIF[0].to[0].how==='短信 + App';
+    schCancelAck(0);
+    const ackOk=SCH_CANCEL[0].ack===true&&OPLOG[0].action==='取消排班已确认';
+    // 锁定：整周锁 → 不能改
+    schOff=1; renderAll(); schLockWeek();
+    const wkLocked=!!SCH_WEEK[ymdS(weekDays(1)[0])];
+    schAdd('阿强',fut);
+    const g4=!document.getElementById('sc-min');
+    schLockWeek();                                                        // 解锁还原
+    // 项目上报记录
+    schRepOpen('KX-2026-0188');
+    const rp=document.getElementById('rpbox').innerHTML;
+    const repOk=document.getElementById('rpbox').style.display==='block'
+      &&rp.includes('此前工程上报记录')&&rp.includes('SM3 检查布线完成');
+    schRepClose();
+    // 还原演示态
+    SCH_CANCEL.length=0; OPLOG.splice(0,3); NOTIF.splice(0,2); schOff=0; renderAll();
+    loginAs('finance');
+    return JSON.stringify({grid,types,rows,cols,hasPop,wk,g1,opened,g2,added,notiAdd,logAdd,g3,lab,delOk,notiDel,ackOk,wkLocked,g4,repOk});});
+  const r41=JSON.parse(w41);
+  ok(r41.grid&&r41.rows===4&&r41.cols===9,`排班周视图网格不对（行 ${r41.rows}/应4 · 列 ${r41.cols}/应9）`);
+  ok(r41.types,'五类任务图例不全');
+  ok(r41.hasPop&&r41.wk,'缺悬停浮窗（剩余工作）或本周合计列');
+  ok(r41.g1,'过去日期竟可排班（应门禁拦）');
+  ok(r41.opened,'未来日期打不开排班弹层');
+  ok(r41.g2,'无项目任务未被拦（不允许无项目关联的工作）');
+  ok(r41.added,'新增任务失败/15 分钟对齐失效（95→90）');
+  ok(r41.notiAdd&&r41.logAdd,'新排工未通知本人/未留痕');
+  ok(r41.g3,'倒休余额不足未被拦');
+  ok(r41.lab,'时长换算错（90→1.5h · 45→45 分）');
+  ok(r41.delOk&&r41.notiDel,'取消任务未进待确认/未发短信+App');
+  ok(r41.ackOk,'取消回 Yes 未确认留痕');
+  ok(r41.wkLocked&&r41.g4,'整周锁定后仍可改（应拦）');
+  ok(r41.repOk,'项目上报记录弹层缺失');
+  // 四十二轮：红绿点确认 · 点人名看当天路线 · 合理时长 · 全浮窗录入；+ 工程总览「去处理」直达过滤
+  const w42=await page.evaluate(()=>{
+    loginAs('eng'); schOff=0; go('eng','派工排班');
+    const h=document.getElementById('main').innerHTML;
+    const dots=h.includes('等本人回 Y')&&h.includes('日程已同步到本人 App');
+    const ackTbl=!!document.getElementById('schack');
+    const routeLink=h.includes('schRouteOpen(');
+    // 路线弹层：A/B/C/D
+    const days=weekDays(0).map(d=>ymdS(d));
+    const wed=days[2];
+    schRouteOpen('阿强',wed);
+    const rt=document.getElementById('rtbox').innerHTML;
+    const routeOk=document.getElementById('rtbox').style.display==='block'&&rt.includes('当天站点与路线')&&rt.includes('Google 地图');
+    schRouteClose();
+    schRouteOpen('陈工',wed);
+    const rt2=document.getElementById('rtbox').innerHTML;
+    const abOk=rt2.includes('>A<');
+    schRouteClose();
+    // 红点 → 回 Y 变绿
+    const red=SCH.find(x=>!x.ack);
+    const before=red?red.ack:null;
+    if(red) schAckYes(red.id);
+    const green=red?red.ack===true&&OPLOG[0].action==='排班确认回执':false;
+    // 合理时长：设置里改 → 派工弹层提示跟着变
+    go('eng','设置');
+    const normUI=document.getElementById('main').innerHTML.includes('合理时长参考');
+    engNormVal('Site Meeting',240);
+    const normOk=SCH_NORM['Site Meeting']===240&&OPLOG[0].action==='修改合理时长';
+    engNormVal('Site Meeting',180); OPLOG.splice(0,2);
+    // 工程总览「去处理」→ 只显示该项目（bug 修复验证）
+    go('eng','总览');
+    goPj('eng','项目列表','KX-2026-0170');
+    const one=document.querySelectorAll('#engpj tbody tr').length===1
+      &&document.getElementById('main').innerHTML.includes('赵宅')&&engPjQ==='KX-2026-0170';
+    engPjF='施工中'; engPjQ=''; renderAll();       // 点任一筛选 → 恢复该筛选完整内容
+    const back=document.querySelectorAll('#engpj tbody tr').length===1;
+    engPjF='全部'; renderAll();
+    const all=document.querySelectorAll('#engpj tbody tr').length===7;
+    if(red&&before===false){ red.ack=false; red.ackAt=undefined; }
+    renderAll(); loginAs('finance');
+    return JSON.stringify({dots,ackTbl,routeLink,routeOk,abOk,green,normUI,normOk,one,back,all});});
+  const r42=JSON.parse(w42);
+  ok(r42.dots&&r42.ackTbl,'红绿点/日程确认状态清单缺失');
+  ok(r42.routeLink&&r42.routeOk&&r42.abOk,'点人名看当天路线（A/B/C/D + Google 说明）缺失');
+  ok(r42.green,'回 Y 未把红点变绿/未留痕');
+  ok(r42.normUI&&r42.normOk,'合理时长未可在设置定义/未留痕');
+  ok(r42.one,'工程总览「去处理」未直达只显示该项目（三十九轮 bug）');
+  ok(r42.back&&r42.all,'点筛选 chip 未恢复该筛选完整内容');
   const plChk=await page.evaluate(()=>{go('fin','项目列表');pjFilter=null;renderAll();
     const h=document.getElementById('main').innerHTML;pjFilter=null;
     return h.includes('<b>王宅</b>');});

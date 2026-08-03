@@ -220,6 +220,21 @@ tbody tr:hover{background:var(--bg-elevated)}
   padding:9px 11px;border-radius:6px;white-space:pre-wrap;
   box-shadow:0 8px 24px rgba(16,24,40,.28)}
 .notewrap:hover .notepop{display:block}
+/* 排班表（四十一轮）：一天一格可放多条任务；悬停出完整浮窗 */
+.schgrid{width:100%;border-collapse:collapse;table-layout:fixed}
+.schgrid th,.schgrid td{border:1px solid var(--border);vertical-align:top;padding:5px}
+.schgrid th{background:var(--bg-elevated);font-size:var(--fs-xs);font-weight:600}
+.schgrid td.past{background:repeating-linear-gradient(45deg,#f6f8fa,#f6f8fa 6px,#eef1f5 6px,#eef1f5 12px)}
+.schgrid td.lockd{background:#f3f6f9}
+.schtask{position:relative;border-radius:4px;padding:3px 6px;margin-bottom:4px;font-size:11px;
+  line-height:1.5;cursor:default;border-left:3px solid rgba(0,0,0,.18)}
+.schtask .pop{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:40;width:270px;
+  background:#243447;color:#f5f8fa;font-size:11.5px;line-height:1.8;padding:9px 11px;border-radius:6px;
+  white-space:pre-wrap;box-shadow:0 8px 24px rgba(16,24,40,.3);text-align:left}
+.schtask:hover .pop{display:block}
+.t-sm{background:#fef3e2;color:#8a5a12}.t-inst{background:#e8f1fe;color:#1b4a91}
+.t-deli{background:#e7f6ee;color:#11693f}.t-mt{background:#eae9fb;color:#4b3f9e}
+.t-toil{background:#eef1f5;color:#5f6b76}
 /* 财务侧只读注释框（二十三轮）：大框小字固定两行，文字截断绝不破格；悬停弹全文；标已读固定在框下右侧 */
 .fnote{background:#fff8e6;border:1px solid #f0dfae;border-radius:4px;padding:4px 7px;
   font-size:11px;line-height:1.5;width:216px;height:38px;overflow:hidden;
@@ -333,6 +348,18 @@ tbody tr:hover{background:var(--bg-elevated)}
 <div id="imgbox" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:89;
   background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
   width:min(430px,92vw);max-height:92vh;overflow-y:auto;padding:16px 18px"></div>
+<div id="schback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:88" onclick="schClose()"></div>
+<div id="schbox" style="display:none;position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);z-index:89;
+  background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
+  width:min(470px,92vw);max-height:90vh;overflow-y:auto;padding:18px 20px"></div>
+<div id="rtback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:90" onclick="schRouteClose()"></div>
+<div id="rtbox" style="display:none;position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);z-index:91;
+  background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
+  width:min(640px,94vw);max-height:90vh;overflow-y:auto;padding:18px 20px"></div>
+<div id="rpback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:90" onclick="schRepClose()"></div>
+<div id="rpbox" style="display:none;position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);z-index:91;
+  background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
+  width:min(620px,94vw);max-height:88vh;overflow-y:auto;padding:18px 20px"></div>
 <aside class="drawer" id="drawer">
   <div class="drawer-head">
     <b style="flex:1">待办中心</b>
@@ -992,6 +1019,244 @@ function engSetVal(k,label,v){ const nv=parseFloat(v); if(isNaN(nv)||nv<=0){ ren
   engSet[k]=nv;
   opLog('','修改工程设置','「'+label+'」'+old+' → '+nv+'（总览与卡点表立即按新阈值现算）',['eng']);
   renderAll(); uiAlert('已保存：'+label+' '+old+' → '+nv+'（立即生效）'); }
+function engNormVal(k,v){ const nv=Math.round((parseInt(v,10)||0)/15)*15;
+  if(!(nv>0)){ renderAll(); return; }
+  const old=SCH_NORM[k]; if(old===nv){ renderAll(); return; }
+  SCH_NORM[k]=nv;
+  opLog('','修改合理时长','「'+k+'」'+minLab(old)+' → '+minLab(nv)+'（派工填时长时的参考与偏差提示）',['eng']);
+  renderAll(); uiAlert('已保存：'+k+' 合理时长 '+minLab(old)+' → '+minLab(nv)); }
+/* ═══ 四十一轮：派工排班（周视图）═══
+   人员与时薪＝财务在「工资数据/设置」维护，这里只读引用；五类任务；工时→加班/倒休自动算；
+   任务必须关联项目（倒休除外，倒休是休假不是工作）；最小 15 分钟；只能改此刻之后；按天/整周锁定 */
+const SCH_TYPES=[
+ {k:'Site Meeting',c:'t-sm',  std:false},
+ {k:'安装',        c:'t-inst',std:true},
+ {k:'交付',        c:'t-deli',std:true},
+ {k:'维护',        c:'t-mt',  std:true},
+ {k:'倒休',        c:'t-toil',std:false},
+];
+const schCls=k=>(SCH_TYPES.find(x=>x.k===k)||{c:'t-inst'}).c;
+const STD_MIN=480;                      // 标准工时 8h/天（超出＝加班；月薪制转倒休）
+/* 合理时长参考（工程管理在设置里定义 · 给客户与管理人员当参考；重点 SM 与交付）——
+   只提示、不拦：现场情况千差万别，超了给个提醒就够 */
+let SCH_NORM={'Site Meeting':180,'安装':480,'交付':240,'维护':120,'倒休':240};
+function schNormHint(type,min){ const n=SCH_NORM[type]; if(!n||!min) return '';
+  const r=Math.round(min/n*100);
+  return r>130?`超合理时长 ${r-100}%（参考 ${minLab(n)}）`:(r<60?`不足合理时长的 ${r}%（参考 ${minLab(n)}）`:''); }
+/* 时长显示：<60 分钟按分钟；≥60 自动换算小时（15 分钟粒度 → .25/.5/.75） */
+function minLab(m){ if(m==null) return '—'; if(m<60) return m+' 分';
+  const h=m/60; return (Math.round(h*100)/100)+' h'+(m%60?`（${Math.floor(m/60)}h${m%60}m）`:''); }
+function weekDays(off){ const d=new Date(); const dow=(d.getDay()+6)%7;
+  const mon=new Date(d); mon.setDate(d.getDate()-dow+off*7); mon.setHours(0,0,0,0);
+  return Array.from({length:7},(_,i)=>{const x=new Date(mon); x.setDate(mon.getDate()+i); return x;}); }
+const DOW_CN=['周一','周二','周三','周四','周五','周六','周日'];
+let schOff=0, SCH=[], SCH_LOCK={}, SCH_WEEK={}, SCH_CANCEL=[], schOpen=null, schRepPj=null, schRemind=0;
+/* 播种延后到脚本全部就绪之后（ymdS/PROJECTS 等在后面才定义——TDZ 教训） */
+function schSeed(){ if(SCH.length) return; const w=weekDays(0), n=weekDays(1); let i=0;
+  const add=(dt,who,type,pj,min,note,remain,ack)=>SCH.push({id:'T'+(++i),d:ymdS(dt),who,type,pj,min,note,remain,
+    sent:true,ack:ack!==false});   // sent=短信已发；ack=本人回 Y（红点/绿点）
+  add(w[0],'阿强','安装','KX-2026-0188',480,'客厅+餐厅面板接线','二楼走廊感应器对码未做');
+  add(w[0],'老李','安装','KX-2026-0188',480,'弱电箱整理','标签未贴完');
+  add(w[1],'阿强','安装','KX-2026-0188',480,'走廊感应器对码','花园廊架灯控接线未开始');
+  add(w[1],'小陈','安装','KX-2026-0203',480,'一层布线','二层布线未开始');
+  add(w[2],'陈工','Site Meeting','KX-2026-0188',180,'SM3 检查布线（电工到场）','SM4 待排期');
+  add(w[2],'阿强','安装','KX-2026-0188',300,'配合 SM3 整改','按 SM3 变更补 3 处点位');
+  add(w[2],'陈工','交付','KX-2026-0180',120,'交付前点位复核（同日第二站）','订阅确认书未签');
+  add(w[3],'Tony','维护','KX-2026-0142',600,'外包整日 · 调光模块更换','客户要求下次带备件2只');
+  add(w[3],'小陈','安装','KX-2026-0203',480,'二层布线','三层未开始');
+  add(w[4],'陈工','交付','KX-2026-0180',240,'交付前复核','订阅确认书未签');
+  add(w[4],'小陈','安装','KX-2026-0203',540,'布线收尾（延时 1h）','面板未到货，等库管出库',false);  // 刚改过 · 待回 Y（红点）
+  add(w[4],'老李','倒休','',240,'倒休半天','—');
+  add(n[0],'阿强','安装','KX-2026-0188',480,'花园廊架灯控','—',false);   // 下周新排 · 待回 Y（红点）
+  add(n[1],'陈工','Site Meeting','KX-2026-0203',180,'SM2 布线交流','带线材清单',false); }
+setTimeout(schSeed,0);
+const schOf=(who,d)=>SCH.filter(x=>x.who===who&&x.d===d);
+const schDayMin=(who,d)=>schOf(who,d).filter(x=>x.type!=='倒休').reduce((a,x)=>a+x.min,0);
+const schToilMin=(who,d)=>schOf(who,d).filter(x=>x.type==='倒休').reduce((a,x)=>a+x.min,0);
+const schLocked=d=>!!SCH_LOCK[d]||!!SCH_WEEK[ymdS(weekDays(schOff)[0])];
+const schPast=d=>d<todayS();
+/* 本周合计与加班/倒休归属（时薪制付加班费、月薪制转倒休、外包无加班概念） */
+function schSum(who,days){ const sys=(STAFF.find(s=>s.name===who)||{}).sys||'时薪';
+  let work=0,ot=0,toil=0;
+  days.forEach(dt=>{const d=ymdS(dt); const m=schDayMin(who,d); work+=m;
+    if(m>STD_MIN&&sys!=='外包日薪') ot+=m-STD_MIN; toil+=schToilMin(who,d);});
+  return {sys,work,ot,toil,
+    otTo:sys==='月薪'?'转倒休':(sys==='时薪'?'付加班费（倍数 1.0）':'外包无加班概念')}; }
+/* ── 排班弹层：新增/修改一条任务 ── */
+function schAdd(who,d){
+  if(schPast(d)){ uiAlert('门禁：只能修改此刻之后的排班——'+d+' 已过去，记录不可更改'); return; }
+  if(schLocked(d)){ uiAlert('门禁：'+d+' 已锁定，先解锁才能改（锁定=排班已下发，改动要通知到人）'); return; }
+  schOpen={who,d,id:null}; schPaint(); }
+function schEdit(id){ const x=SCH.find(s=>s.id===id); if(!x) return;
+  if(schPast(x.d)){ uiAlert('门禁：只能修改此刻之后的排班——'+x.d+' 已过去，记录不可更改'); return; }
+  if(schLocked(x.d)){ uiAlert('门禁：'+x.d+' 已锁定，先解锁才能改'); return; }
+  schOpen={who:x.who,d:x.d,id}; schPaint(); }
+function schClose(){ schOpen=null;
+  document.getElementById('schback').style.display='none';
+  const b=document.getElementById('schbox'); b.style.display='none'; b.innerHTML=''; }
+function schPaint(){ const o=schOpen; if(!o) return; const x=o.id?SCH.find(s=>s.id===o.id):null;
+  const pjs=engScope().filter(p=>p.status!=='已烂尾');
+  document.getElementById('schbox').innerHTML=
+   '<div style="font-weight:600;margin-bottom:4px">'+(x?'修改任务':'新增任务')+' · '+o.who+' · '+o.d+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">同一天同一人可排 2~4 个 Case；时长最小 15 分钟；'+
+     '<b>倒休余额</b> '+toilBal(o.who)+' h</div>'+
+   '<div class="field"><label>工作类型</label><select id="sc-t" onchange="schPjToggle()">'+
+     SCH_TYPES.map(s=>'<option'+(x&&x.type===s.k?' selected':'')+'>'+s.k+'</option>').join('')+'</select></div>'+
+   '<div class="field" id="sc-pjwrap"><label>关联项目（必选 —— 不允许无项目关联的工作）</label>'+
+     '<select id="sc-pj"><option value="">— 请选择项目 —</option>'+
+     pjs.map(p=>'<option value="'+p.code+'"'+(x&&x.pj===p.code?' selected':'')+'>'+p.nick+' · '+p.street+', '+p.suburb+'</option>').join('')+
+     '</select></div>'+
+   '<div class="field"><label>时长（分钟 · 15 分钟一档，≥60 自动按小时显示）</label>'+
+     '<div style="display:flex;gap:8px;align-items:center">'+
+     '<input id="sc-min" class="mono" type="number" step="15" min="15" style="width:110px" value="'+(x?x.min:480)+'" oninput="schMinPrev()">'+
+     '<span id="sc-prev" class="hint"></span></div></div>'+
+   '<div class="field"><label>工作内容</label><input id="sc-note" value="'+(x?x.note:'')+'" placeholder="如：客厅面板接线"></div>'+
+   '<div class="field"><label>剩余工作（★只记剩余、不记已做——单维度锁定人员内容）</label>'+
+     '<textarea id="sc-rem" style="width:100%;min-height:56px;font-size:12px">'+(x?(x.remain||''):'')+'</textarea></div>'+
+   (x&&x.pj?'<div class="hint" style="margin-bottom:8px"><a style="color:var(--accent);cursor:pointer" onclick="schRepOpen(\''+x.pj+'\')">查看该项目此前的工程上报记录 →</a></div>':'')+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   (x?'<button class="btn" style="margin-right:auto;color:#c62828;border-color:#c62828" onclick="schDel(\''+x.id+'\')">删除任务</button>':'')+
+   '<button class="btn" onclick="schClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="schSave()">保存并通知</button></div>';
+  document.getElementById('schback').style.display='block';
+  document.getElementById('schbox').style.display='block';
+  schPjToggle(); schMinPrev(); }
+function schPjToggle(){ const ty=(document.getElementById('sc-t')||{}).value;
+  const w=document.getElementById('sc-pjwrap'); if(!w) return;
+  w.style.display=(ty==='倒休')?'none':'block'; }
+function schMinPrev(){ const e=document.getElementById('sc-min'), p=document.getElementById('sc-prev');
+  if(!e||!p) return; const m=parseInt(e.value||0,10);
+  const snap=Math.round(m/15)*15;
+  const ty=(document.getElementById('sc-t')||{}).value; const nh=schNormHint(ty,snap);
+  p.innerHTML=m>0?('＝ <b>'+minLab(snap)+'</b>'+(snap!==m?'（已按 15 分钟对齐）':'')
+    +(snap>STD_MIN?' · 超 8h 部分算加班':'')
+    +(nh?' · <span style="color:#b45309">'+nh+'</span>':'')
+    +(SCH_NORM[ty]?' <span class="hint">合理时长参考 '+minLab(SCH_NORM[ty])+'</span>':'')):'请填时长'; }
+function schSave(){ const o=schOpen; if(!o) return;
+  const v=id=>{const e=document.getElementById(id);return e?e.value:'';};
+  const ty=v('sc-t'), note=v('sc-note').trim(), rem=v('sc-rem').trim();
+  let min=Math.round(parseInt(v('sc-min')||0,10)/15)*15;
+  if(!(min>0)){ uiAlert('门禁：时长必填，最小 15 分钟'); return; }
+  const pjc=ty==='倒休'?'':v('sc-pj');
+  if(ty!=='倒休'&&!pjc){ uiAlert('门禁：任务必须关联具体项目——不允许建立无项目关联的工作'); return; }
+  if(ty==='倒休'){ const bal=toilBal(o.who)*60;
+    const used=SCH.filter(s=>s.who===o.who&&s.type==='倒休'&&s.id!==o.id).reduce((a,s)=>a+s.min,0);
+    if(used+min>bal){ uiAlert('门禁：倒休余额不足——'+o.who+' 余额 '+toilBal(o.who)+' h，已排 '+minLab(used)+'，本次要排 '+minLab(min)); return; } }
+  const pjLab=pjc?(PROJECTS.find(p=>p.code===pjc)||{}).nick:'（倒休）';
+  if(o.id){ const x=SCH.find(s=>s.id===o.id); const old=x.type+' '+minLab(x.min);
+    Object.assign(x,{type:ty,pj:pjc,min,note,remain:rem,sent:true,ack:false});   // 改了就要重新确认（红点）
+    opLog(pjc,'修改排班',o.who+' '+o.d+'：'+old+' → '+ty+' '+minLab(min)+(pjc?'（'+pjLab+'）':''),['eng']);
+    notifAdd(pjc,'日程变更：'+o.who+' '+o.d+' → '+ty+' '+minLab(min)+(pjc?' @ '+pjLab:''),
+      [{who:o.who+'（App 日程）',how:'App 通知',ok:false}]);
+    uiAlert('已保存 ✓ 短信已发 '+o.who+'——日程<b>已同步到他 App</b>（回不回都显示）；等回 Y 红点变绿'); }
+  else{ SCH.push({id:'T'+(SCH.length+1)+'x',d:o.d,who:o.who,type:ty,pj:pjc,min,note,remain:rem,sent:true,ack:false});
+    opLog(pjc,'新增排班',o.who+' '+o.d+'：'+ty+' '+minLab(min)+(pjc?'（'+pjLab+'）':''),['eng']);
+    notifAdd(pjc,'新排工：'+o.who+' '+o.d+' '+ty+' '+minLab(min)+(pjc?' @ '+pjLab:''),
+      [{who:o.who+'（App 日程）',how:'App 通知',ok:false}]);
+    uiAlert('已排入 ✓ 短信已发 '+o.who+'——日程<b>已同步到他 App</b>（回不回都显示）；等回 Y 红点变绿'); }
+  schClose(); renderAll(); }
+function schDel(id){ const x=SCH.find(s=>s.id===id); if(!x) return;
+  uiConfirm('取消 '+x.who+' '+x.d+' 的「'+x.type+' '+minLab(x.min)+'」？\n被取消的人会收到短信/App 通知，需回 Yes 确认。',ok=>{
+    if(!ok) return;
+    SCH=SCH.filter(s=>s.id!==id);
+    SCH_CANCEL.unshift({who:x.who,d:x.d,what:x.type+' '+minLab(x.min)+(x.pj?' @ '+((PROJECTS.find(p=>p.code===x.pj)||{}).nick||''):''),at:nowTs(),ack:false});
+    opLog(x.pj,'取消排班',x.who+' '+x.d+'：'+x.type+' '+minLab(x.min)+' —— 已通知本人，等回 Yes 确认',['eng']);
+    notifAdd(x.pj,'排班取消：'+x.who+' '+x.d+' '+x.type,[{who:x.who,how:'短信 + App',ok:false}]);
+    schClose(); renderAll();
+    uiAlert('已取消 ✓ 已通知 '+x.who+'——等对方回 Yes 确认（下方「取消待确认」里看）'); }); }
+/* 红点=已发短信未回 Y；绿点=本人已回 Y。★不论回不回，日程都已同步到本人 App（用户定） */
+const schDot=x=>x.ack?'<span title="本人已回 Y —— 任务已交付到位" style="color:#16a34a">●</span>'
+                     :'<span title="短信已发 · 等本人回 Y（日程已同步到 App，回不回都显示）" style="color:#dc2626">●</span>';
+function schAckYes(id){ const x=SCH.find(s=>s.id===id); if(!x||x.ack) return;
+  x.ack=true; x.ackAt=nowTs();
+  opLog(x.pj,'排班确认回执',x.who+' 回 Y 确认 '+x.d+' '+x.type+' '+minLab(x.min)+'（红点 → 绿点）',['eng']);
+  renderAll(); }
+function schResend(id){ const x=SCH.find(s=>s.id===id); if(!x) return;
+  x.sent=true;
+  notifAdd(x.pj,'重发日程短信：'+x.who+' '+x.d+' '+x.type+' '+minLab(x.min),[{who:x.who,how:'短信 + App',ok:false}]);
+  opLog(x.pj,'重发排班短信',x.who+' '+x.d+' '+x.type+'（仍未回 Y）',['eng']);
+  renderAll(); uiAlert('已重发短信 ✓ 日程本来就在他 App 里，这条只是催确认'); }
+/* 当天路线：点人名看 A/B/C/D 站点顺序（正式系统接 Google 地图，与路程预估共用 Key） */
+let schRoute=null;
+function schRouteOpen(who,d){ schRoute={who,d}; schRoutePaint(); }
+function schRouteClose(){ schRoute=null;
+  document.getElementById('rtback').style.display='none';
+  const b=document.getElementById('rtbox'); b.style.display='none'; b.innerHTML=''; }
+function schRoutePaint(){ const o=schRoute; if(!o) return;
+  const items=schOf(o.who,o.d).filter(x=>x.pj);
+  const LT='ABCDEFG';
+  const pts=items.map((x,i)=>{const p=PROJECTS.find(q=>q.code===x.pj)||{};
+    const g=GEO[p.suburb]||[-33.80,151.10]; const xy=geoXY(g[0],g[1]);
+    return {L:LT[i],x:xy[0]*0.62+40,y:xy[1]*0.62+20,p,t:x};});
+  let legs='';
+  for(let i=1;i<pts.length;i++) legs+=`<line x1="${pts[i-1].x}" y1="${pts[i-1].y}" x2="${pts[i].x}" y2="${pts[i].y}"
+    stroke="#2563eb" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ar)"/>`;
+  const est=[0,18,26,15,22];
+  document.getElementById('rtbox').innerHTML=
+   '<div style="font-weight:600;margin-bottom:2px">'+o.who+' · '+o.d+' 当天站点与路线</div>'+
+   '<div class="hint" style="margin-bottom:10px">按当天派工顺序标 A/B/C/D —— 用来判断路线顺不顺、要不要调顺序；'+
+     '正式系统接 <b>Google 地图</b>（与路程预估共用 API Key），路上时间实时算</div>'+
+   (pts.length?'<svg width="560" height="330" style="background:#eef2f6;border-radius:8px">'+
+     '<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">'+
+     '<path d="M0,0 L0,6 L7,3 z" fill="#2563eb"/></marker></defs>'+
+     '<path d="M540,0 L560,0 L560,330 L520,330 L528,240 Z" fill="#cfe3f2"/>'+
+     '<path d="M560,286 L180,296 L180,304 L560,294 Z" fill="#cfe3f2"/>'+
+     legs+
+     pts.map(o2=>'<g><circle cx="'+o2.x+'" cy="'+o2.y+'" r="13" fill="#2563eb" stroke="#fff" stroke-width="2"/>'+
+       '<text x="'+o2.x+'" y="'+(o2.y+4)+'" font-size="12" font-weight="bold" fill="#fff" text-anchor="middle">'+o2.L+'</text>'+
+       '<text x="'+(o2.x+18)+'" y="'+(o2.y+4)+'" font-size="11" fill="#3c4b5a">'+(o2.p.nick||'')+'</text></g>').join('')+
+     '</svg>':'<div class="hint">当天没有带项目的任务（或只排了倒休）</div>')+
+   (pts.length?'<table style="margin-top:10px"><thead><tr><th>点位</th><th>项目 · 地址</th><th>任务</th>'+
+     '<th style="text-align:right">时长</th><th style="text-align:right">路上预估</th></tr></thead><tbody>'+
+     pts.map((o2,i)=>'<tr><td><b>'+o2.L+'</b></td>'+
+       '<td><b>'+(o2.p.nick||'')+'</b><div class="hint">📍 '+(o2.p.street||'')+', '+(o2.p.suburb||'')+' '+(o2.p.state||'')+'</div></td>'+
+       '<td><span class="schtask '+schCls(o2.t.type)+'" style="display:inline-block;margin:0">'+o2.t.type+'</span></td>'+
+       '<td class="num">'+minLab(o2.t.min)+'</td>'+
+       '<td class="num">'+(i===0?'—（从家出发）':est[i]+' 分')+'</td></tr>').join('')+
+     '</tbody></table>':'')+
+   '<div class="hint" style="margin-top:8px">路上时间＝派工时定格的 Google 预估（口径同「定格 vs 现算」）；'+
+     '实际路上时间由 App 打卡现算，差异在工程流水账里看</div>'+
+   '<div style="display:flex;justify-content:flex-end;margin-top:12px">'+
+   '<button class="btn" onclick="schRouteClose()">关闭</button></div>';
+  document.getElementById('rtback').style.display='block';
+  document.getElementById('rtbox').style.display='block'; }
+function schCancelAck(i){ const r=SCH_CANCEL[i]; if(!r||r.ack) return;
+  r.ack=true; r.ackAt=nowTs();
+  opLog('','取消排班已确认',r.who+' 回 Yes 确认取消「'+r.what+'」（'+r.d+'）',['eng']); renderAll(); }
+/* 锁定：按天 / 整周（锁了不能改；解锁留痕） */
+function schLockDay(d){ SCH_LOCK[d]=!SCH_LOCK[d];
+  opLog('',SCH_LOCK[d]?'锁定排班（按天）':'解锁排班（按天）',d+(SCH_LOCK[d]?' 已锁定，排班下发':' 已解锁，可再修改'),['eng']);
+  renderAll(); }
+function schLockWeek(){ const mon=ymdS(weekDays(schOff)[0]); SCH_WEEK[mon]=!SCH_WEEK[mon];
+  opLog('',SCH_WEEK[mon]?'锁定整周排班':'解锁整周排班','周一 '+mon+' 起整周'+(SCH_WEEK[mon]?'已锁定并下发（工人 App 收到下周日程）':'已解锁'),['eng']);
+  renderAll();
+  uiAlert(SCH_WEEK[mon]?'整周已锁定 ✓ 已下发：全员 App 收到本周日程':'整周已解锁——改动仍会逐条通知到人'); }
+/* 工程上报记录（工程师排到项目时可查此前进度） */
+const SCH_REPORTS={
+ 'KX-2026-0188':[{d:'08/01',who:'阿强',txt:'客厅/餐厅面板安装完毕，走廊感应器对码一半，明天继续。'},
+   {d:'07/31',who:'老李',txt:'弱电箱整理完成，标签待贴。'},
+   {d:'07/24',who:'陈工',txt:'SM3 检查布线完成，电工签字；现场登记变更 1 条（花园廊架加 4 路灯控）。'}],
+ 'KX-2026-0203':[{d:'08/01',who:'小陈',txt:'一层布线完成 70%，二层未开始；面板未到货。'},
+   {d:'07/20',who:'陈工',txt:'SM1 进场完成，围栏圆心校准，分包商联系表已采集。'}],
+ 'KX-2026-0142':[{d:'08/02',who:'Tony',txt:'二楼调光模块更换完成，测试正常，客户已签字。'}],
+ 'KX-2026-0180':[{d:'07/28',who:'陈工',txt:'交付前复核：点位清单全通过，订阅确认书待签。'}],
+};
+function schRepOpen(code){ schRepPj=code; const p=PROJECTS.find(x=>x.code===code)||{};
+  const rs=SCH_REPORTS[code]||[];
+  document.getElementById('rpbox').innerHTML=
+   '<div style="font-weight:600;margin-bottom:2px">'+(p.nick||code)+' · 此前工程上报记录</div>'+
+   '<div class="hint" style="margin-bottom:10px">📍 '+(p.street||'')+', '+(p.suburb||'')+' '+(p.state||'')+
+     ' —— 排到这个项目的人都能看，先看进度再干活</div>'+
+   (rs.length?'<table><thead><tr><th>日期</th><th>上报人</th><th>内容</th></tr></thead><tbody>'+
+     rs.map(r=>'<tr><td class="mono">'+r.d+'</td><td>'+r.who+'</td><td class="hint">'+r.txt+'</td></tr>').join('')+
+     '</tbody></table>':'<div class="hint">该项目暂无上报记录</div>')+
+   '<div style="display:flex;justify-content:flex-end;margin-top:12px">'+
+   '<button class="btn" onclick="schRepClose()">关闭</button></div>';
+  document.getElementById('rpback').style.display='block';
+  document.getElementById('rpbox').style.display='block'; }
+function schRepClose(){ schRepPj=null;
+  document.getElementById('rpback').style.display='none';
+  const b=document.getElementById('rpbox'); b.style.display='none'; b.innerHTML=''; }
 /* ═══ 四十轮：工程项目列表 ═══
    ★工程视角六态（用户定）：全部 / Site Meeting 阶段 / 施工中 / 项目交付 / 项目维护 / 已停服
    「已停服」取代「已流失+已烂尾」——由财务确认款项不到位时触发（finSuspend / 烂尾）；
@@ -1525,7 +1790,9 @@ function pickPj(i){ pj=+i; renderAll(); }
 function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; stFilter='全部'; statPeriod='month'; logQ=''; logDeptF='全部'; nodeF='全部'; finQ=''; renderAll(); }
 /* 去处理 → 直接过滤出该项目（二十九轮用户定：不要全列出来再让人找） */
 function goPj(t,p,code){ go(t,p);
-  if(code&&code!=='?'){ finQ=code; pjQ=code; bigQ=code; renderAll(); } }
+  if(code&&code!=='?'){ finQ=code; pjQ=code; bigQ=code;
+    if(t==='eng'){ engPjQ=code; engPjF='全部'; }   // 工程列表独立变量：只在跳工程页时预填，避免串页
+    renderAll(); } }
 /* 逐字刷新：重渲染后把光标还给搜索框（否则打一个字就失焦） */
 function keepFocus(id){ renderAll(); const e=document.getElementById(id);
   if(e){ e.focus(); const n=e.value.length; e.setSelectionRange(n,n); } }
@@ -2176,74 +2443,143 @@ ${ops([
 </div>`,
 
 /* ───────── 工程管理 · 派工排班 ───────── */
-'eng/派工排班':()=>`
-<h2>派工排班</h2>
-<div class="page-sub">四类任务：Site Meeting · 安装调试 · 交付 · 技术维护（块上数字 = 计划时长，"计划超时"那条线的分母）</div>
-${ops([
- ['拖动色块 · 派工/改期','SM4 未完成不能派安装 · S4 未结清不能排交付 · 未交付不能派维护 —— 报错原样透传','被派人收任务短信 · 块上计划时长成为「计划超时」的分母'],
-])}
-<div class="panel sched">
-  <div class="panel-head">本周
-    <span class="pill p-cyan">SM</span><span class="pill p-green">安装</span>
-    <span class="pill p-amber">交付</span>
-    <span class="pill" style="background:rgba(124,58,237,.10);color:#7c3aed">维护</span></div>
-  <table>
-    <thead><tr><th style="width:110px"></th><th>7/27 一</th><th>7/28 二</th><th>7/29 三</th><th>7/30 四</th><th>7/31 五</th></tr></thead>
-    <tbody>
-      <tr><td><b>小陈</b><div class="hint">时薪制</div></td>
-        <td><div class="blk b-sm">SM3 · 0142<div class="muted">180 分</div></div></td>
-        <td><div class="blk b-in">安装 · 0142<div class="muted">480 分</div></div></td>
-        <td><div class="blk b-in">安装 · 0142<div class="muted">480 分</div></div></td>
-        <td><div class="blk b-in">安装 · 0142<div class="muted">480 分</div></div></td>
-        <td></td></tr>
-      <tr><td><b>李四</b><div class="hint">月薪制</div></td>
-        <td></td>
-        <td><div class="blk b-ho">交付 · 0180<div class="muted">120 分</div></div></td>
-        <td></td>
-        <td><div class="blk b-sm">SM4 · 0160<div class="muted">240 分</div></div></td>
-        <td></td></tr>
-      <tr><td><b>小周</b><div class="hint">时薪制</div></td>
-        <td><div class="blk b-mt">维护 · 0180<div class="muted">120 分</div></div></td>
-        <td></td>
-        <td><div class="blk b-mt">维护 · 0121<div class="muted">90 分</div></div></td>
-        <td></td>
-        <td></td></tr>
-      <tr><td><b>外包A</b><div class="hint">日薪 ${can('salary')?'A$510':'— —'}</div></td>
-        <td></td>
-        <td><div class="blk b-in">安装 · 0142<div class="muted">按日薪</div></div></td>
-        <td><div class="blk b-in">安装 · 0142<div class="muted">按日薪</div></div></td>
-        <td></td><td></td></tr>
-    </tbody>
-  </table>
-</div>
-<div class="split">
-  <div class="panel">
-    <div class="panel-head">拖拽时的门禁</div>
-    <div class="panel-body">
-      <div class="gate">门禁：SM4 未完成（且未标不适用），不能派安装调试任务</div>
-      <div class="gate">门禁：S4 尾款未结清，不能安排交付</div>
-      <div class="gate">门禁：项目尚未交付，不能派技术维护任务（交付前的活属于安装调试）</div>
-    </div>
+'eng/派工排班':()=>{
+ schSeed();
+ const days=weekDays(schOff); const mon=ymdS(days[0]);
+ const staff=STAFF.filter(s=>s.active);
+ const wkLock=!!SCH_WEEK[mon];
+ const today=todayS();
+ const isFri=new Date().getDay()===5;
+ const nextLocked=!!SCH_WEEK[ymdS(weekDays(1)[0])];
+ const remindN=isFri&&!nextLocked?Math.max(1,Math.min(9,new Date().getHours()-8+1)):0;
+ const wkTitle=schOff===0?'本周':schOff===1?'下周':schOff===-1?'上周':(schOff>0?`第 +${schOff} 周`:`第 ${schOff} 周`);
+ const pend=SCH_CANCEL.filter(r=>!r.ack);
+ return `<h2>派工排班 <span class="pill p-cyan">按周排 · 周五排下周</span></h2>
+ <div class="page-sub">五类任务：Site Meeting · 安装 · 交付 · 维护 · 倒休 ·
+   人员与时薪在财务「工资数据」维护，这里只读引用 · 说明看左下「帮助」</div>
+ ${ops([
+  ['＋ 排任务','必须选项目（倒休除外）· 最小 15 分钟 · 同一天同一人可排 2~4 个 Case · 只能改此刻之后、未锁定的格子','被排的人收 App 日程通知'],
+  ['修改 / 删除任务','点任务块打开 · 过去与已锁定的改不了（门禁原句）','被取消的人收短信+App，需回 Yes 确认；被加的人收日程变更'],
+  ['锁定（按天 / 整周）','锁了＝已下发，改动要先解锁（解锁留痕）','整周锁定＝全员 App 收到本周日程'],
+  ['查看项目上报记录','任务块里点进去，看该项目此前的每日上报','—'],
+  ['点人名看当天路线','人员格里点周几 → A/B/C/D 站点顺序与路上预估（正式接 Google 地图）','—'],
+  ['重发短信 / 回 Y 变绿','红点＝没应声、绿点＝已确认；日程无论如何都已同步到本人 App','—'],
+ ])}
+ ${helpNote(`<b>这页怎么用</b>：一周一张表（周一~周日 × 人）。格子里点「＋」排任务：选类型（五类，颜色区分）、
+   <b>必须选项目</b>（倒休除外——倒休是休假不是工作）、填时长（<b>最小 15 分钟</b>，≥60 分钟自动按小时显示）、
+   写<b>剩余工作</b>。内容多的时候<b>鼠标悬停任务块看完整浮窗</b>。周五把下周排完，点「锁定整周」下发。`)}
+ ${helpNote(`<b>只记剩余工作，不记今日已做</b>（单维度锁定人员内容）——今天做了什么在「每日上报」里由工人自己写，
+   这里只留「还剩什么没做」，下一个排到这个项目的人一眼知道接着干什么；点任务块里的「查看该项目此前的工程上报记录」
+   能看到历史进度。`)}
+ ${helpNote(`工时自动算：每天超过 8 小时的部分算加班——<b>月薪制转倒休</b>、<b>时薪制付加班费</b>（倍数在财务设置里）、
+   <b>外包无加班概念</b>（整日日薪）。排「倒休」类型时系统按倒休余额校验，<b>不够扣直接拦</b>。
+   人员名单/时薪/倒休余额都来自财务模块，这里不重复维护。`)}
+ ${helpNote(`<b>红点 / 绿点</b>：管理人员改动会给施工人员发短信——<b>发出即红点</b>，本人<b>回 Y 变绿点</b>，
+   一眼看出哪些任务还没交付到位（右下角「日程确认状态」是全周清单，可重发短信）。
+   ★不论回不回，<b>日程都已自动同步到本人 App 日程表</b>——确认只是回执，不影响他看得到活。`)}
+ ${helpNote(`<b>点人名旁的周几</b>＝看那个人当天的站点与路线：地图上按派工顺序标 <b>A/B/C/D</b>，
+   下面列出每站的项目、任务、时长与路上预估——用来判断顺序顺不顺、要不要调。
+   正式系统接 <b>Google 地图</b>（与路程预估共用一个 API Key），路上时间实时拉通。`)}
+ ${helpNote(`<b>合理时长</b>（工程管理定义，重点 SM 与交付）：填时长时右边给出参考值与偏差提示
+   （超 30% 或不足 60% 会提醒）——只提示<b>不拦</b>，现场情况千差万别；这个参考值也是给客户解释工期的依据。`)}
+ ${helpNote(`<b>录入一律走浮窗</b>：格子里点「＋ 排任务」直接弹窗，类型/项目/时长/内容/剩余工作在一个窗里填完保存
+   （不做拖拽——拖拽看着酷但改错了不留痕，浮窗每次保存都进操作日志）。`)}
+ ${helpNote(`改动规矩：<b>只能改此刻之后</b>的内容（过去的格子斜纹禁用，改了报门禁原句）；<b>按天锁定</b>或<b>锁定整周</b>后
+   要改先解锁（留痕）。改动一定通知到人：<b>被取消的人要回 Yes 确认</b>（下方「取消待确认」盯着），被加的人收日程变更。`)}
+ ${remindN?`<div class="panel" style="border-color:#f0c674;background:#fffaf0">
+   <div class="panel-body" style="display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap">
+    <b style="color:#b45309">⏰ 今天周五 · 下周排班还没锁定</b>
+    <span class="hint">每小时提醒一次（同一条不累积）· 今日已提醒 ${remindN} 次 —— 排完点「锁定整周」即停</span>
+    <button class="btn" style="margin-left:auto" onclick="schOff=1;renderAll()">去排下周 →</button></div></div>`:''}
+ <div class="panel">
+  <div class="panel-head" style="gap:var(--sp-2);flex-wrap:wrap">
+   <button class="btn" onclick="schOff--;renderAll()">← 上一周</button>
+   <b>${wkTitle} · ${ymdS(days[0]).slice(5)} ~ ${ymdS(days[6]).slice(5)}</b>
+   <button class="btn" onclick="schOff++;renderAll()">下一周 →</button>
+   ${schOff!==0?`<button class="btn" onclick="schOff=0;renderAll()">回本周</button>`:''}
+   <span class="sep" style="width:1px;height:20px;background:var(--border)"></span>
+   ${SCH_TYPES.map(s=>`<span class="schtask ${s.c}" style="display:inline-block;margin:0;border-left-width:3px">${s.k}</span>`).join('')}
+   <button class="btn${wkLock?' btn-primary':''}" style="margin-left:auto" onclick="schLockWeek()">${wkLock?'🔒 整周已锁定 · 点此解锁':'锁定整周（下发）'}</button>
   </div>
-  <div class="panel">
-    <div class="panel-head">路上时间参考 · 小陈 7/28</div>
-    <div class="panel-body">
-      <table><tbody>
-        <tr><td class="muted">计划预估</td><td class="num">30 分</td>
-          <td class="hint">按计划出发时间查，存死</td></tr>
-        <tr><td class="muted">实际预估</td><td class="num">55 分</td>
-          <td class="hint">按实际离场时间查，存死</td></tr>
-        <tr><td class="muted">真实耗时</td><td class="num">60 分</td>
-          <td class="hint">打卡现算</td></tr>
-      </tbody></table>
-      <div class="hint" style="margin-top:var(--sp-3)">
-        真实 vs 实际预估只差 5 分 → 路上正常；<br>
-        实际预估 vs 计划预估差 25 分 → <b>不是他慢，是出发晚撞高峰</b>。<br>
-        为什么出发晚，每日上报里有答案。
-      </div>
-    </div>
-  </div>
-</div>`,
+  <div style="overflow-x:auto"><table class="schgrid" id="schgrid" style="min-width:1080px">
+   <thead><tr><th style="width:118px">人员</th>
+    ${days.map(d=>{const ds=ymdS(d); const lk=!!SCH_LOCK[ds]||wkLock; const past=schPast(ds);
+      return `<th${ds===today?' style="background:#e8f1fe"':''}>${DOW_CN[days.indexOf(d)]} ${ds.slice(5)}
+       ${ds===today?'<span class="pill p-cyan">今天</span>':''}
+       <div style="font-weight:400;margin-top:2px">
+        ${past?'<span class="hint">已过去</span>'
+          :`<a style="cursor:pointer;color:${lk?'var(--breach)':'var(--accent)'}" onclick="schLockDay('${ds}')">${lk?'🔒 已锁定':'锁定本天'}</a>`}
+       </div></th>`;}).join('')}
+    <th style="width:132px">本周合计</th></tr></thead>
+   <tbody>${staff.map(s=>{const sm=schSum(s.name,days);
+    return `<tr>
+     <td><b>${s.name}</b><div class="hint">${s.sys}${can('salary')?' · A$'+s.costHr+'/h':''}</div>
+       <div class="hint">倒休 ${toilBal(s.name)} h</div>
+       <div class="hint" style="margin-top:3px">看当天路线：${days.map((d,i)=>{const ds=ymdS(d);
+         return schOf(s.name,ds).filter(x=>x.pj).length
+           ?`<a style="cursor:pointer;color:var(--accent)" title="${DOW_CN[i]} ${ds.slice(5)} 的站点与路线" onclick="schRouteOpen('${s.name}','${ds}')">${DOW_CN[i].slice(1)}</a>`
+           :`<span class="muted">${DOW_CN[i].slice(1)}</span>`;}).join(' ')}</div></td>
+     ${days.map(d=>{const ds=ymdS(d); const past=schPast(ds); const lk=!!SCH_LOCK[ds]||wkLock;
+       const items=schOf(s.name,ds); const dm=schDayMin(s.name,ds);
+       return `<td class="${past?'past':(lk?'lockd':'')}">
+        ${items.map(x=>{const p=PROJECTS.find(q=>q.code===x.pj)||{};
+          const nh=schNormHint(x.type,x.min);
+          return `<div class="schtask ${schCls(x.type)}"${past||lk?'':` style="cursor:pointer" onclick="schEdit('${x.id}')"`}>
+           ${schDot(x)} <b>${x.type}</b> ${minLab(x.min)}<br>${x.pj?p.nick:'（休假）'}
+           <div class="pop"><b>${x.type} · ${minLab(x.min)}</b> ${x.ack?'✅ 本人已回 Y':'🔴 等本人回 Y'}<br>
+            ${x.pj?`项目：${p.nick} · ${p.street}, ${p.suburb}<br>`:'倒休（不关联项目）<br>'}
+            内容：${x.note||'—'}<br>剩余工作：${x.remain||'—'}<br>
+            ${nh?nh+'<br>':''}日程已同步到本人 App（回不回都显示）<br>
+            ${x.pj?'点块可改 · 弹层里可查该项目此前上报记录':'点块可改'}</div>
+          </div>`;}).join('')}
+        ${past?'':(lk?'<div class="hint">已锁定</div>'
+           :`<a style="cursor:pointer;color:var(--accent);font-size:11px" onclick="schAdd('${s.name}','${ds}')">＋ 排任务</a>`)}
+        ${dm>STD_MIN?`<div class="hint" style="color:#b45309">超 8h：${minLab(dm-STD_MIN)}</div>`:''}
+       </td>`;}).join('')}
+     <td><b>${minLab(sm.work)}</b>
+       <div class="hint">${sm.ot?`加班 ${minLab(sm.ot)} · ${sm.otTo}`:'无加班'}</div>
+       ${sm.toil?`<div class="hint">倒休排 ${minLab(sm.toil)}</div>`:''}</td></tr>`;}).join('')}
+   </tbody></table></div>
+  <div class="panel-body hint">格子里可排 2~4 个 Case；斜纹＝已过去不可改；🔒＝已锁定；
+   悬停任务块看完整内容（项目/内容/剩余工作）· 时长 ≥60 分钟自动按小时显示</div>
+ </div>
+ <div class="split">
+  <div class="panel"><div class="panel-head">取消待确认 ${pend.length?`<span class="pill p-amber">${pend.length}</span>`:'<span class="pill p-green">0</span>'}
+    <span class="muted" style="font-weight:400">被取消的人要回 Yes</span></div>
+   <table><thead><tr><th>时间</th><th>人</th><th>被取消的任务</th><th>状态</th></tr></thead>
+   <tbody>${SCH_CANCEL.length?SCH_CANCEL.map((r,i)=>`<tr><td class="mono">${r.at}</td><td><b>${r.who}</b></td>
+     <td>${r.d} · ${r.what}</td>
+     <td>${r.ack?`<span class="pill p-green">已回 Yes</span><div class="hint">${r.ackAt}</div>`
+       :`<span class="pill p-amber">短信+App 已发 · 等回 Yes</span>
+         <button class="btn" style="padding:2px 8px;font-size:11px" onclick="schCancelAck(${i})">模拟本人回 Yes</button>`}</td></tr>`).join('')
+     :'<tr><td colspan="4" class="muted">没有取消记录</td></tr>'}</tbody></table>
+   <div class="panel-body hint">被取消的人必须回 Yes 才算送达（怕人白跑一趟）；被新加的人收日程变更通知即可</div></div>
+  <div class="panel"><div class="panel-head">人员与倒休 <span class="muted" style="font-weight:400">财务维护 · 这里只读</span></div>
+   <table><thead><tr><th>姓名</th><th>制度</th><th style="text-align:right">成本时薪</th><th style="text-align:right">倒休余额</th><th style="text-align:right">本周排班</th></tr></thead>
+   <tbody>${staff.map(s=>{const sm=schSum(s.name,days);
+     return `<tr><td><b>${s.name}</b></td><td>${s.sys}</td>
+     <td class="num">${can('salary')?'A$'+s.costHr:'— —'}</td>
+     <td class="num">${toilBal(s.name)} h</td>
+     <td class="num">${minLab(sm.work)}</td></tr>`;}).join('')}</tbody></table>
+   <div class="panel-body hint">名单、时薪、倒休都来自财务模块（工资数据 / 设置）——排班表不重复建人</div></div>
+ </div>
+ <div class="panel"><div class="panel-head">日程确认状态（红点 / 绿点）
+   <span class="muted" style="font-weight:400">短信已发＝红点；本人回 Y＝绿点 —— 不论回不回，日程都已在他 App 里</span></div>
+  <table id="schack"><thead><tr><th>状态</th><th>人</th><th>日期</th><th>任务</th><th>项目 · 地址</th><th>操作</th></tr></thead>
+  <tbody>${(()=>{const ws=days.map(d=>ymdS(d));
+    const list=SCH.filter(x=>ws.includes(x.d));
+    return list.length?list.sort((a,b)=>(a.ack-b.ack)||a.d.localeCompare(b.d)).map(x=>{
+      const p=PROJECTS.find(q=>q.code===x.pj)||{};
+      return `<tr><td>${schDot(x)} ${x.ack?'<span class="pill p-green">已确认</span>':'<span class="pill p-red">待回 Y</span>'}</td>
+       <td><b>${x.who}</b></td><td class="mono">${x.d.slice(5)}</td>
+       <td><span class="schtask ${schCls(x.type)}" style="display:inline-block;margin:0">${x.type}</span> ${minLab(x.min)}</td>
+       <td>${x.pj?`<b>${p.nick}</b><div class="hint">📍 ${p.street}, ${p.suburb} ${p.state}</div>`:'<span class="hint">倒休 · 无项目</span>'}</td>
+       <td style="white-space:nowrap">${x.ack?`<span class="hint">${x.ackAt||'已回执'}</span>`
+         :`<button class="btn" style="padding:2px 8px;font-size:11px" onclick="schResend('${x.id}')">重发短信</button>
+           <button class="btn" style="padding:2px 8px;font-size:11px" onclick="schAckYes('${x.id}')">模拟本人回 Y</button>`}</td></tr>`;}).join('')
+      :'<tr><td colspan="6" class="muted">本周没有排班</td></tr>';})()}</tbody></table>
+  <div class="panel-body hint">红点＝任务发出去了但没人应声（可能没看到），绿点＝人已经知道了——一眼看出哪些活还没交付到位</div></div>`;
+},
 
 /* ───────── 决策页 · 决策看板 ───────── */
 'decision/决策看板':()=>`
@@ -3372,7 +3708,7 @@ ${ops([
  <div class="panel">
   <div class="panel-head" style="gap:var(--sp-2);flex-wrap:wrap">
    ${ENG_PJ_STATUSES.map(s=>`<button class="btn${engPjF===s?' btn-primary':''}"
-     onclick="engPjF='${s}';${s==='全部'?"engPjQ='';":''}renderAll()">${s}<span class="muted" style="font-weight:400"> ${cnt(s)}</span></button>`).join('')}
+     onclick="engPjF='${s}';engPjQ='';renderAll()">${s}<span class="muted" style="font-weight:400"> ${cnt(s)}</span></button>`).join('')}
    <span class="muted" style="font-weight:400">显示 ${rows.length} / ${all.length}</span>
    <input id="epq" class="search" placeholder="🔍 搜编号 / 昵称 / 地址…" value="${engPjQ}"
      style="width:190px;margin-left:auto;padding:5px var(--sp-2)" oninput="engPjQ=this.value;keepFocus('epq')"></div>
@@ -3438,6 +3774,14 @@ ${helpNote(`<b>这页怎么用</b>：这里的四个数是全公司工程口径�
   <div class="field"><label>打卡围栏半径（米）</label>
     <input class="mono" style="width:90px" value="${engSet.fenceM}" onchange="engSetVal('fenceM','围栏半径米',this.value)">
     <div class="hint">工人 App 入场/离场判定（每人 × 每天 × 每个任务）· 围栏外打卡标异常，需负责人确认</div></div>
+ </div></div>
+<div class="panel" style="max-width:560px"><div class="panel-head">合理时长参考
+  <span class="muted" style="font-weight:400">派工填时长时给提示 · 只提示不拦</span></div>
+ <div class="panel-body">
+  ${Object.keys(SCH_NORM).map(k=>`<div class="field"><label>${k}（分钟）</label>
+    <input class="mono" style="width:90px" value="${SCH_NORM[k]}" onchange="engNormVal('${k}',this.value)">
+    <div class="hint">当前 ${minLab(SCH_NORM[k])}${k==='Site Meeting'||k==='交付'?' · <b>重点节点</b>：也是跟客户解释工期的依据':''}</div></div>`).join('')}
+  <div class="hint">派工时超出参考 30% 或不足 60% 会给橙色提示——现场情况千差万别，<b>只提示不拦</b></div>
  </div></div>
 <div class="panel" style="max-width:560px"><div class="panel-head">SM 模板与出发前清单</div>
  <div class="panel-body"><div class="hint">SM1~4 每场填什么、出发前带什么（含 KNX / 地暖条件项）——模板维护下一轮做进这里；
