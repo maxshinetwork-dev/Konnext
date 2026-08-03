@@ -46,10 +46,10 @@ const { chromium } = require('playwright');
   ok(html.includes('施工中'),'项目列表缺「施工中」筛选（财务线三项目）');
   n=await page.evaluate(()=>{pjFilter=null;renderAll();
     return document.querySelectorAll('#main tbody tr').length;});
-  ok(n===7,`财务默认「财务相关」应 7 行（不含接洽中/已流失），实际 ${n}`);
+  ok(n===9,`财务默认「财务相关」应 9 行（不含接洽中/已流失），实际 ${n}`);
   n=await page.evaluate(()=>{pjFilter='全部';renderAll();
     const x=document.querySelectorAll('#main tbody tr').length;pjFilter=null;return x;});
-  ok(n===9,`财务点「全部」应 9 行（读全部原则），实际 ${n}`);
+  ok(n===11,`财务点「全部」应 11 行（读全部原则），实际 ${n}`);
   await page.screenshot({path:__dirname+'/shot_项目列表.png'});
   // 运维默认筛选 = 项目维护中
   await page.evaluate(()=>loginAs('maintenance'));
@@ -174,9 +174,9 @@ const { chromium } = require('playwright');
   const nAddr=await page.evaluate(()=>{bigQ='beecroft';renderAll();
     const n=document.querySelectorAll('#main .bigtable tbody tr').length;bigQ='';renderAll();return n;});
   ok(nAddr===1,`大表按地址搜「beecroft」应 1 行，实际 ${nAddr}`);
-  const nPj=await page.evaluate(()=>{go('fin','项目列表');pjFilter='全部';pjQ='Epping';renderAll();
+  const nPj=await page.evaluate(()=>{go('fin','项目列表');pjFilter='全部';pjQ='Beecroft';renderAll();
     const n=document.querySelectorAll('#main tbody tr').length;pjQ='';pjFilter=null;renderAll();return n;});
-  ok(nPj===1,`项目列表搜「Epping」应 1 行，实际 ${nPj}`);
+  ok(nPj===1,`项目列表搜「Beecroft」应 1 行，实际 ${nPj}`);
   // 5.8) 项目状态表：扇形 + 堆叠柱 + 状态过滤
   await page.evaluate(()=>go('presales','项目状态表'));
   let sthtml=await page.evaluate(()=>document.getElementById('main').innerHTML);
@@ -188,9 +188,9 @@ const { chromium } = require('playwright');
   // 十七轮起：图表全按演示项目真实数据现算（9 立项 = 3 签约 + 1 流失 + 5 在途）
   const yearOk=await page.evaluate(()=>{statPeriod='year';renderAll();
     const h=document.getElementById('main').innerHTML;
-    const hit=h.includes('立项 12 个')&&h.includes('已签约 6')&&h.includes('已流标 1');
+    const hit=h.includes('立项 14 个')&&h.includes('已签约 8')&&h.includes('已流标 1');
     statPeriod='month';renderAll();return hit;});
-  ok(yearOk,'「年」档去向柱应真算出 12/6/1（含财务线三项目）');
+  ok(yearOk,'「年」档去向柱应真算出 14/8/1（含财务线与安装调试演示项目）');
   // 近 12 个月逐月柱（滚动窗口：首=11个月前，末=当月）
   sthtml=await page.evaluate(()=>document.getElementById('main').innerHTML);
   const mlab=await page.evaluate(()=>{const n=new Date();
@@ -762,7 +762,7 @@ const { chromium } = require('playwright');
   await page.evaluate(()=>{go('fin','项目列表');pjQ='0142';renderAll();});
   await page.click('#main button:text-is("全部")');
   nAll=await page.evaluate(()=>document.querySelectorAll('#main tbody tr').length);
-  ok(nAll===9,`项目列表点「全部」应清搜索显示 9 行，实际 ${nAll}`);
+  ok(nAll===11,`项目列表点「全部」应清搜索显示 11 行，实际 ${nAll}`);
   await page.evaluate(()=>{loginAs('presales');go('presales','项目状态表');bigQ='0186';renderAll();});
   await page.click('#main button:text-is("全部")');
   nAll=await page.evaluate(()=>{const n=document.querySelectorAll('#main .bigtable tbody tr').length;
@@ -869,7 +869,7 @@ const { chromium } = require('playwright');
     return JSON.stringify({tblRows,cols,statuses,gate,one,detail,recOk,opened,hasDate,noPjPicker,
       schedOk,smSched,logOk,seq,sm2,sm3,appMark,finOk});});
   const r45=JSON.parse(w45);
-  ok(r45.tblRows===7&&r45.cols===10,`SM 总表行列不对（${r45.tblRows} 行 / ${r45.cols} 列）`);
+  ok(r45.tblRows===9&&r45.cols===10,`SM 总表行列不对（${r45.tblRows} 行 / ${r45.cols} 列）`);
   ok(r45.statuses,'SM 总表四种状态未齐（完成/已排期/未排期/不适用）');
   ok(r45.gate,'SM 总表缺下游门禁列');
   ok(r45.one,'项目过滤未生效（一次只筛一个）');
@@ -990,8 +990,8 @@ const { chromium } = require('playwright');
   ok(r40.scope,'工程列表范围错（应只含进了工程线的项目）');
   ok(r40.stageCol,'工程进度列未显示当前阶段明细');
   ok(r40.susp,'「已停服」态未显示（取代已流失/已烂尾）');
-  ok(r40.rows0===7&&r40.smRows===2&&r40.spRows===1&&r40.spOnly,
-     `阶段筛选计数错（全部 ${r40.rows0}/应7 · SM阶段 ${r40.smRows}/应2 · 已停服 ${r40.spRows}/应1）`);
+  ok(r40.rows0===9&&r40.smRows===2&&r40.spRows===1&&r40.spOnly,
+     `阶段筛选计数错（全部 ${r40.rows0}/应9 · SM阶段 ${r40.smRows}/应2 · 已停服 ${r40.spRows}/应1）`);
   ok(r40.hasCand,'负责人候选下拉未带售前采集值');
   ok(r40.saved&&r40.pin,'指定负责人未保存/未固定为📌标注');
   ok(r40.lg&&r40.nt,'指定负责人未留前后痕/未通知下游');
@@ -1109,9 +1109,9 @@ const { chromium } = require('playwright');
     const one=document.querySelectorAll('#engpj tbody tr').length===1
       &&document.getElementById('main').innerHTML.includes('赵宅')&&engPjQ==='KX-2026-0170';
     engPjF='施工中'; engPjQ=''; renderAll();       // 点任一筛选 → 恢复该筛选完整内容
-    const back=document.querySelectorAll('#engpj tbody tr').length===1;
+    const back=document.querySelectorAll('#engpj tbody tr').length===3;   // 施工中：赵宅/周宅/吴宅
     engPjF='全部'; renderAll();
-    const all=document.querySelectorAll('#engpj tbody tr').length===7;
+    const all=document.querySelectorAll('#engpj tbody tr').length===9;
     if(red&&before===false){ red.ack=false; red.ackAt=undefined; }
     renderAll(); loginAs('finance');
     return JSON.stringify({dots,ackTbl,routeLink,routeOk,abOk,green,normUI,normOk,one,back,all});});

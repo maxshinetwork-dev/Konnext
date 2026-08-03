@@ -411,7 +411,7 @@ const DEPT = {
 const COMPANY_PAGES=new Set([
   'proc/总览','proc/物料主表','proc/汇率','proc/采购单','proc/补货建议','proc/调价历史','proc/RMA索赔',
   'wh/总览','wh/入库','wh/盘点','wh/库存流水','wh/期初移库','wh/RMA登记',
-  'eng/总览','eng/派工排班','eng/每日上报','eng/人员与外包','eng/文档库','eng/设置','eng/Site Meeting',
+  'eng/总览','eng/派工排班','eng/每日上报','eng/人员与外包','eng/文档库','eng/设置','eng/Site Meeting','eng/安装调试',
   'fin/财务节点','fin/项目收款S1-S3','fin/尾款结算S4与Var','fin/运维财务支持','fin/催账和停服',
   'fin/工资数据','fin/项目报销','fin/成本与利润率','fin/设置','fin/总览','fin/工资','presales/总览','presales/项目列表','presales/项目状态表','presales/设置','mt/总览',
   'presales/操作日志','eng/操作日志','proc/操作日志','wh/操作日志','fin/操作日志','mt/操作日志',
@@ -444,6 +444,11 @@ const PROJECTS=[
   state:'NSW',owner:'罗先生',builder:'Mike · BuildCo',elec:'—',status:'施工中',band:'p-cyan'},
  {code:'KX-2026-0170',nick:'赵宅',opened:'2026/04/18',name:'Denistone 赵宅',suburb:'Denistone',street:'22 Chatham Rd',
   state:'NSW',owner:'赵女士',builder:'—',elec:'Tony · Spark电气',status:'施工中',band:'p-cyan'},
+ /* 四十六轮：安装调试演示——一个接近超支、一个已超支 */
+ {code:'KX-2026-0195',nick:'周宅',opened:'2026/03/10',name:'Epping 周宅',suburb:'Epping',street:'15 Rawson St',
+  state:'NSW',owner:'周先生',builder:'Ken · MetroCon',elec:'Leo · VoltPro',status:'施工中',band:'p-cyan'},
+ {code:'KX-2026-0199',nick:'吴宅',opened:'2026/02/20',name:'Chatswood 吴宅',suburb:'Chatswood',street:'28 Archer St',
+  state:'NSW',owner:'吴女士',builder:'Sam · NorthBuild',elec:'Tony · Spark电气',status:'施工中',band:'p-cyan'},
 ];
 let pj=0;   // 当前项目
 let me='finance', tab='fin', page='总览';
@@ -961,10 +966,11 @@ function mtRecv(id){ const c=MCASES.find(x=>x.id===id);
   opLog(c.code,'维护单收款结案',c.id+' · 收 '+A$(c.amt),['fin','mt']); renderAll(); }
 /* ═══ 三十九轮：工程总览的四个数据源（全部现算，卡片=汇总、点开=记录）═══
    状态停留起始＝status_since（契约字段，状态一变就重置）；阈值＝status_stall_threshold（工程在设置里改）*/
-let engSet={buildStallDays:120, maintStallDays:90, handoffSlaH:24, fenceM:100};
+let engSet={buildStallDays:120, maintStallDays:90, handoffSlaH:24, fenceM:100, hourWarnPct:90};
 const ENG_SINCE={   // 当前状态从哪天开始（演示；正式＝project.status_since）
  'KX-2026-0188':'2026/05/25','KX-2026-0203':'2026/06/20','KX-2026-0170':'2026/03/02',
- 'KX-2026-0142':'2026/06/20','KX-2026-0121':'2026/01/10','KX-2026-0180':'2026/06/02'};
+ 'KX-2026-0142':'2026/06/20','KX-2026-0121':'2026/01/10','KX-2026-0180':'2026/06/02',
+ 'KX-2026-0195':'2026/06/28','KX-2026-0199':'2026/05/16'};
 /* 今日派工（演示；正式＝派工排班表当天行）——★按小时算，不用人次 */
 const DISPATCH=[
  {when:'today',who:'阿强',type:'安装',pj:'KX-2026-0188',h:8,   note:'二楼走廊感应器对码'},
@@ -1310,6 +1316,10 @@ const SCH_REPORTS={
  'KX-2026-0142':[{d:'08/02',who:'Tony',kind:'维护',txt:'二楼调光模块更换完成，测试正常，客户已签字。',
      remain:'主卧面板偶发失联未复现，下次带备件 2 只再测'}],
  'KX-2026-0180':[{d:'07/28',who:'陈工',kind:'交付',txt:'交付前复核：点位清单全通过。',remain:'订阅确认书未签'}],
+ 'KX-2026-0195':[{d:'08/01',who:'老李',kind:'安装',txt:'二层面板安装完成，地暖联动调试一半。',
+     remain:'地暖联动剩 3 处未调；三层弱电箱未接'}],
+ 'KX-2026-0199':[{d:'07/30',who:'小陈',kind:'安装',txt:'全屋面板安装完成，主机调试中。',
+     remain:'影音室联动未调；客户要求加装两个场景面板（走变更）'}],
  'KX-2026-0121':[{d:'2026/06/18',who:'Tony',kind:'维护',txt:'年度巡检完成，全部正常。'}],   // 无 remain 字段＝上次没填
 };
 /* 按类型与项目算出「剩余工作」该显示什么（只读自动带出） */
@@ -1443,6 +1453,16 @@ const SMD={
    {done:'2026/01/10 09:00',by:'陈工',photos:8,chk:[1,1,1]},
    {done:'2026/02/20 10:00',by:'陈工',photos:9,chk:[1,1,1],elecSign:'—'},
    {chk:[0,0,0]}]},
+ 'KX-2026-0195':{sol:'KNX · 有线 · 有地暖',sm:[
+   {done:'2026/03/24 09:00',by:'陈工',photos:5,chk:[1,1,1],att:[{who:'陈工',io:'08:50–09:55'}]},
+   {done:'2026/04/12 09:00',by:'陈工',photos:7,chk:[1,1,1,1],att:[{who:'陈工',io:'08:55–10:30'}]},
+   {done:'2026/05/20 10:00',by:'陈工',photos:9,chk:[1,1,1],elecSign:'Leo · VoltPro',att:[{who:'陈工',io:'09:40–11:20'}]},
+   {done:'2026/06/26 09:30',by:'陈工',photos:6,chk:[1,1,1],att:[{who:'陈工',io:'09:10–10:40'}]}]},
+ 'KX-2026-0199':{sol:'C-Bus · 有线 · 无地暖',sm:[
+   {done:'2026/03/02 09:00',by:'陈工',photos:4,chk:[1,1,1],att:[{who:'陈工',io:'08:55–09:50'}]},
+   {done:'2026/03/20 09:00',by:'陈工',photos:6,chk:[1,1,1],att:[{who:'陈工',io:'09:00–10:15'}]},
+   {done:'2026/04/24 10:00',by:'陈工',photos:8,chk:[1,1,1],elecSign:'Tony · Spark电气',att:[{who:'陈工',io:'09:45–11:25'}]},
+   {done:'2026/05/14 09:30',by:'陈工',photos:7,chk:[1,1,1],att:[{who:'陈工',io:'09:05–10:35'}]}]},
  'KX-2026-0180':{sol:'C-Bus · 有线 · 无地暖',sm:[
    {done:'2025/10/06 09:00',by:'陈工',photos:5,chk:[1,1,1]},
    {done:'2025/10/20 09:00',by:'陈工',photos:6,chk:[1,1,1]},
@@ -1477,6 +1497,90 @@ function smNa(code,no){
   uiPrompt('标「不适用」原因（老项目/特殊情况，留痕）：',v=>{
     if(!v||!String(v).trim()) return; const s=SMD[code].sm[no-1]; s.na=String(v).trim();
     opLog(code,'SM'+no+' 标不适用',s.na,['eng']); renderAll(); }); }
+/* ═══ 四十六轮：安装调试（SM4 之后 ~ 交付之前）═══
+   工时占比＝已投入 ÷ 售前预计；四档配色（阈值在「设置」里由工程改）：
+   <70 充裕 · 70~预警线 正常 · 预警线~100 接近超支（发预警）· >100 已超支（亏损，重点标） */
+function hourBand(pct){
+  const w=engSet.hourWarnPct||90;
+  if(pct==null) return {k:'未填预计',cls:'p-grey',c:'#94a3b8'};
+  if(pct>100)   return {k:'已超支 · 亏损',cls:'p-red',c:'#dc2626'};
+  if(pct>=w)    return {k:'接近超支 · 预警',cls:'p-amber',c:'#b45309'};
+  if(pct>=70)   return {k:'正常',cls:'p-cyan',c:'#2563eb'};
+  return {k:'充裕',cls:'p-green',c:'#047857'};
+}
+const instList=()=>engScope().filter(p=>engStage(p).k==='施工中');
+function instRow(p){ const a=hrAgg(p.code); const est=a.est, used=a.T.bh;
+  const pct=est?Math.round(used/est*1000)/10:null;
+  return {p,est,used,pct,band:hourBand(pct),left:est?Math.round((est-used)*10)/10:null,
+    remain:schRemainFor('安装',p.code)}; }
+/* 资源分配：交互同 SM 排期——日期+起止+人员多选+内容，保存直接进派工排班表 */
+let instOpen=null;
+function instO(code){ instOpen={code}; instPaint(); }
+function instClose(){ instOpen=null;
+  document.getElementById('smback').style.display='none';
+  const b=document.getElementById('smbox'); b.style.display='none'; b.innerHTML=''; }
+function instPaint(){ const o=instOpen; if(!o) return;
+  const p=PROJECTS.find(x=>x.code===o.code)||{}; const r=instRow(p);
+  const d0=new Date(); d0.setDate(d0.getDate()+1);
+  const staff=STAFF.filter(x=>x.active).map(x=>x.name);
+  document.getElementById('smbox').innerHTML=
+   '<div style="font-weight:600;margin-bottom:2px">资源分配 · 安装调试 · '+p.nick+'</div>'+
+   '<div class="hint" style="margin-bottom:8px">📍 '+p.street+', '+p.suburb+
+     ' —— 项目已定；保存后直接写进<b>派工排班表</b>并进 App 日程</div>'+
+   '<div class="panel" style="margin:0 0 10px"><div class="panel-body" style="padding:8px 10px">'+
+     '<div class="hint">工时占比 <b style="color:'+r.band.c+'">'+(r.pct!=null?r.pct+'%':'—')+'（'+r.band.k+'）</b>'+
+     ' · 已投入 '+r.used+' h / 预计 '+(r.est||'—')+' h'+(r.left!=null?' · 余 '+r.left+' h':'')+'</div>'+
+     '<div class="hint" style="margin-top:4px">剩余工作（上次上报带出）：'+r.remain.txt+'</div>'+
+   '</div></div>'+
+   '<div class="field"><label>日期（可提前排几周）</label>'+
+     '<input type="date" id="in-d" value="'+ymdS(d0).replace(/\//g,'-')+'" style="width:180px"></div>'+
+   '<div class="field"><label>开始时间 → 截止时间（15 分钟一档 · 时长自动算）</label>'+
+     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+     '<select id="in-st" style="width:auto" onchange="instPrev()">'+
+       SLOTS.map(x=>'<option'+(x==='08:00'?' selected':'')+'>'+x+'</option>').join('')+'</select>'+
+     '<span class="muted">→</span>'+
+     '<select id="in-et" style="width:auto" onchange="instPrev()">'+
+       SLOTS.map(x=>'<option'+(x==='16:30'?' selected':'')+'>'+x+'</option>').join('')+'</select>'+
+     '<span id="in-prev" class="hint"></span></div></div>'+
+   '<div class="field"><label>派谁去（每人各生成一条安装任务）</label>'+
+     '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+     staff.map((n,i)=>'<label style="font-size:12px"><input type="checkbox" class="in-who" value="'+n+'"'+
+       (i===0?' checked':'')+' style="width:auto"> '+n+'</label>').join('')+'</div></div>'+
+   '<div class="field"><label>工作内容（多行）</label>'+
+     '<textarea id="in-note" style="width:100%;min-height:88px;font-size:12px;line-height:1.7" placeholder="按剩余工作拆条写">'+
+     (r.remain.muted?'':('· '+String(r.remain.txt).split('；').join('\n· ')))+'</textarea></div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="instClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="instSave()">保存并通知</button></div>';
+  document.getElementById('smback').style.display='block';
+  document.getElementById('smbox').style.display='block';
+  instPrev(); }
+function instPrev(){ const s=document.getElementById('in-st'), e=document.getElementById('in-et'),
+   p=document.getElementById('in-prev'); if(!s||!e||!p) return;
+  const m=spanMin(s.value,e.value); const nh=schNormHint('安装',m);
+  p.innerHTML=m>0?('＝ <b>'+minLab(m)+'</b>'+(nh?' · <span style="color:#b45309">'+nh+'</span>':''))
+    :'<span style="color:#c62828">截止时间必须晚于开始时间</span>'; }
+function instSave(){ const o=instOpen; if(!o) return;
+  const v=id=>{const e=document.getElementById(id);return e?e.value:'';};
+  const dRaw=v('in-d'); if(!dRaw){ uiAlert('门禁：请选择日期'); return; }
+  const d=dRaw.replace(/-/g,'/');
+  if(d<todayS()){ uiAlert('门禁：只能排此刻之后的日期'); return; }
+  const st=v('in-st'), et=v('in-et'); const min=spanMin(st,et);
+  if(!(min>0)){ uiAlert('门禁：截止时间必须晚于开始时间'); return; }
+  const who=[...document.querySelectorAll('.in-who:checked')].map(x=>x.value);
+  if(!who.length){ uiAlert('门禁：至少选一个人——资源分配就是派工，没人去等于没排'); return; }
+  const bad=who.map(w=>({w,ov:schOverlap(w,d,st,et,null)})).filter(x=>x.ov);
+  if(bad.length){ uiAlert('门禁：'+bad[0].w+' 当天已有「'+bad[0].ov.type+' '+bad[0].ov.st+'–'+bad[0].ov.et+'」时间重叠'); return; }
+  const note=v('in-note').trim();
+  const p=PROJECTS.find(x=>x.code===o.code)||{}; const r=instRow(p);
+  who.forEach(w=>SCH.push({id:'IN-'+o.code.slice(-4)+'-'+w+'-'+d.slice(5).replace('/',''),d,who:w,type:'安装',pj:o.code,
+    st,et,min,note,remain:r.remain.muted?'':r.remain.txt,sent:true,ack:false}));
+  opLog(o.code,'资源分配（安装调试）',d+' '+st+'–'+et+'（'+minLab(min)+'）· '+who.join('、')+
+    ' —— 已写进派工排班表；当前工时占比 '+(r.pct!=null?r.pct+'%':'—'),['eng']);
+  notifAdd(o.code,'安装派工 '+d+' '+st+'–'+et+' @ '+p.nick,
+    who.map(w=>({who:w+'（App 日程）',how:'短信 + App',ok:false})));
+  instClose(); renderAll();
+  uiAlert('已排入排班表 ✓ '+d+' '+st+'–'+et+'\n'+who.join('、')+' 各一条安装任务（短信已发，等回 Y 变绿点）'); }
 let smF='全部', smQ='', smDetail=null, smSchedOpen=null;
 function smPick(code){ smDetail=(smDetail===code?null:code); renderAll(); }
 /* 现场记录 · 照片 · 到场打卡（已完成的场次才有） */
@@ -1799,6 +1903,9 @@ const PJLABOR={
  'KX-2026-0180':{est:420,base:[{who:'老李',bh:300,bc:11190}, {who:'阿强',bh:180,bc:7200}],
                  mbase:[{who:'小陈',mh:9,mc:314.1}]},
  'KX-2026-0121':{est:260,base:[{who:'Tony',bh:210,bc:10710}],mbase:[{who:'Tony',mh:14,mc:714}]},
+ /* 安装调试演示：0195 接近超支（95%）· 0199 已超支（119%） */
+ 'KX-2026-0195':{est:260,base:[{who:'阿强',bh:150,bc:6000},{who:'老李',bh:97,bc:3618.1}]},
+ 'KX-2026-0199':{est:180,base:[{who:'小陈',bh:120,bc:4188},{who:'Tony',bh:94,bc:4794}]},
 };
 function hrAgg(code){ const L=PJLABOR[code]||{est:null,base:[]}; const P={};
   const slot=w=>P[w]=P[w]||{bh:0,bc:0,mh:0,mc:0};
@@ -3374,6 +3481,82 @@ ${ops([
   </div></div>`
  :`<div class="panel"><div class="panel-body hint">选一行点「详细」→ 这里展开该项目的四张会议卡（出发前清单 / 现场记录 / 变更 / 排期）</div></div>`}`;
 },
+'eng/安装调试':()=>{
+ schSeed();
+ const rows=instList().map(instRow);
+ const w=engSet.hourWarnPct;
+ const over=rows.filter(r=>r.pct!=null&&r.pct>100);
+ const warn=rows.filter(r=>r.pct!=null&&r.pct>=w&&r.pct<=100);
+ const totEst=rows.reduce((a,r)=>a+(r.est||0),0), totUsed=Math.round(rows.reduce((a,r)=>a+r.used,0)*10)/10;
+ const totPct=totEst?Math.round(totUsed/totEst*1000)/10:null;
+ const bar=(r)=>{const pct=r.pct||0; const cap=Math.min(pct,140); const wid=Math.round(cap/140*100);
+   return `<div style="background:var(--bg-elevated);border-radius:4px;height:16px;position:relative;overflow:hidden">
+     <div style="width:${wid}%;height:100%;background:${r.band.c};opacity:.85"></div>
+     <div style="position:absolute;left:${Math.min(71,Math.round(100/140*100))}%;top:0;bottom:0;width:1px;background:#64748b"></div>
+   </div>`;};
+ return `<h2>安装调试 <span class="pill p-cyan">SM4 之后 · 交付之前</span></h2>
+ <div class="page-sub">在装项目的<b>剩余工作量</b>与<b>工时消耗</b>一目了然，然后直接分配资源 · 说明看左下「帮助」</div>
+ ${ops([
+  ['查看工时占比','已投入 ÷ 售前预计 · 四档配色（充裕/正常/接近超支预警/已超支亏损）· 预警线在「设置」里改','—'],
+  ['资源分配','交互同 SM 排期：日期（可提前几周）+ 起止时间 + 派谁去 + 工作内容（按剩余工作预填）','直接写进派工排班表 · 被派的人收短信 + App 日程（红点等回 Y）'],
+ ])}
+ ${helpNote(`<b>这页怎么用</b>：只列<b>安装调试阶段</b>的项目（SM4 已完成、还没交付）。一行看四个数：
+   <b>剩余工作量</b>（自动取该项目最近一次每日上报留下的剩余）· <b>已投入工时</b>（日结定格加总）·
+   <b>预计总工时</b>（售前签约时填的预测工时）· <b>工时占比</b>＝已投入 ÷ 预计。
+   右边「资源分配」直接排人排时间，保存即进派工排班表。`)}
+ ${helpNote(`<b>四档配色</b>：<b style="color:#047857">充裕 &lt;70%</b> ·
+   <b style="color:#2563eb">正常 70%~${w}%</b> ·
+   <b style="color:#b45309">接近超支 ${w}%~100%（发预警）</b> ·
+   <b style="color:#dc2626">已超支 &gt;100%（亏损，重点标）</b>。
+   预警线默认 ${w}%，工程可在左栏「设置」里改，改完这页立即按新线重算。
+   <b>超支不挂客户</b>——实际 vs 预测的差额是我们效率问题，吃工程利润率（决策记录 §7.3 口径）。`)}
+ ${helpNote(`没填「预测工时」的项目占比算不出来（显示未填预计）——那是售前签约时的必填项，
+   缺了整个人工消耗率就没有分母。缺的话回售前项目列表补。`)}
+ <div class="cards">
+  <div class="card"><div class="card-label">在装项目</div>
+    <div class="card-value">${rows.length}</div>
+    <div class="card-foot">SM4 已过 · 待交付</div></div>
+  <div class="card"><div class="card-label">工时超支</div>
+    <div class="card-value"${over.length?' style="color:var(--breach)"':''}>${over.length}</div>
+    <div class="card-foot">${over.length?over.map(r=>r.p.nick+' '+r.pct+'%').join(' · '):'没有超支项目'}</div></div>
+  <div class="card"><div class="card-label">接近超支（预警）</div>
+    <div class="card-value"${warn.length?' style="color:var(--warning)"':''}>${warn.length}</div>
+    <div class="card-foot">预警线 ${w}%（设置里可改）</div></div>
+  <div class="card"><div class="card-label">合计工时</div>
+    <div class="card-value">${totPct!=null?totPct+'%':'—'}</div>
+    <div class="card-foot">已投入 ${totUsed} h / 预计 ${totEst} h</div></div>
+ </div>
+ <div class="panel">
+  <div class="panel-head">在装项目 · 剩余工作量与工时消耗
+    <span class="muted" style="font-weight:400">工时全部现算（日结定格逐日加总）· 竖线＝100% 位置</span></div>
+  <div style="overflow-x:auto"><table id="insttbl" style="min-width:1120px">
+   <thead><tr><th>编号</th><th>立项时间</th><th>项目 · 地址</th><th style="min-width:230px">剩余工作量</th>
+     <th style="text-align:right">已投入工时</th><th style="text-align:right">预计总工时</th>
+     <th style="min-width:180px">工时占比</th><th style="text-align:right">剩余工时</th><th></th></tr></thead>
+   <tbody>${rows.map(r=>`<tr${r.pct!=null&&r.pct>100?' style="background:rgba(239,68,68,.05)"':''}>
+     <td class="mono">${r.p.code}</td><td class="mono" style="font-size:11px">${r.p.opened}</td>
+     <td><b>${r.p.nick}</b><div class="hint">📍 ${r.p.street}, ${r.p.suburb} ${r.p.state}</div></td>
+     <td><div class="hint" style="line-height:1.7">${r.remain.txt}</div>
+       ${r.remain.from?`<div class="hint" style="color:var(--text-muted)">来源：${r.remain.from} 的每日上报</div>`:''}</td>
+     <td class="num">${r.used} h</td>
+     <td class="num">${r.est!=null?r.est+' h':'<span class="pill p-grey">未填</span>'}</td>
+     <td>${r.pct!=null?`<div style="display:flex;align-items:center;gap:6px">
+         <b style="color:${r.band.c};min-width:52px" class="mono">${r.pct}%</b>
+         <div style="flex:1">${bar(r)}</div></div>
+       <div class="hint" style="color:${r.band.c}">${r.band.k}${r.pct>100?`（超 ${Math.round((r.pct-100)*10)/10}%）`:''}</div>`
+       :'<span class="hint">未填预计工时，算不出占比</span>'}</td>
+     <td class="num">${r.left!=null?(r.left<0?`<b style="color:var(--breach)">${r.left} h</b>`:r.left+' h'):'—'}</td>
+     <td><button class="btn btn-primary" onclick="instO('${r.p.code}')">资源分配</button></td>
+   </tr>`).join('')||`<tr><td colspan="9" class="muted" style="padding:var(--sp-4)">此刻没有安装调试阶段的项目（SM4 都还没过，或都已交付）</td></tr>`}</tbody></table></div>
+  <div class="panel-body hint">
+   <span class="pill p-green">充裕 &lt;70%</span>
+   <span class="pill p-cyan">正常 70~${w}%</span>
+   <span class="pill p-amber">接近超支 ${w}~100% · 预警</span>
+   <span class="pill p-red">已超支 &gt;100% · 亏损</span>
+   　剩余工时为负＝已经超出预算工时，继续干下去吃的是工程利润率
+  </div>
+ </div>`;
+},
 'eng/每日上报':()=>{
  const wl=worklog();
  const pend=wl.filter(w=>w.hang);
@@ -4072,6 +4255,14 @@ ${helpNote(`<b>这页怎么用</b>：这里的四个数是全公司工程口径�
   <div class="field"><label>打卡围栏半径（米）</label>
     <input class="mono" style="width:90px" value="${engSet.fenceM}" onchange="engSetVal('fenceM','围栏半径米',this.value)">
     <div class="hint">工人 App 入场/离场判定（每人 × 每天 × 每个任务）· 围栏外打卡标异常，需负责人确认</div></div>
+ </div></div>
+<div class="panel" style="max-width:560px"><div class="panel-head">安装调试 · 工时预警线</div>
+ <div class="panel-body">
+  <div class="field"><label>工时占比预警阈值（%）</label>
+    <input class="mono" style="width:90px" value="${engSet.hourWarnPct}" onchange="engSetVal('hourWarnPct','工时预警阈值%',this.value)">
+    <div class="hint">已投入 ÷ 售前预计 达到这个百分比就变橙<b>发预警</b>；超过 100% 变红＝已超支（亏损）。
+      当前预警 ${instList().filter(p=>{const r=instRow(p);return r.pct!=null&&r.pct>=engSet.hourWarnPct&&r.pct<=100;}).length} 个 ·
+      已超支 ${instList().filter(p=>{const r=instRow(p);return r.pct!=null&&r.pct>100;}).length} 个</div></div>
  </div></div>
 <div class="panel" style="max-width:560px"><div class="panel-head">合理时长参考
   <span class="muted" style="font-weight:400">派工填时长时给提示 · 只提示不拦</span></div>
