@@ -27,6 +27,7 @@ export async function POST(req: Request): Promise<Response> {
       return Response.json({ error: OTP_FAIL_MSG }, { status: 401 });
     }
     s.stage = "full";
+    s.seen = Date.now();          // 空闲 30 分钟锁屏的起点
     s.amr = ["sms", "email"];
     s.attempts = 0;
     await s.save();

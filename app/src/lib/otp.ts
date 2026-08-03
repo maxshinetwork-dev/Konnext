@@ -139,6 +139,23 @@ export async function requestSmsOtp(phoneRaw: string, ip: string): Promise<Accou
   });
 }
 
+/**
+ * 按账号 id 补发短信码 —— 用在两处（都已经知道你是谁，不必再输手机号）：
+ *   ① 空闲 30 分钟锁屏后的解锁
+ *   ② 不可逆操作前的二次验证
+ */
+export async function resendSmsOtp(accountId: string, ip: string): Promise<void> {
+  await withAuthDb(async (q) => {
+    const r = await q.query<{ phone: string | null }>(
+      "SELECT phone FROM app_account WHERE id=$1 AND active",
+      [accountId],
+    );
+    const phone = r.rows[0]?.phone;
+    if (!phone) throw new AuthError("账号已停用或缺手机号，请联系管理员", 403);
+    await issue(q, { id: accountId, sendTo: phone }, "sms", ip);
+  });
+}
+
 /** 管理员第二步：发邮箱码 */
 export async function requestEmailOtp(accountId: string, ip: string): Promise<void> {
   await withAuthDb(async (q) => {

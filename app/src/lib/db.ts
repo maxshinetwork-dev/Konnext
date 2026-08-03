@@ -54,6 +54,16 @@ function translate(e: unknown): unknown {
   return e;
 }
 
+export type TxOpts = {
+  /**
+   * 乐观锁：前端打开这条记录时拿到的 version，原样带回来。
+   * 契约 v0.35 起，全部可改业务表都挂了 trg_row_optlock —— 对不上就 P0001 拒绝，
+   * 报的是完整中文句（「这条记录在你打开页面之后已经被人改过…」），原样透传给用户。
+   * 不传 = 系统内部更新（后台脚本/结算函数），触发器放行。
+   */
+  expectedVersion?: number | string;
+};
+
 /**
  * 业务请求入口：降权 + 注入身份 + 单事务。
  * accountId 必须来自服务器验证过的会话 cookie —— 绝不接受请求体里的身份。
@@ -61,6 +71,7 @@ function translate(e: unknown): unknown {
 export async function withAccount<T>(
   accountId: string,
   fn: (q: Querier) => Promise<T>,
+  opts: TxOpts = {},
 ): Promise<T> {
   const c = await pool.connect();
   try {
@@ -68,6 +79,11 @@ export async function withAccount<T>(
     await c.query("SET LOCAL ROLE konnext_app");
     await c.query("SELECT set_config('app.account_id', $1, true)", [accountId]);
     await c.query("SELECT set_config('app.actor', $1, true)", [accountId]);
+    if (opts.expectedVersion !== undefined && opts.expectedVersion !== null) {
+      await c.query("SELECT set_config('app.expected_version', $1, true)", [
+        String(opts.expectedVersion),
+      ]);
+    }
     const out = await fn(wrap(c));
     await c.query("COMMIT");
     return out;

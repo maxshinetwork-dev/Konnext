@@ -360,6 +360,12 @@ tbody tr:hover{background:var(--bg-elevated)}
 <div id="rtbox" style="display:none;position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);z-index:91;
   background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
   width:min(640px,94vw);max-height:90vh;overflow-y:auto;padding:18px 20px"></div>
+<div id="seclock" style="display:none;position:fixed;inset:0;z-index:120;background:rgba(31,41,51,.86);
+  backdrop-filter:blur(3px);place-items:center"></div>
+<div id="stepback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:110"></div>
+<div id="stepbox" style="display:none;position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);z-index:111;
+  background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.3);
+  width:min(460px,93vw);padding:18px 20px"></div>
 <div id="dcback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:90" onclick="docClose()"></div>
 <div id="dcbox" style="display:none;position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);z-index:91;
   background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
@@ -444,6 +450,14 @@ function fromBar(dept,ch){ const m=mailId(dept); const p=[];
     '<b>发件身份</b>　'+p.join('　')+
     '<div class="muted" style="margin-top:1px">全公司统一 · 决策页「全局参数」里改（经办人只写署名）</div></div>'; }
 /* 改发送人身份（只有决策管理员能改；改完之后发的全部换新身份，已发出的记录不动） */
+function secSet(k,label,v){ const nv=parseInt(v,10);
+  if(WHO[me].tier!==1){ uiAlert('门禁：只有决策管理员能改安全参数'); renderAll(); return; }
+  if(!(nv>0)||nv>720){ uiAlert('门禁：请填 1~720 之间的分钟数 —— 填 0 或空等于把这道防线关掉，系统不会提醒你'); renderAll(); return; }
+  const old=SEC[k]; if(old===nv){ renderAll(); return; }
+  SEC[k]=nv; SEC.last=Date.now();
+  opLog('','修改安全参数','「'+label+'」'+old+' → '+nv+' 分钟（全公司立即生效）',
+    ['fin','eng','presales','proc','wh','mt']);
+  renderAll(); uiAlert('已保存：'+label+' '+old+' → '+nv+' 分钟'); }
 function senderSms(v){ const nv=(v||'').trim();
   if(WHO[me].tier!==1){ uiAlert('门禁：只有决策管理员能改发送人身份'); renderAll(); return; }
   if(!/^[+0][0-9 ]{7,}$/.test(nv)){
@@ -858,7 +872,8 @@ function finSetPayer(code){ const f=finOf(code); const e=document.getElementById
     ['fin','presales']);
   renderAll(); }
 /* 标记已请款：外部财务系统开出 Invoice 之后在这里标记 —— 应收金额此刻定格 */
-function finReq(code,si){ const f=finOf(code),m=f.ms[si];
+function finReq(code,si){ needStepUp('标记 '+finOf(code).ms[si].s+' 已请款（应收此刻定格）',()=>finReqDo(code,si)); }
+function finReqDo(code,si){ const f=finOf(code),m=f.ms[si];
   if(m.s==='S2'&&!f.sm3){ uiAlert('门禁：SM3 未完成，不能发起 S2 物料款'); return; }
   if(m.s==='S3'&&!f.sm4){ uiAlert('门禁：SM4 未完成，不能发起 S3 人工款'); return; }
   if(msDue(f,m)<=0){ uiAlert('门禁：应收金额为空，不能发出 Invoice'); return; }
@@ -1014,7 +1029,8 @@ function finSettleUnret(code){ const f=finOf(code);
   opLog(code,'结算未退料',A$(f.unret)+' 按出库价转入 S4 变更 · 库管销台账 · Builder 收结算告知',['fin','wh','eng']);
   uiAlert('未退料 '+A$(f.unret)+' 已转入 S4 结算 ✓\n已通知：库管（销未退台账）· Builder（结算告知）');
   f.unret=0; s4Open[code]=true; renderAll(); }
-function finS4Req(code){ const f=finOf(code),m=f.ms[3];
+function finS4Req(code){ needStepUp('标记 S4 已请款（尾款+变更+未退料一并定格）',()=>finS4ReqDo(code)); }
+function finS4ReqDo(code){ const f=finOf(code),m=f.ms[3];
   const pend=f.vars.filter(v=>v.billable&&v.amt==null).length;
   if(pend){ uiAlert('门禁：尚有 '+pend+' 条变更待估价 —— 在本行「明细 ▸」里逐条估价（填金额+依据）后才能进 S4 结算'); return; }
   if(f.unret){ uiAlert('门禁：尚有未退料 '+A$(f.unret)+' 未结算，直接开票会少收这笔 ——\n点本行「未退料」列的【结算未退料】按钮，按出库价转入变更即可（数字来自库管台账，财务不手填）'); return; }
@@ -1024,7 +1040,8 @@ function finS4Req(code){ const f=finOf(code),m=f.ms[3];
   notifAdd(code,'S4 Invoice 已开出 · 应收 '+A$(msDue(f,m)),
     [{who:'付款人 '+f.payer,how:'短信（可回 Y 确认，非必须）',ok:false},{who:'售前 小林',how:'待办',ok:false},{who:'工程管理 陈工',how:'待办',ok:false}]);
   uiAlert('S4 已标记请款 · 应收 '+A$(msDue(f,m))+' 定格 ✓\n已通知：付款人（短信）· 售前 · 工程管理'); renderAll(); }
-function finSuspend(code){
+function finSuspend(code){ needStepUp('拒付停服（全公司该项目任何新任务派不出）',()=>finSuspendAsk(code)); }
+function finSuspendAsk(code){
   uiConfirm('拒付停服 = 项目级全面停服（不是停单张单）：任何新任务都派不出去，'+finSet.suspendDays+' 天后提醒停用服务器。确定？',
     ()=>finSuspendDo(code)); }
 function finSuspendDo(code){ const f=finOf(code);
@@ -1526,7 +1543,7 @@ const ENG_PARTY_POOL={   // 售前采集到的候选（演示；正式＝project
 function engLead(code){ const p=PROJECTS.find(x=>x.code===code)||{};
   return ENG_LEAD[code]||{owner:p.owner,builder:p.builder,elec:p.elec,fixed:false}; }
 function engLeadToggle(code){ engLeadOpen=(engLeadOpen===code?null:code); renderAll(); }
-function engLeadSave(code){
+function engLeadSave(code){ if(secConflict('保存工程负责人指定')) return;
   const v=id=>{const e=document.getElementById(id);return e?e.value:'';};
   const cur=engLead(code);
   const nx={owner:v('el-o-'+code)||cur.owner,builder:v('el-b-'+code)||cur.builder,
@@ -1970,7 +1987,9 @@ function docMailOpen(id){ const d=DOCS.find(x=>x.id===id); if(!d) return; docDlg
    '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
    '<button class="btn" onclick="docClose()">取消</button>'+
    '<button class="btn btn-primary" onclick="docMailSend()">确认发送</button></div>'); }
-function docMailSend(){ const d=DOCS.find(x=>x.id===docDlg.id); if(!d) return;
+function docMailSend(){ const d0=DOCS.find(x=>x.id===docDlg.id); if(!d0) return;
+  needStepUp('邮件转发文档「'+d0.name+'」（该版本定格为已发放，从此不可删）',docMailSendDo); }
+function docMailSendDo(){ const d=DOCS.find(x=>x.id===docDlg.id); if(!d) return;
   const v=id=>((document.getElementById(id)||{}).value||'').trim();
   let to=v('dc-to'), name='', mail='';
   if(to==='__manual__'){ mail=v('dc-mail'); name=mail;
@@ -2233,7 +2252,8 @@ function delivMtSign(code){ const d=DELIV[code];
     notifAdd(code,'运维条款已签署 · 可启动接管与订阅',[{who:'运维 小周',how:'待办',ok:false}]);
     renderAll(); uiAlert('已置位 ✓ 已通知运维（接管与订阅可启动）'); }); }
 /* 交付完成：人肉确认（系统不卡好坏），但留痕 + 利润率定格 */
-function delivDone(code){ const d=DELIV[code]; const p=PROJECTS.find(x=>x.code===code)||{};
+function delivDone(code){ needStepUp('确认交付（工程利润率当天定格 · 移交运维）',()=>delivDoneDo(code)); }
+function delivDoneDo(code){ const d=DELIV[code]; const p=PROJECTS.find(x=>x.code===code)||{};
   if(!d.mtSigned){ uiAlert('门禁：运维条款还没确认签署——交付前必须置位（否则运维接管与订阅没依据）'); return; }
   if(!d.actual){ uiAlert('门禁：交付当天实际工时还没回来（等 App 打卡/每日上报）——工时没落地，成本算不出来'); return; }
   uiConfirm('确认 '+p.nick+' 交付完成？\n交付当天工程利润率<b>定格</b>（之后只读）· 项目转「项目交付」并移交运维。',ok=>{
@@ -2354,7 +2374,8 @@ function smSchedSave(){ const o=smSchedOpen; if(!o) return;
   smSchedClose(); renderAll();
   uiAlert('已排期 ✓ '+d+' '+st+'–'+et+'\n已写进派工排班表：'+who.join('、')+' 各一条 Site Meeting 任务（短信已发，等回 Y 变绿点）'); }
 /* 完成＝工程师在 App 现场提交（用户定）：后台不再手点完成，这里模拟 App 那一步 */
-function smAppDone(code,no){
+function smAppDone(code,no){ needStepUp('SM'+no+' 完成定格（定格后不可改 · 解锁下游收款）',()=>smAppDoneDo(code,no)); }
+function smAppDoneDo(code,no){
   const d=SMD[code], s=d.sm[no-1];
   if(s.done){ uiAlert('SM'+no+' 已于 '+s.done+' 完成定格——定格不可改'); return; }
   for(let k=1;k<no;k++){ const prev=d.sm[k-1];
@@ -2731,6 +2752,7 @@ function bfConfirm(who,md,d){
     '挂起解除，账目进入下一个月的工时计算；财务侧已显示为已补录'); }
 /* 大表行内直改：改前值→后值 全留痕；注释改动会把对方部门置回「未读」 */
 function preEdit(code,field,value,label){ const p=BIGPD.find(x=>x.code===code); if(!p) return;
+  if(secConflict('大表直改「'+label+'」')) return;
   const old=p[field]; if(String(old||'')===String(value||'')) return;
   p[field]=value;
   if(field==='noteF') p.noteFr='unread';
@@ -2853,6 +2875,85 @@ function optDel(list,i){ const v=list[i]; list.splice(i,1);
   opLog('','删除'+(OPT_LABEL.get(list)||'')+'选项','「'+v+'」移除 —— 已填过它的历史数据不受影响',['presales']);
   renderAll(); }
 /* ═══ 页内提示与确认（二十八轮：Artifact 沙箱屏蔽原生 alert/confirm/prompt —— 全部自制）═══ */
+/* ═══ 五十三轮：并发与多设备安全（用户 2026-08-03 定）═══
+   起因（用户原话场景）：部门管理员在办公室电脑打开页面没关，回家用另一台改了东西，
+   同事碰了办公室那台 —— 那台还挂着他的登录态，屏幕上是旧数据。
+   ★纯阅读不会出事（读不写库）；出事的是「同事在旧页面上点了一下」：
+     旧快照覆盖新数据、日志还记成管理员本人做的，全程不报错 —— 正是本项目最怕的那类 bug。
+   四道防线（用户点名做 1/2/4/5，第 3 条「设备列表+一键注销」需要可吊销会话，留待后端阶段）：
+     ① 乐观锁：提交时带上打开这条记录时的版本号，对不上直接拒（契约 v0.35 已落库，42 张可改表全挂）
+     ② 空闲 30 分钟自动锁屏，解锁要重发短信码 —— 挡住「同事碰一下」最便宜的一道
+     ④ 不可逆操作（定格/发放/请款/停服）当场再验一次短信码 —— 「随手一点」过不去
+     ⑤ 页面停留久了顶部提醒数据可能过期；真撞上并发冲突，原句报错不静默覆盖 */
+const SEC={idleMin:30, stepMin:5, staleMin:10,
+  last:Date.now(), stepAt:0, loadedAt:Date.now(), locked:false, otherEdited:false, pending:null};
+const SEC_CODE='284917';                       // 演示码（跟登录页同一个）
+function secTouch(){ SEC.last=Date.now(); }
+function secIdleLeft(){ return SEC.idleMin*60000-(Date.now()-SEC.last); }
+function secStale(){ return Math.floor((Date.now()-SEC.loadedAt)/60000)>=SEC.staleMin; }
+function secRefresh(){ SEC.loadedAt=Date.now(); secTouch(); renderAll();
+  uiAlert('已刷新（演示）：重新取了一次最新数据 —— 正式系统这一下会把这页的数据和版本号都换成最新的'); }
+/* ── 锁屏 ── */
+function secLock(manual){ if(SEC.locked) return; SEC.locked=true; SEC.stepAt=0;
+  const box=document.getElementById('seclock'); if(!box) return;
+  box.innerHTML='<div style="background:var(--bg-panel);border-radius:12px;padding:26px 28px;'+
+    'width:min(430px,92vw);box-shadow:0 16px 50px rgba(0,0,0,.35)">'+
+    '<div style="font-size:var(--fs-lg);font-weight:600;margin-bottom:4px">🔒 页面已锁定</div>'+
+    '<div class="hint" style="margin-bottom:14px;line-height:1.9">'+
+      (manual?'（演示：手动锁屏）':'已经 <b>'+SEC.idleMin+' 分钟</b>没有操作')+
+      '，为安全起见页面已锁定。<br>请重新用短信验证码解锁 —— <b>这样别人碰到你没关的电脑也动不了</b>。<br>'+
+      '解锁后回到原来这一页，<b>没存的内容不会丢</b>。</div>'+
+    '<div class="field"><label>短信验证码（已发至 '+WHO[me].name+' 登记的手机）</label>'+
+      '<input id="sec-code" class="mono" placeholder="6 位数字" value="'+SEC_CODE+'"></div>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+      '<button class="btn" onclick="secLogout()">改用别的账号登录</button>'+
+      '<button class="btn btn-primary" onclick="secUnlock()">解锁</button></div>'+
+    '<div class="hint" style="margin-top:10px">演示码 <b class="mono">'+SEC_CODE+'</b>（正式系统这条码走公司统一短信号码发出）</div></div>';
+  box.style.display='grid'; }
+function secUnlock(){ const v=((document.getElementById('sec-code')||{}).value||'').trim();
+  if(v!==SEC_CODE){ uiAlert('验证码不对 —— 演示码是 '+SEC_CODE+'（正式系统错 5 次作废，要重新获取）'); return; }
+  SEC.locked=false; SEC.last=Date.now(); SEC.loadedAt=Date.now();
+  document.getElementById('seclock').style.display='none';
+  renderAll(); uiAlert('已解锁 ✓ 回到原来这一页，重新计 '+SEC.idleMin+' 分钟'); }
+function secLogout(){ SEC.locked=false; document.getElementById('seclock').style.display='none';
+  document.getElementById('app').style.display='none';
+  document.getElementById('login').style.display='grid'; }
+/* ── 不可逆操作二次验证：验过 stepMin 分钟内免再验 ── */
+function needStepUp(what,cb){
+  if(Date.now()-SEC.stepAt<=SEC.stepMin*60000){ cb(); return; }
+  SEC.pending={what,cb};
+  document.getElementById('stepbox').innerHTML=
+    '<div style="font-weight:600;margin-bottom:2px">🔐 请确认是你本人在操作</div>'+
+    '<div class="hint" style="margin-bottom:12px;line-height:1.9">你要做的是「<b>'+what+'</b>」——'+
+      '<b>这一步会定格 / 发出去 / 改不回来</b>。<br>'+
+      '万一你有电脑开着没关被人碰到，多这一道就点不动了。'+
+      '验一次，之后 <b>'+SEC.stepMin+' 分钟</b>内的同类操作免再验。</div>'+
+    '<div class="field"><label>短信验证码（发至 '+WHO[me].name+' 登记的手机）</label>'+
+      '<input id="step-code" class="mono" placeholder="6 位数字" value="'+SEC_CODE+'"></div>'+
+    '<div style="display:flex;gap:8px;justify-content:flex-end">'+
+      '<button class="btn" onclick="stepCancel()">取消</button>'+
+      '<button class="btn btn-primary" onclick="stepOk()">确认并继续</button></div>';
+  document.getElementById('stepback').style.display='block';
+  document.getElementById('stepbox').style.display='block'; }
+function stepCancel(){ SEC.pending=null;
+  document.getElementById('stepback').style.display='none';
+  const b=document.getElementById('stepbox'); b.style.display='none'; b.innerHTML=''; }
+function stepOk(){ const v=((document.getElementById('step-code')||{}).value||'').trim();
+  if(v!==SEC_CODE){ uiAlert('验证码不对 —— 演示码是 '+SEC_CODE); return; }
+  const p=SEC.pending; SEC.stepAt=Date.now(); stepCancel();
+  opLog('','二次验证通过','「'+p.what+'」—— 不可逆操作前的短信确认（'+SEC.stepMin+' 分钟内同类免再验）',[tab]);
+  if(p&&p.cb) p.cb(); }
+/* ── 并发冲突：提交时带的版本号对不上就拒（原句同契约 v0.35 触发器）── */
+function secConflict(what){
+  if(!SEC.otherEdited) return false;
+  SEC.otherEdited=false;
+  uiAlert('并发冲突：这条记录在你打开页面之后已经被人改过（当前是第 2 版，你手上这份是第 1 版）——\n'+
+    '请刷新页面看最新的内容再改，不要直接覆盖别人的修改\n（'+what+' 已取消，你填的内容还在）');
+  renderAll(); return true; }
+/* 空闲计时：每 30 秒看一次（演示里也真的会锁——放着别动 30 分钟就见得到） */
+setInterval(()=>{ if(!SEC.locked&&document.getElementById('app').style.display!=='none'
+  &&secIdleLeft()<=0) secLock(false); },30000);
+['click','keydown'].forEach(ev=>document.addEventListener(ev,()=>{ if(!SEC.locked) secTouch(); },true));
 function uiAlert(msg){ const box=document.getElementById('toasts'); if(!box) return;
   const d=document.createElement('div');
   d.style.cssText='background:#243447;color:#f5f8fa;font-size:12.5px;line-height:1.7;padding:10px 14px;'+
@@ -3102,7 +3203,13 @@ function renderAll(){
          <span class="grow"></span>
          <button class="btn" onclick="uiAlert('跳转到该项目全景：七步进度 / SM / 安装 / 交付 / 收款 / 维护 / 订阅')">项目全景 →</button>
        </div>`;
-  document.getElementById('main').innerHTML=bar+`<div class="main-inner">${view()}</div>`;
+  /* 五十三轮⑤：页面停留久了提醒数据可能过期——旧快照上点保存最容易覆盖别人的修改 */
+  const staleBar=secStale()?`<div class="warn-bar" style="margin:var(--sp-3) var(--sp-5) 0">
+     <span class="grow">⏳ 这页的数据是 <b class="mono">${new Date(SEC.loadedAt).toTimeString().slice(0,5)}</b> 取的，
+       已经过去 ${Math.floor((Date.now()-SEC.loadedAt)/60000)} 分钟 —— 期间别人可能已经改过。
+       <b>在旧数据上点保存最容易覆盖掉别人的修改</b>，建议先刷新。</span>
+     <button class="btn btn-primary" onclick="secRefresh()">刷新这页</button></div>`:'';
+  document.getElementById('main').innerHTML=bar+staleBar+`<div class="main-inner">${view()}</div>`;
 }
 
 /* ════════ 各页内容 ════════ */
@@ -4091,6 +4198,13 @@ ${ops([
 'decision/全局参数':()=>`
 <h2>全局参数</h2>
 <div class="page-sub">改一处全公司生效 · 改动全部进审计日志</div>
+${helpNote(`<b>并发与多设备安全</b>：一个人开着两台电脑、或者电脑没关被同事碰到，会出什么事？
+   <b>单纯看不会乱</b>（读不写库）；乱的是<b>在旧页面上点一下</b>——旧数据覆盖新数据，不报错、日志还记成你做的。
+   四道防线：<b>①乐观锁</b>（版本对不上直接拒，全库 42 张可改表已挂）·
+   <b>②空闲 ${SEC.idleMin} 分钟锁屏</b>（解锁要短信码，锁屏不丢未存内容）·
+   <b>④不可逆操作二次验证</b>（定格/发放/请款/停服，验过 ${SEC.stepMin} 分钟内同类免再验）·
+   <b>⑤页面过期提醒</b>（停留超 ${SEC.staleMin} 分钟出橙条建议刷新）。
+   还差「设备列表 + 一键注销那台」，要等会话改成可吊销的，已记欠账。`)}
 ${helpNote(`<b>发送人身份</b>：全公司对外只有<b>一个短信号码</b>（公司统一申请的澳洲号）和<b>三个邮箱身份</b>——
    财务 accounts@（催款/发票/对账）· 信息类 info@（售前联络/通知/提醒）· 工程管理 admin@（交付预约/排期/告知）。
    经办人只写署名，发件身份系统按部门自动带；已发出的记录定格当时的身份，改了只影响以后。
@@ -4116,6 +4230,41 @@ ${helpNote(`<b>发送人身份</b>：全公司对外只有<b>一个短信号码<
     <span class="muted">售前能看合同金额，因为签约价是他填的；库管能看库存成本，因为出库单价是他填的。
     各自只看本职需要的那部分钱。</span></div>
 </div>
+<div class="panel">
+  <div class="panel-head">★ 并发与多设备安全 <span class="muted" style="font-weight:400;margin-left:10px">
+    一个人两台电脑 / 电脑没关被同事碰到 —— 这一组就是防这个的</span></div>
+  <div class="panel-body">
+   <div class="hint" style="line-height:1.95;margin-bottom:var(--sp-3)">
+     <b>先说清楚一件事：单纯「看」不会把数据搞乱</b> —— 读不写库，另一台上的修改盖不掉你这台的。
+     真正会出事的是<b>在旧页面上点了一下</b>：那台电脑还挂着你的登录态，屏幕上是旧数据，
+     一点保存就把别人（或你自己在另一台上）刚改的内容<b>覆盖回去</b>，全程不报错、日志还记成你做的。
+     下面四道就是拦这件事的。</div>
+   <table><thead><tr><th style="width:150px">防线</th><th style="width:120px">当前设置</th><th>拦的是什么</th></tr></thead>
+    <tbody>
+     <tr><td><b>① 乐观锁</b></td><td><span class="pill p-green">全库已开</span></td>
+       <td class="hint">提交时带上打开这条记录时的版本号，对不上<b>直接拒</b>并给中文原句。
+         契约 v0.35 已落库，<b>42 张可改的表全挂上了</b>，以后新增表忘了挂，断言 INV-CC-01 直接报违规</td></tr>
+     <tr><td><b>② 空闲自动锁屏</b></td>
+       <td><input class="mono" style="width:66px" value="${SEC.idleMin}" onchange="secSet('idleMin','空闲锁屏分钟',this.value)"> 分钟</td>
+       <td class="hint">这么久没动就锁屏，解锁要重发短信码 —— <b>同事碰到你没关的电脑也动不了</b>。
+         锁屏不销毁会话：解锁后回原来那页，没存的内容不丢
+         <button class="btn" style="margin-left:8px;padding:2px 8px;font-size:11px" onclick="secLock(true)">演示：立即锁屏</button></td></tr>
+     <tr><td><b>④ 不可逆操作二次验证</b></td>
+       <td><input class="mono" style="width:66px" value="${SEC.stepMin}" onchange="secSet('stepMin','二次验证有效分钟',this.value)"> 分钟</td>
+       <td class="hint">定格 / 发放 / 请款 / 停服这一类，当场再验一次短信码；验过之后这么久内同类免再验。
+         已挂：<b>SM 完成定格 · 确认交付 · 文档邮件发放 · 标记请款(S1-3/S4) · 拒付停服</b></td></tr>
+     <tr><td><b>⑤ 页面过期提醒</b></td>
+       <td><input class="mono" style="width:66px" value="${SEC.staleMin}" onchange="secSet('staleMin','页面过期提醒分钟',this.value)"> 分钟</td>
+       <td class="hint">页面停留超过这么久，顶部出橙条提示数据可能已经变了、建议先刷新
+         <label style="margin-left:8px"><input type="checkbox" style="width:auto"${SEC.otherEdited?' checked':''}
+           onchange="SEC.otherEdited=this.checked;renderAll()"> 演示：模拟「另一台已经改过这条」</label>
+         <div>勾上后去<b>售前大表</b>改一格、或在<b>工程项目列表</b>保存负责人，就会撞上并发冲突原句</div></td></tr>
+    </tbody></table>
+   <div class="hint" style="margin-top:var(--sp-3)">
+     <b>还差第 ③ 条（本轮没做）</b>：账号页显示「哪几台设备在线 · 最后活动时间 · 一键注销那台」。
+     现在的会话是无状态加密 Cookie，<b>踢不掉某一台</b>，只能停用整个账号 ——
+     要做成可吊销的（会话表 + 撤销标记），属于后端阶段的架构改动，已记进欠账。</div>
+  </div></div>
 <div class="panel">
   <div class="panel-head">★ 发送人身份（全公司统一）<span class="muted" style="font-weight:400;margin-left:10px">
     对外发出的每一条短信、每一封邮件都用这里的身份 · 改动进审计日志</span></div>

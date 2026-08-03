@@ -61,6 +61,7 @@ export async function POST(req: Request): Promise<Response> {
     s.stage = "full";
     s.amr = ["sms"];
     s.attempts = 0;
+    s.seen = Date.now();          // 空闲 30 分钟锁屏的起点
     await s.save();
     return Response.json({ ok: true, next: "done" });
   } catch (e) {

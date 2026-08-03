@@ -10,6 +10,9 @@ const { chromium } = require('playwright');
   const fails=[];
   const ok=(cond,label)=>{ if(!cond) fails.push(label); };
 
+  // 五十三轮：跑全套时先把「不可逆操作二次验证」放行（专门的断言块在文件末尾单测它）
+  await page.evaluate(()=>{ SEC.stepAt = Date.now() + 3600000; });
+
   // 1) 全角色 × 全页面渲染
   let rendered=0;
   const roles=['admin','presales','finance','warehouse','maintenance','eng'];
@@ -1748,6 +1751,78 @@ const { chromium } = require('playwright');
   await page.screenshot({path:__dirname+'/shot_文档库.png'});
   await page.evaluate(()=>{go('eng','操作日志');});
   await page.screenshot({path:__dirname+'/shot_操作日志查阅.png'});
+
+  // ═══ 五十三轮：并发与多设备安全（锁屏 / 二次验证 / 冲突原句 / 过期提醒）═══
+  const sec=await page.evaluate(()=>{ const R={}; const l0=OPLOG.length;
+    loginAs('admin'); go('decision','全局参数');
+    let h=document.getElementById('main').innerHTML;
+    R.panel=h.includes('并发与多设备安全')&&h.includes('乐观锁')&&h.includes('全库已开')
+      &&h.includes('演示：立即锁屏')&&h.includes('哪几台设备在线')&&h.includes('踢不掉某一台');
+    R.defaults=SEC.idleMin===30&&SEC.stepMin===5&&SEC.staleMin===10;
+    // 参数门禁
+    secSet('idleMin','空闲锁屏分钟',0);   R.gZero=SEC.idleMin===30;
+    secSet('idleMin','空闲锁屏分钟',999); R.gMax=SEC.idleMin===30;
+    secSet('idleMin','空闲锁屏分钟',45);  R.set=SEC.idleMin===45&&OPLOG[0].action==='修改安全参数';
+    SEC.idleMin=30;
+    // ② 锁屏
+    secLock(true);
+    R.lockShown=document.getElementById('seclock').style.display==='grid'&&SEC.locked;
+    document.getElementById('sec-code').value='000000'; secUnlock();
+    R.gCode=SEC.locked;                                   // 错码不解锁
+    document.getElementById('sec-code').value='284917'; secUnlock();
+    R.unlocked=!SEC.locked&&document.getElementById('seclock').style.display==='none';
+    // ④ 二次验证：没验过 → 弹窗且动作不执行
+    const keep=SEC.stepAt; SEC.stepAt=0;
+    let ran=false; needStepUp('测试动作',()=>{ran=true;});
+    R.stepShown=document.getElementById('stepbox').style.display==='block'&&!ran;
+    document.getElementById('step-code').value='111111'; stepOk();
+    R.gStepCode=!ran;                                     // 码不对不执行
+    document.getElementById('step-code').value='284917'; stepOk();
+    R.stepOk=ran&&SEC.stepAt>0&&OPLOG[0].action==='二次验证通过';
+    let ran2=false; needStepUp('第二个动作',()=>{ran2=true;});   // 有效期内免再验
+    R.stepReuse=ran2&&document.getElementById('stepbox').style.display!=='block';
+    SEC.stepAt=0; finSuspend('KX-2026-0160');
+    R.hooked=document.getElementById('stepbox').style.display==='block'
+      &&document.getElementById('stepbox').innerHTML.includes('拒付停服');
+    stepCancel(); SEC.stepAt=keep;
+    // ⑤ 并发冲突原句
+    loginAs('presales'); go('presales','项目列表');
+    const b=BIGPD.find(x=>x.code==='KX-2026-0201'); const nick0=b.nick;
+    SEC.otherEdited=true;
+    preEdit('KX-2026-0201','nick','被覆盖的昵称','昵称');
+    R.conflict=b.nick===nick0&&!SEC.otherEdited;          // 没改成 + 标志复位
+    preEdit('KX-2026-0201','nick','正常改名','昵称');
+    R.afterOk=b.nick==='正常改名';
+    b.nick=nick0;
+    // ⑤ 过期橙条
+    SEC.loadedAt=Date.now()-11*60000; renderAll();
+    R.stale=document.getElementById('main').innerHTML.includes('建议先刷新');
+    secRefresh();
+    R.refreshed=!document.getElementById('main').innerHTML.includes('建议先刷新');
+    OPLOG.splice(0,OPLOG.length-l0); SEC.stepAt=Date.now()+3600000; renderAll();
+    return JSON.stringify(R);});
+  const S53=JSON.parse(sec);
+  ok(S53.panel,'全局参数缺「并发与多设备安全」面板');
+  ok(S53.defaults,'安全参数默认值不对（应 30/5/10 分钟）');
+  ok(S53.gZero&&S53.gMax,'安全参数填 0 / 超大值未被拦');
+  ok(S53.set,'改安全参数未生效/未留痕');
+  ok(S53.lockShown,'手动锁屏未弹出锁屏层');
+  ok(S53.gCode,'锁屏用错误验证码竟解开了（应拦）');
+  ok(S53.unlocked,'正确验证码未能解锁');
+  ok(S53.stepShown,'不可逆操作未弹二次验证 / 动作提前执行了');
+  ok(S53.gStepCode,'二次验证码不对竟执行了动作（应拦）');
+  ok(S53.stepOk,'二次验证通过后动作未执行 / 未留痕');
+  ok(S53.stepReuse,'有效期内的同类操作不该再验一次');
+  ok(S53.hooked,'拒付停服未挂二次验证');
+  ok(S53.conflict,'并发冲突未拦住陈旧覆盖');
+  ok(S53.afterOk,'冲突复位后正常修改应能成功');
+  ok(S53.stale,'页面停留过久未出「数据可能过期」橙条');
+  ok(S53.refreshed,'刷新后橙条应消失');
+  await page.evaluate(()=>{loginAs('admin');go('decision','全局参数');});
+  await page.screenshot({path:__dirname+'/shot_并发安全.png'});
+  await page.evaluate(()=>{secLock(true);});
+  await page.screenshot({path:__dirname+'/shot_锁屏.png'});
+  await page.evaluate(()=>{SEC.locked=false;document.getElementById('seclock').style.display='none';});
 
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
