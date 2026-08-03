@@ -985,28 +985,30 @@ const { chromium } = require('playwright');
     // 门禁①：过去的日子不能排
     const days=weekDays(0).map(d=>ymdS(d));
     const past=days.find(d=>d<todayS());
-    let g1=true; if(past){ schAdd('阿强',past); g1=!document.getElementById('sc-min'); }
+    let g1=true; if(past){ schAdd('阿强',past); g1=!document.getElementById('sc-st'); }
     // 正常新增（未来日）：必须选项目
     const fut=weekDays(1).map(d=>ymdS(d))[2];
     schAdd('阿强',fut);
-    const opened=!!document.getElementById('sc-min');
+    const opened=!!document.getElementById('sc-st');
     document.getElementById('sc-t').value='安装'; schPjToggle();
     document.getElementById('sc-pj').value='';
-    document.getElementById('sc-min').value='90';
+    document.getElementById('sc-st').value='09:00';
+    document.getElementById('sc-et').value='10:30';   // 90 分
     const n0=SCH.length; schSave();
     const g2=SCH.length===n0;                                            // 无项目 → 拦
     document.getElementById('sc-pj').value='KX-2026-0188';
-    document.getElementById('sc-min').value='95';                        // 非 15 倍数 → 自动对齐 90
     document.getElementById('sc-note').value='花园廊架灯控';
     document.getElementById('sc-rem').value='灯带未接线';
     schSave();
-    const added=SCH.length===n0+1&&SCH[SCH.length-1].min===90&&SCH[SCH.length-1].pj==='KX-2026-0188';
+    const L=SCH[SCH.length-1];
+    const added=SCH.length===n0+1&&L.min===90&&L.st==='09:00'&&L.et==='10:30'&&L.pj==='KX-2026-0188';
     const notiAdd=NOTIF[0].what.includes('新排工')&&NOTIF[0].to[0].how==='App 通知';
     const logAdd=OPLOG[0].action==='新增排班';
     // 倒休余额门禁：老李余额 4h，排 8h → 拦
     schAdd('老李',fut);
     document.getElementById('sc-t').value='倒休'; schPjToggle();
-    document.getElementById('sc-min').value='480';
+    document.getElementById('sc-st').value='09:00';
+    document.getElementById('sc-et').value='17:00';   // 8h 倒休 > 余额
     const n1=SCH.length; schSave();
     const g3=SCH.length===n1; schClose();
     // 时长换算
@@ -1022,7 +1024,7 @@ const { chromium } = require('playwright');
     schOff=1; renderAll(); schLockWeek();
     const wkLocked=!!SCH_WEEK[ymdS(weekDays(1)[0])];
     schAdd('阿强',fut);
-    const g4=!document.getElementById('sc-min');
+    const g4=!document.getElementById('sc-st');
     schLockWeek();                                                        // 解锁还原
     // 项目上报记录
     schRepOpen('KX-2026-0188');
@@ -1125,7 +1127,8 @@ const { chromium } = require('playwright');
     const mtCarry=document.getElementById('sc-rem').textContent.includes('主卧面板偶发失联');
     document.getElementById('sc-pjq').value='刘宅'; schPjFilter();
     const mtGap=document.getElementById('sc-rem').textContent.includes('没有留下剩余工作记录');
-    document.getElementById('sc-min').value='120';
+    document.getElementById('sc-st').value='09:00';
+    document.getElementById('sc-et').value='11:00';
     const c0=SCH.length; schSave();
     const mtBlocked=SCH.length===c0;                      // 上次没填 → 拦
     document.getElementById('sc-pjq').value='王宅'; schPjFilter();
@@ -1134,7 +1137,8 @@ const { chromium } = require('playwright');
     // 倒休保存不带内容/剩余
     schAdd('小陈',fut);                                   // 小陈倒休余额 12.5h（老李 4h 本周已排满）
     document.getElementById('sc-t').value='倒休'; schPjToggle();
-    document.getElementById('sc-min').value='120'; schSave();
+    document.getElementById('sc-st').value='13:00';
+    document.getElementById('sc-et').value='15:00'; schSave();
     const tl=SCH[SCH.length-1];
     const toilSaved=tl.type==='倒休'&&tl.pj===''&&tl.note===''&&tl.remain==='';
     SCH.splice(c0,2); OPLOG.splice(0,2); NOTIF.splice(0,2); schOff=0; renderAll(); loginAs('finance');
@@ -1149,6 +1153,50 @@ const { chromium } = require('playwright');
   ok(r43.mtGap&&r43.mtBlocked,'上次维护没填剩余时未提示/未拦下派工');
   ok(r43.saved,'保存后剩余工作未写入任务');
   ok(r43.toilSaved,'倒休任务保存时不该带项目/内容/剩余');
+  // 四十四轮：每段活有起止时间（开始灵活/截止 15 分钟档）· 时长自动算 · 同人当天不许重叠
+  const w44=await page.evaluate(()=>{
+    loginAs('eng'); schOff=0; go('eng','派工排班');
+    const h=document.getElementById('main').innerHTML;
+    const shown=h.includes('10:00–19:45')&&h.includes('07:30–16:00');       // 格子显示起止
+    const late=SCH.find(x=>x.st==='10:00'&&x.et==='19:45');                 // 用户举例：上午休息 10 点开工
+    const lateOk=!!late&&late.min===585;
+    const fut=weekDays(1).map(d=>ymdS(d))[4];
+    schAdd('阿强',fut);
+    const slots=[...document.getElementById('sc-et').options].map(o=>o.value);
+    const grid15=slots.includes('16:15')&&slots.includes('16:30')&&!slots.includes('16:20');
+    document.getElementById('sc-t').value='安装'; schPjToggle();
+    document.getElementById('sc-pjq').value='mosman'; schPjFilter();
+    document.getElementById('sc-st').value='10:00';
+    document.getElementById('sc-et').value='09:00'; schMinPrev();           // 倒挂
+    const badPrev=document.getElementById('sc-prev').textContent.includes('截止时间必须晚于开始时间');
+    const n0=SCH.length; schSave();
+    const g1=SCH.length===n0;
+    document.getElementById('sc-et').value='18:45'; schMinPrev();
+    const prevOk=document.getElementById('sc-prev').textContent.includes('8.75 h');
+    schSave();
+    const saved=SCH.length===n0+1&&SCH[SCH.length-1].min===525;
+    // 重叠门禁：同一人同一天再排 14:00–16:00（落在 10:00–18:45 内）
+    schAdd('阿强',fut);
+    document.getElementById('sc-t').value='安装'; schPjToggle();
+    document.getElementById('sc-pjq').value='mosman'; schPjFilter();
+    document.getElementById('sc-st').value='14:00';
+    document.getElementById('sc-et').value='16:00';
+    const n1=SCH.length; schSave();
+    const g2=SCH.length===n1;
+    // 不重叠可排：19:00–20:00
+    document.getElementById('sc-st').value='19:00';
+    document.getElementById('sc-et').value='20:00'; schSave();
+    const g3=SCH.length===n1+1;
+    SCH.splice(n0,2); OPLOG.splice(0,2); NOTIF.splice(0,2); schOff=0; renderAll(); loginAs('finance');
+    return JSON.stringify({shown,lateOk,grid15,badPrev,g1,prevOk,saved,g2,g3});});
+  const r44=JSON.parse(w44);
+  ok(r44.shown,'格子未显示起止时间');
+  ok(r44.lateOk,'上午休息 10 点开工的实况未落进演示（10:00–19:45 = 9.75h）');
+  ok(r44.grid15,'截止时间不是 15 分钟一档');
+  ok(r44.badPrev&&r44.g1,'截止早于开始未提示/未拦');
+  ok(r44.prevOk&&r44.saved,'起止时长自动算错（10:00–18:45 应 8.75h）');
+  ok(r44.g2,'同一人当天时间重叠未被拦');
+  ok(r44.g3,'不重叠的第二段应能排进去');
   const plChk=await page.evaluate(()=>{go('fin','项目列表');pjFilter=null;renderAll();
     const h=document.getElementById('main').innerHTML;pjFilter=null;
     return h.includes('<b>王宅</b>');});
