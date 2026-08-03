@@ -645,7 +645,7 @@ const { chromium } = require('playwright');
     const finNoStuck=!document.getElementById('main').innerHTML.includes('日结挂起');
     const engTodo=TODOS.some(x=>x.dept==='eng'&&x.ev.includes('日结挂起')&&x.act.includes('每日上报'));
     loginAs('eng'); go('eng','总览');
-    const engStuck=document.getElementById('main').innerHTML.includes('日结挂起 2 天（小陈 07/29–30）');
+    const engStuck=document.getElementById('main').innerHTML.includes('日结挂起 2 天');   // 三十九轮起由 engStuckRows 现算派生
     go('eng','每日上报');
     const eh=document.getElementById('main').innerHTML;
     const engPage=eh.includes('挂起待补录')&&eh.includes('07/29')&&eh.includes('07/30')
@@ -875,6 +875,103 @@ const { chromium } = require('playwright');
   ok(r38.att,'SM 已完成卡缺到场打卡记录（每人·本场任务）');
   ok(r38.flag,'围栏外异常标记未显示');
   ok(r38.layer&&r38.collect,'帮助/未完成卡缺「入场离场=通用层，采集在 App」说明');
+  // 三十九轮：工程总览重做（双计数+停留超阈值 · 派工按小时 · 挂起 · 超期交接 · 卡点汇总）
+  const w39=await page.evaluate(()=>{
+    loginAs('eng'); go('eng','总览');
+    const h=document.getElementById('main').innerHTML;
+    const five=h.includes('在建项目')&&h.includes('维护项目')&&h.includes('今日派工')
+      &&h.includes('未记录工时')&&h.includes('超期交接');
+    const noRenci=!h.includes('人次')||h.includes('人次没有意义');   // 卡片不得再用人次
+    const hours=h.includes('38 h');                                  // 今日派工=小时合计
+    const bOver=h.includes('1 个停留超 120 天'), mOver=h.includes('1 个停留超 90 天');
+    // 卡片点开明细
+    engPick('build');
+    const bd=document.getElementById('main').innerHTML;
+    const bdOk=bd.includes('在建项目 · 状态停留')&&bd.includes('赵宅')&&bd.includes('超 ');
+    engPick('dispatch');
+    const dd=document.getElementById('main').innerHTML;
+    const ddOk=dd.includes('今日派工明细')&&dd.includes('10 h')&&dd.includes('38 h')&&dd.includes('外包');
+    engPick('handoff');
+    const hd=document.getElementById('main').innerHTML;
+    const hdOk=hd.includes('交接审批')&&hd.includes('HO-0142-07')&&hd.includes('确认接收')&&hd.includes('催办');
+    const n0=HANDOFF.filter(x=>!x.ack).length;
+    hoAck('HO-0142-07');
+    const ackOk=HANDOFF.find(x=>x.id==='HO-0142-07').ack&&OPLOG[0].action==='确认接收交接'
+      &&HANDOFF.filter(x=>!x.ack).length===n0-1;
+    const cardAfter=document.getElementById('main').innerHTML.includes('超期交接');
+    engPick('handoff');                                              // 收起
+    const stuck=document.querySelectorAll('#engstuck tbody tr').length;
+    const sh=document.getElementById('main').innerHTML;
+    const stuckMix=sh.includes('在建停留')&&sh.includes('维护停留')&&sh.includes('日结挂起')
+      &&sh.includes('交接未确认')&&sh.includes('安装剩余');
+    // 还原
+    const hh=HANDOFF.find(x=>x.id==='HO-0142-07'); hh.ack=false; hh.ackAt=undefined; hh.ackBy=undefined;
+    OPLOG.shift(); engCard=null; loginAs('finance');
+    return JSON.stringify({five,noRenci,hours,bOver,mOver,bdOk,ddOk,hdOk,ackOk,cardAfter,stuck,stuckMix});});
+  const r39=JSON.parse(w39);
+  ok(r39.five,'工程总览五块卡片不全');
+  ok(r39.noRenci,'今日派工仍在用「人次」');
+  ok(r39.hours,'今日派工未按小时合计（应 38 h）');
+  ok(r39.bOver&&r39.mOver,'在建/维护停留超阈值计数未显示');
+  ok(r39.bdOk,'点开在建停留明细失败（应含赵宅+超阈值）');
+  ok(r39.ddOk,'点开今日派工明细失败（应含外包 10h 与合计 38h）');
+  ok(r39.hdOk,'点开交接审批明细失败（确认/催办按钮）');
+  ok(r39.ackOk,'确认接收交接未生效/未留痕');
+  ok(r39.stuck>=5&&r39.stuckMix,`卡点表未汇总全部异常（实际 ${r39.stuck} 行）`);
+  // 四十轮：工程设置阈值统一可调 + 工程项目列表（六态/阶段列/隐藏金额/负责人指定）
+  const w40=await page.evaluate(()=>{
+    loginAs('eng'); go('eng','设置');
+    const sh=document.getElementById('main').innerHTML;
+    const setOk=sh.includes('在建项目（施工中）停留天数')&&sh.includes('维护项目（项目维护中）停留天数')
+      &&sh.includes('交接确认 SLA')&&sh.includes('打卡围栏半径');
+    engSetVal('maintStallDays','维护停留天数',300);   // 刘宅停留 205 天 → 阈值 300 后不再超
+    go('eng','总览');
+    const mNo=document.getElementById('main').innerHTML.includes('无停留超阈值')
+      &&engStay('maint').every(x=>!x.over);
+    const logOk=OPLOG[0].action==='修改工程设置';
+    engSetVal('maintStallDays','维护停留天数',90); OPLOG.shift(); OPLOG.shift();
+    go('eng','项目列表');
+    const h=document.getElementById('main').innerHTML;
+    const six=['全部','Site Meeting 阶段','施工中','项目交付','项目维护','已停服'].every(s=>h.includes('>'+s));
+    const noMoney=!h.includes('合同额')&&!h.includes('已收')&&!h.includes('利润率');
+    const scope=h.includes('罗宅')&&h.includes('张宅')&&!h.includes('黄宅')&&!h.includes('李宅');
+    const stageCol=h.includes('工程进度（当前阶段）')&&h.includes('SM 1/4 已完成')&&h.includes('SM1~4 已过');
+    const susp=h.includes('已停服')&&h.includes('款项未到位');
+    const rows0=document.querySelectorAll('#engpj tbody tr').length;
+    engPjF='Site Meeting 阶段'; renderAll();
+    const smRows=document.querySelectorAll('#engpj tbody tr').length;
+    engPjF='已停服'; renderAll();
+    const spRows=document.querySelectorAll('#engpj tbody tr').length;
+    const spOnly=document.getElementById('main').innerHTML.includes('张宅');
+    engPjF='全部'; renderAll();
+    // 负责人指定：候选下拉 + 保存定为标注 + 留痕通知
+    engLeadToggle('KX-2026-0203');
+    const box=document.getElementById('el-b-KX-2026-0203');
+    const hasCand=!!box&&[...box.options].some(o=>o.text.includes('MetroCon'));
+    box.value='Ken · MetroCon';
+    document.getElementById('el-e-KX-2026-0203').value='Leo · VoltPro';
+    engLeadSave('KX-2026-0203');
+    const L=ENG_LEAD['KX-2026-0203'];
+    const saved=L&&L.fixed&&L.builder==='Ken · MetroCon'&&L.elec==='Leo · VoltPro';
+    const pin=document.getElementById('main').innerHTML.includes('📌')&&document.getElementById('main').innerHTML.includes('工程指定 · 陈工');
+    const lg=OPLOG[0].action==='指定项目负责人'&&OPLOG[0].detail.includes('Builder Mike · BuildCo → Ken · MetroCon');
+    const nt=NOTIF[0].what.includes('工程指定负责人');
+    delete ENG_LEAD['KX-2026-0203']; OPLOG.shift(); NOTIF.shift(); engLeadOpen=null; renderAll();
+    loginAs('finance');
+    return JSON.stringify({setOk,mNo,logOk,six,noMoney,scope,stageCol,susp,rows0,smRows,spRows,spOnly,hasCand,saved,pin,lg,nt});});
+  const r40=JSON.parse(w40);
+  ok(r40.setOk,'工程设置缺四个阈值字段');
+  ok(r40.mNo&&r40.logOk,'改阈值未即时生效/未留痕');
+  ok(r40.six,'工程项目列表六态筛选不全');
+  ok(r40.noMoney,'工程项目列表仍显示金额列（应全部隐藏）');
+  ok(r40.scope,'工程列表范围错（应只含进了工程线的项目）');
+  ok(r40.stageCol,'工程进度列未显示当前阶段明细');
+  ok(r40.susp,'「已停服」态未显示（取代已流失/已烂尾）');
+  ok(r40.rows0===7&&r40.smRows===2&&r40.spRows===1&&r40.spOnly,
+     `阶段筛选计数错（全部 ${r40.rows0}/应7 · SM阶段 ${r40.smRows}/应2 · 已停服 ${r40.spRows}/应1）`);
+  ok(r40.hasCand,'负责人候选下拉未带售前采集值');
+  ok(r40.saved&&r40.pin,'指定负责人未保存/未固定为📌标注');
+  ok(r40.lg&&r40.nt,'指定负责人未留前后痕/未通知下游');
   const plChk=await page.evaluate(()=>{go('fin','项目列表');pjFilter=null;renderAll();
     const h=document.getElementById('main').innerHTML;pjFilter=null;
     return h.includes('<b>王宅</b>');});
