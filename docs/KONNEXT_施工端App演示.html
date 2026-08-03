@@ -116,6 +116,12 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
         <button class="btn sec" onclick="this.textContent='已确认提货 ✓';this.disabled=true">确认提货</button>
       </div>
       <div class="card">
+        <div class="row"><h4 style="flex:1"><span class="mono">KX-2026-0203</span> 罗宅</h4><span class="pill p-w">SM2 布线交流</span></div>
+        <div class="hint">📍 3 Springdale Rd, Killara NSW · 09:00–12:00（办公室排的）</div>
+        <div class="hint">出发前清单：布线图（最新版）· 线材清单（按方案）· KNX 测试仪</div>
+        <button class="btn sec" onclick="appGo('sm')">开始 Site Meeting →</button>
+      </div>
+      <div class="card">
         <div class="row"><h4 style="flex:1">🧾 我要报销</h4></div>
         <div class="hint">垫钱买了材料 / 打车送料 / 换了工具？拍收据提交，财务审批</div>
         <button class="btn sec" onclick="appGo('exp')">去报销 →</button>
@@ -214,6 +220,43 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
       <button onclick="appGo('today')"><span class="ic">📋</span>今日</button>
       <button onclick="appGo('punch')"><span class="ic">📍</span>打卡</button>
       <button class="on"><span class="ic">✍️</span>上报</button>
+      <button onclick="appGo('me')"><span class="ic">👤</span>我的</button>
+    </div>
+  </div>
+
+  <!-- Site Meeting 现场提交：★完成定格发生在这里（后台不点完成） -->
+  <div class="scr" id="s-sm">
+    <div class="top"><b>SM2 布线交流 · 罗宅</b><span class="who">现场提交即完成</span></div>
+    <div class="body">
+      <div class="card">
+        <h4>① 出发前清单（到场后再确认一次）</h4>
+        <div class="chk"><input type="checkbox" checked><span>布线图（最新版）</span></div>
+        <div class="chk"><input type="checkbox" checked><span>线材清单（按方案）</span></div>
+        <div class="chk"><input type="checkbox"><span>KNX 测试仪</span></div>
+      </div>
+      <div class="card">
+        <h4>② 现场记录（办公室按这个存档）</h4>
+        <textarea rows="3" placeholder="· 与电工过完布线图 v3&#10;· 线材点收：KNX 总线 300m&#10;· 地暖联动点位确认 6 处"></textarea>
+      </div>
+      <div class="card">
+        <h4>③ 现场照片</h4>
+        <button class="btn sec" onclick="this.textContent='✓ 已拍 4 张 · 点击继续拍';this.style.borderColor='#16a34a'">📷 拍照片（多张）</button>
+        <div class="hint">照片和记录办公室能看到（Site Meeting 页 →「现场记录」）</div>
+      </div>
+      <div class="card" style="border-style:dashed">
+        <h4>④ 现场变更（有就登记，没有就跳过）</h4>
+        <div class="hint">加 / 减 / 移位 —— 金额和工时现场都不谈，办公室估价</div>
+        <button class="btn sec">＋ 登记一条变更</button>
+      </div>
+      <button class="btn ok" onclick="this.textContent='已提交 ✓ 状态自动变「已完成」并定格';this.disabled=true">提交 · 完成本场 SM</button>
+      <div class="note">提交即<b>完成定格</b>，办公室那边状态自动变「已完成」——不用他们再点一次。
+      <br>SM3 还要多一步：<b>电工现场签字</b>（签字板）。<br>
+      ★<b>SM3 提交 → 财务可开 S2 物料款；SM4 提交 → 可开 S3 人工款</b>（系统自动通知财务）。</div>
+    </div>
+    <div class="tabs">
+      <button onclick="appGo('today')"><span class="ic">📋</span>今日</button>
+      <button onclick="appGo('punch')"><span class="ic">📍</span>打卡</button>
+      <button onclick="appGo('report')"><span class="ic">✍️</span>上报</button>
       <button onclick="appGo('me')"><span class="ic">👤</span>我的</button>
     </div>
   </div>
@@ -322,7 +365,8 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
 </div></div>
 
 <p class="caption">正式版=网页 App（手机浏览器打开即用，无需装应用）。以上界面对应契约里已定的表：
-work_log 打卡 · daily_report 每日上报 · install_item 安装项 · maintenance_case 现场三样 · expense 项目报销（收据图必填）· 出库提货确认。
+work_log 打卡 · daily_report 每日上报 · site_meeting 现场提交（记录/照片/签字 → 完成定格）· install_item 安装项 ·
+maintenance_case 现场三样 · expense 项目报销（收据图必填）· 出库提货确认。
 「今日任务」里点安装卡片可进<a style="color:var(--accent);cursor:pointer" onclick="appGo('install')">安装清单</a>演示。</p>
 
 <script>

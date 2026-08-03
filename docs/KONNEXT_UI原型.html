@@ -352,6 +352,10 @@ tbody tr:hover{background:var(--bg-elevated)}
 <div id="schbox" style="display:none;position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);z-index:89;
   background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
   width:min(470px,92vw);max-height:90vh;overflow-y:auto;padding:18px 20px"></div>
+<div id="smback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:90" onclick="smSchedClose()"></div>
+<div id="smbox" style="display:none;position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);z-index:91;
+  background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
+  width:min(500px,93vw);max-height:90vh;overflow-y:auto;padding:18px 20px"></div>
 <div id="rtback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:90" onclick="schRouteClose()"></div>
 <div id="rtbox" style="display:none;position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);z-index:91;
   background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
@@ -407,7 +411,7 @@ const DEPT = {
 const COMPANY_PAGES=new Set([
   'proc/总览','proc/物料主表','proc/汇率','proc/采购单','proc/补货建议','proc/调价历史','proc/RMA索赔',
   'wh/总览','wh/入库','wh/盘点','wh/库存流水','wh/期初移库','wh/RMA登记',
-  'eng/总览','eng/派工排班','eng/每日上报','eng/人员与外包','eng/文档库','eng/设置',
+  'eng/总览','eng/派工排班','eng/每日上报','eng/人员与外包','eng/文档库','eng/设置','eng/Site Meeting',
   'fin/财务节点','fin/项目收款S1-S3','fin/尾款结算S4与Var','fin/运维财务支持','fin/催账和停服',
   'fin/工资数据','fin/项目报销','fin/成本与利润率','fin/设置','fin/总览','fin/工资','presales/总览','presales/项目列表','presales/项目状态表','presales/设置','mt/总览',
   'presales/操作日志','eng/操作日志','proc/操作日志','wh/操作日志','fin/操作日志','mt/操作日志',
@@ -1448,6 +1452,15 @@ const SMD={
    {na:'老项目 · 上线前已进场'},{na:'老项目 · 上线前已布线'},
    {na:'老项目 · 上线前已验线'},{na:'老项目 · 上线前已封板'}]},
 };
+/* 现场记录与照片（演示；正式＝site_meeting.content(jsonb) + attachments 存储链接） */
+const SM_REC={
+ 'KX-2026-0188|1':{rec:['到场认人：Builder Sam、电工 Leo 均在场','现场分包商补采集 2 家（泥水/木工）','布线起点定在车库配电箱'],ph:['入户全景','配电箱现状','车库起点']},
+ 'KX-2026-0188|2':{rec:['与电工过完布线图 v3','按方案带线：KNX 总线 300m、网线 24 箱','地暖联动点位确认 6 处'],ph:['布线图对照','线材点收','地暖分水器']},
+ 'KX-2026-0188|3':{rec:['逐路验线：主回路 18 路全通','现场登记变更 1 条：花园廊架加 4 路灯控','电工 Leo 现场签字确认'],ph:['主回路测试','廊架点位','签字单','墙内走线']},
+ 'KX-2026-0142|3':{rec:['验线通过','客厅加两个开关点位（业主现场提出）','车库两个感应器取消'],ph:['客厅点位','车库现状','签字单']},
+ 'KX-2026-0203|1':{rec:['围栏圆心校准完成（误差 8m）','分包商联系表已采集','布线起点：一层弱电箱'],ph:['入户','弱电箱','外立面']},
+};
+const smRec=(code,no)=>SM_REC[code+'|'+no]||null;
 function smChkList(code,no){ const d=SMD[code]; const sol=(d&&d.sol)||'';
   return SM_CHK[no].filter(c=>!(c.includes('◇有KNX')&&!sol.includes('KNX'))
                            && !(c.includes('◇有地暖')&&!sol.includes('有地暖'))); }
@@ -1464,6 +1477,143 @@ function smNa(code,no){
   uiPrompt('标「不适用」原因（老项目/特殊情况，留痕）：',v=>{
     if(!v||!String(v).trim()) return; const s=SMD[code].sm[no-1]; s.na=String(v).trim();
     opLog(code,'SM'+no+' 标不适用',s.na,['eng']); renderAll(); }); }
+let smF='全部', smQ='', smDetail=null, smSchedOpen=null;
+function smPick(code){ smDetail=(smDetail===code?null:code); renderAll(); }
+/* 现场记录 · 照片 · 到场打卡（已完成的场次才有） */
+function smRecOpen(code,no){
+  const d=SMD[code], s=d.sm[no-1], p=PROJECTS.find(x=>x.code===code)||{};
+  const r=smRec(code,no);
+  const ph=(r&&r.ph)||[]; const rec=(r&&r.rec)||[];
+  const photo=(lab,i)=>{const svg='<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120">'
+    +'<rect width="160" height="120" fill="#dbe3ec"/><rect x="0" y="86" width="160" height="34" fill="#c3cedb"/>'
+    +'<circle cx="34" cy="34" r="13" fill="#aebccb"/><path d="M0,86 L52,44 L92,86 Z" fill="#b3c1d0"/>'
+    +'<path d="M74,86 L106,58 L160,86 Z" fill="#a8b7c7"/>'
+    +'<text x="80" y="107" font-size="12" text-anchor="middle" fill="#4a5a6a">'+lab+'</text></svg>';
+    return 'data:image/svg+xml;utf8,'+encodeURIComponent(svg);};
+  document.getElementById('rpbox').innerHTML=
+   '<div style="font-weight:600;margin-bottom:2px">'+SM_DEF[no-1].name+' · '+p.nick+' · 现场记录</div>'+
+   '<div class="hint" style="margin-bottom:10px">📍 '+p.street+', '+p.suburb+' '+p.state+
+     ' · 🔒 完成定格 '+s.done+' · 完成人 '+s.by+(s.elecSign?' · 电工签字 '+s.elecSign:'')+'</div>'+
+   '<div class="panel" style="margin:0 0 10px"><div class="panel-head">现场记录（按 SM 模板填）</div>'+
+   '<div class="panel-body">'+(rec.length?'<ul style="margin:0;padding-left:18px;line-height:1.9;font-size:12px">'
+     +rec.map(x=>'<li>'+x+'</li>').join('')+'</ul>':'<div class="hint">本场未留文字记录</div>')+'</div></div>'+
+   '<div class="panel" style="margin:0 0 10px"><div class="panel-head">现场照片 <span class="muted" style="font-weight:400">'+
+     (s.photos||ph.length)+' 张 · 点图看大图（演示占位图）</span></div>'+
+   '<div class="panel-body" style="display:flex;gap:8px;flex-wrap:wrap">'+
+   (ph.length?ph.map((x,i)=>'<a href="'+photo(x,i)+'" target="_blank" title="点开大图"><img src="'+photo(x,i)+
+     '" style="border-radius:6px;border:1px solid var(--border)"></a>').join(''):'<div class="hint">本场未上传照片</div>')+
+   '</div></div>'+
+   '<div class="panel" style="margin:0"><div class="panel-head">到场打卡 <span class="muted" style="font-weight:400">每人 × 本场任务 · App 采集</span></div>'+
+   '<table><thead><tr><th>人员</th><th>入场 – 离场</th><th>时长</th><th>围栏</th></tr></thead><tbody>'+
+   ((s.att&&s.att.length)?s.att.map(a=>{const seg=a.io.split('–');
+     return '<tr><td><b>'+a.who+'</b></td><td class="mono">'+a.io+'</td>'+
+     '<td class="num">'+minLab(spanMin(seg[0],seg[1]))+'</td>'+
+     '<td>'+(a.flag?'<span class="pill p-amber">⚠ '+a.flag+'</span>':'<span class="pill p-green">正常</span>')+'</td></tr>';}).join('')
+     :'<tr><td colspan="4" class="hint">本场无打卡记录（老项目补录或未走 App）</td></tr>')+
+   '</tbody></table></div>'+
+   '<div style="display:flex;justify-content:flex-end;margin-top:12px">'+
+   '<button class="btn" onclick="schRepClose()">关闭</button></div>';
+  document.getElementById('rpback').style.display='block';
+  document.getElementById('rpbox').style.display='block'; }
+/* 排期浮窗：内容同「排任务」+ 日期（可排到几周后）；项目已定，不用再选 */
+function smSchedO(code,no){
+  const s=SMD[code].sm[no-1];
+  if(s.done){ uiAlert('SM'+no+' 已于 '+s.done+' 完成定格——定格不可改'); return; }
+  smSchedOpen={code,no}; smSchedPaint(); }
+function smSchedClose(){ smSchedOpen=null;
+  document.getElementById('smback').style.display='none';
+  const b=document.getElementById('smbox'); b.style.display='none'; b.innerHTML=''; }
+function smSchedPaint(){ const o=smSchedOpen; if(!o) return;
+  const p=PROJECTS.find(x=>x.code===o.code)||{}; const s=SMD[o.code].sm[o.no-1];
+  const d0=new Date(); d0.setDate(d0.getDate()+7);
+  const def=(s.sched?s.sched.split(' ')[0]:ymdS(d0)).replace(/\//g,'-');
+  const staff=STAFF.filter(x=>x.active).map(x=>x.name); const all=['陈工',...staff.filter(x=>x!=='陈工')];
+  document.getElementById('smbox').innerHTML=
+   '<div style="font-weight:600;margin-bottom:2px">排期 · '+SM_DEF[o.no-1].name+' · '+p.nick+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">📍 '+p.street+', '+p.suburb+
+     ' —— 项目已定，不用再选；排期同时写进<b>派工排班表</b>并进参会人 App 日程</div>'+
+   '<div class="field"><label>日期（可排到几周后）</label>'+
+     '<input type="date" id="sm-d" value="'+def+'" style="width:180px"></div>'+
+   '<div class="field"><label>开始时间 → 截止时间（15 分钟一档 · 时长自动算）</label>'+
+     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+     '<select id="sm-st" style="width:auto" onchange="smSchedPrev()">'+
+       SLOTS.map(x=>'<option'+(x==='09:00'?' selected':'')+'>'+x+'</option>').join('')+'</select>'+
+     '<span class="muted">→</span>'+
+     '<select id="sm-et" style="width:auto" onchange="smSchedPrev()">'+
+       SLOTS.map(x=>'<option'+(x==='12:00'?' selected':'')+'>'+x+'</option>').join('')+'</select>'+
+     '<span id="sm-prev" class="hint"></span></div></div>'+
+   '<div class="field"><label>参会人（每人各生成一条排班任务）</label>'+
+     '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+     all.map((n,i)=>'<label style="font-size:12px"><input type="checkbox" class="sm-who" value="'+n+'"'+
+       (i===0?' checked':'')+' style="width:auto"> '+n+'</label>').join('')+'</div></div>'+
+   '<div class="field"><label>会议内容 / 现场要点（多行）</label>'+
+     '<textarea id="sm-note" style="width:100%;min-height:88px;font-size:12px;line-height:1.7" placeholder="如：\n· 逐路验线，重点主回路\n· 业主到场确认点位\n· 电工现场签字">'+
+     (SM_DEF[o.no-1].goal)+'</textarea></div>'+
+   '<div class="field"><label>出发前清单（按方案自动带出，去现场前逐项勾）</label>'+
+     '<div class="hint">'+smChkList(o.code,o.no).join(' · ')+'</div></div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="smSchedClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="smSchedSave()">保存排期并通知</button></div>';
+  document.getElementById('smback').style.display='block';
+  document.getElementById('smbox').style.display='block';
+  smSchedPrev(); }
+function smSchedPrev(){ const s=document.getElementById('sm-st'), e=document.getElementById('sm-et'),
+   p=document.getElementById('sm-prev'); if(!s||!e||!p) return;
+  const m=spanMin(s.value,e.value);
+  const nh=schNormHint('Site Meeting',m);
+  p.innerHTML=m>0?('＝ <b>'+minLab(m)+'</b>'+(nh?' · <span style="color:#b45309">'+nh+'</span>':'')
+    +' <span class="hint">合理时长参考 '+minLab(SCH_NORM['Site Meeting'])+'</span>')
+    :'<span style="color:#c62828">截止时间必须晚于开始时间</span>'; }
+function smSchedSave(){ const o=smSchedOpen; if(!o) return;
+  const v=id=>{const e=document.getElementById(id);return e?e.value:'';};
+  const dRaw=v('sm-d'); if(!dRaw){ uiAlert('门禁：请选择日期'); return; }
+  const d=dRaw.replace(/-/g,'/');
+  const st=v('sm-st'), et=v('sm-et'); const min=spanMin(st,et);
+  if(!(min>0)){ uiAlert('门禁：截止时间必须晚于开始时间'); return; }
+  const who=[...document.querySelectorAll('.sm-who:checked')].map(x=>x.value);
+  if(!who.length){ uiAlert('门禁：至少选一个参会人——排期同时是派工，没人去等于没排'); return; }
+  if(d<todayS()){ uiAlert('门禁：只能排此刻之后的日期'); return; }
+  const note=v('sm-note').trim();
+  const bad=who.map(w=>({w,ov:schOverlap(w,d,st,et,null)})).filter(x=>x.ov);
+  if(bad.length){ uiAlert('门禁：'+bad[0].w+' 当天已有「'+bad[0].ov.type+' '+bad[0].ov.st+'–'+bad[0].ov.et+'」时间重叠'); return; }
+  const s=SMD[o.code].sm[o.no-1]; s.sched=d+' '+st;
+  const p=PROJECTS.find(x=>x.code===o.code)||{};
+  who.forEach(w=>SCH.push({id:'SM'+o.no+'-'+o.code.slice(-4)+'-'+w,d,who:w,type:'Site Meeting',pj:o.code,
+    st,et,min,note:SM_DEF[o.no-1].name+'：'+note,remain:'',sent:true,ack:false}));
+  opLog(o.code,'SM'+o.no+' 排期',d+' '+st+'–'+et+'（'+minLab(min)+'）· 参会 '+who.join('、')+
+    ' —— 已写进派工排班表并进 App 日程',['eng']);
+  notifAdd(o.code,'SM'+o.no+' 排期 '+d+' '+st+'–'+et+' @ '+p.nick,
+    who.map(w=>({who:w+'（App 日程）',how:'短信 + App',ok:false})));
+  smSchedClose(); renderAll();
+  uiAlert('已排期 ✓ '+d+' '+st+'–'+et+'\n已写进派工排班表：'+who.join('、')+' 各一条 Site Meeting 任务（短信已发，等回 Y 变绿点）'); }
+/* 完成＝工程师在 App 现场提交（用户定）：后台不再手点完成，这里模拟 App 那一步 */
+function smAppDone(code,no){
+  const d=SMD[code], s=d.sm[no-1];
+  if(s.done){ uiAlert('SM'+no+' 已于 '+s.done+' 完成定格——定格不可改'); return; }
+  for(let k=1;k<no;k++){ const prev=d.sm[k-1];
+    if(!prev.done&&!prev.na){ uiAlert('门禁：SM'+k+' 未完成，不能先完成 SM'+no); return; } }
+  const p=PROJECTS.find(x=>x.code===code)||{};
+  uiConfirm('模拟：现场工程师在 App 提交「'+SM_DEF[no-1].name+' 完成」\n（记录 + 照片'+(no===3?' + 电工签字':'')+
+    '在 App 里填，提交即定格）\n\n项目：'+p.nick+'　继续？',ok=>{ if(!ok) return;
+    s.done=nowTs(); s.by=WHO[me].name==='陈工'?'现场：阿强（App 提交）':WHO[me].name+'（App 提交）';
+    s.photos=s.photos||3; if(no===3&&!s.elecSign) s.elecSign=(p.elec||'—')+'（App 现场签字）';
+    const f=finOf(code);
+    if(no===3&&f) f.sm3=true; if(no===4&&f) f.sm4=true;
+    if(no===3){
+      opLog(code,'SM3 检查布线完成','工程师 App 现场提交 · 定格 '+s.done+' · 触发财务待办「开 S2 物料款 Invoice」',['eng','fin','proc','wh']);
+      notifAdd(code,'SM3 完成 · 可开 S2 物料款',[{who:'财务 王姐',how:'待办',ok:false},{who:'采购 老张',how:'待办',ok:false}]);
+      todoWake(code);
+      uiAlert('SM3 已完成定格 ✓（App 现场提交）\n已通知：财务（开 S2 物料款）· 采购/库管——财务端 S2 按钮此刻已解锁');
+    } else if(no===4){
+      opLog(code,'SM4 封板核对完成','工程师 App 现场提交 · 定格 '+s.done+' · 触发财务待办「开 S3 人工款 Invoice」',['eng','fin']);
+      notifAdd(code,'SM4 完成 · 可开 S3 人工款',[{who:'财务 王姐',how:'待办',ok:false}]);
+      todoWake(code);
+      uiAlert('SM4 已完成定格 ✓（App 现场提交）已通知：财务（开 S3 人工款）');
+    } else {
+      opLog(code,'SM'+no+' 完成','工程师 App 现场提交 · 定格 '+s.done,['eng']);
+      uiAlert('SM'+no+' 已完成定格 ✓（App 现场提交）');
+    }
+    renderAll(); }); }
 function smComplete(code,no){
   const d=SMD[code]; const s=d.sm[no-1];
   if(s.done){ uiAlert('SM'+no+' 已于 '+s.done+' 完成定格——定格不可改'); return; }
@@ -3093,82 +3243,136 @@ ${ops([
    ⑥财务注释/工程注释：售前填 → 对应部门必读（已读标） */
 'presales/操作日志':()=>opLogPage('presales'),
 'eng/Site Meeting':()=>{
- const p=PROJECTS[pj]; const d=SMD[p.code];
- if(!d) return `<h2>Site Meeting <span class="pill p-cyan">S 是钱 · SM 是会</span></h2>
-   <div class="panel"><div class="panel-body">该项目（${p.nick} · ${p.status}）还没进工程线——
-   售前签约、S1 定金结清后 SM1 才开场。左上角切一个施工中的项目看看。</div></div>`;
- const f=finOf(p.code);
- return `<h2>Site Meeting <span class="pill p-cyan">S 是钱 · SM 是会 —— 四场会一页管</span></h2>
- <div class="page-sub">方案：${d.sol} · 完成时刻定格不可改 · SM3/SM4 完成即解锁 S2/S3 收款门禁 · 说明看左下「帮助」</div>
+ schSeed();
+ const all=engScope().filter(p=>SMD[p.code]);
+ const q=smQ.trim().toLowerCase();
+ const rows=all.filter(p=>(smF==='全部'||p.code===smF)
+   &&(!q||`${p.code} ${p.nick} ${p.street} ${p.suburb}`.toLowerCase().includes(q)));
+ const cell=(p,no)=>{const s=SMD[p.code].sm[no-1]; const st=smState(s);
+   if(st==='done') return `<span class="pill p-green">🔒 ${s.done.slice(0,10)}</span>
+     <div class="hint">${s.by||''}${s.photos?` · 📷 ${s.photos}`:''}</div>
+     <a style="cursor:pointer;color:var(--accent);font-size:11px" onclick="smRecOpen('${p.code}',${no})">现场记录 →</a>`;
+   if(st==='na') return `<span class="pill p-amber">不适用</span><div class="hint">${s.na}</div>`;
+   if(st==='sched') return `<span class="pill p-cyan">已排期</span><div class="hint mono">${s.sched}</div>
+     <a style="cursor:pointer;color:var(--accent);font-size:11px" onclick="smSchedO('${p.code}',${no})">改期</a>`;
+   return `<span class="pill p-grey">未排期</span>
+     <div><a style="cursor:pointer;color:var(--accent);font-size:11px" onclick="smSchedO('${p.code}',${no})">排期 →</a></div>`;};
+ const det=smDetail?PROJECTS.find(p=>p.code===smDetail):null;
+ const d=det?SMD[det.code]:null;
+ const f=det?finOf(det.code):null;
+ return `<h2>Site Meeting <span class="pill p-cyan">S 是钱 · SM 是会</span></h2>
+ <div class="page-sub">全部项目的 SM1~4 一张表看全 · 过滤到某个项目或点「详细」看单个项目的四场会 · 说明看左下「帮助」</div>
  ${ops([
-  ['排期','按顺序开会（门禁：SM(n-1) 未完成不能先完成 SMn）','进派工排班 + 工人 App 今日任务——参会人当天各自打卡入场/离场（每人·每任务）'],
-  ['完成会议','SM3 需电工签字（默认带出项目电工）· 出发前清单未勾完只提醒不拦','完成时刻定格 🔒 · SM3→通知财务开 S2、采购库管预告 · SM4→通知财务开 S3'],
-  ['SM3 现场登记变更','类型 加/减/移位 · 描述必填 · 金额和工时 SM3 都不碰（移位=整改不计费，填金额财务端直接拒）','自动知会 设计/采购/财务 · 并入 S4 估价'],
-  ['标不适用','老项目/特殊情况 · 必填原因留痕','该场会跳过，不卡后续门禁'],
+  ['过滤 / 搜索','项目下拉一次筛一个；「全部」看所有项目的 SM1~4 状态','—'],
+  ['排期','填 日期（可排几周后）+ 起止时间 + 参会人 + 会议内容 —— 项目已定不用再选','同时写进派工排班表 · 参会人收短信+App 日程（红点等回 Y）'],
+  ['现场记录 →','已完成的场次：看现场记录、照片、到场打卡（每人入场离场）','—'],
+  ['详细','下半部展开该项目四张会议卡 + 下游门禁现状','—'],
+  ['标不适用','★老项目补录用：上线前这场会现实里已开过 / 不适用 · 必填原因留痕','该场跳过，不卡 S2/S3 收款门禁'],
  ])}
+ ${helpNote(`<b>这页怎么用</b>：上面是<b>总表</b>——每个项目一行，SM1~4 四列直接写状态
+   （🔒已完成带日期与照片数 · 已排期带时间 · 未排期 · 不适用）。项目多就用<b>下拉过滤</b>（一次一个）
+   或搜编号/昵称/地址；选「全部」就是全公司在跑的 SM 一览。点某行「详细」→ 下半部展开那个项目的四张卡。`)}
+ ${helpNote(`<b>排期</b>＝派工：填日期（可排到几周之后）、起止时间（15 分钟一档）、参会人、会议内容——
+   保存后<b>自动在派工排班表里给每个参会人生成一条 Site Meeting 任务</b>，短信+App 日程同时发出去
+   （红点等回 Y）。项目不用选，因为排期本来就在这个项目下。`)}
+ ${helpNote(`<b>完成不在后台点</b>（用户定）：现场工程师在<b>施工端 App</b> 提交这场会（记录+照片，SM3 还要电工签字），
+   系统<b>自动把状态改成已完成并定格</b>——<b>SM3 完成即解锁财务 S2 物料款、SM4 解锁 S3 人工款</b>。
+   本页那个「模拟 App 提交完成」按钮只是演示用，正式系统里这一步发生在工人手机上。`)}
  ${helpNote(`<b>入场离场是底层通用动作，不属于任何一场会</b>：每人 × 每天 × 每个任务（SM 会议 / 安装 /
-   交付 / 维护上门）都在工人 App 打卡入场、离场（围栏 100m，拍照兜底带异常标记）——SM 这页只<b>展示</b>本场的
-   到场记录，采集永远在 App；出勤自动进日结工资与项目人力消耗。SM1 清单里的「围栏圆心首次到场校准」
-   是校准立项坐标，不是打卡本身。`)}
- ${helpNote(`<b>这页怎么用</b>：四张卡=四场会，按顺序开。每张卡上：出发前清单（按方案自动增减 KNX/地暖条件项，
-   在「设置」维护模板）→ 排期（进派工与工人 App）→ 开完点「完成」（时刻定格不可改）。
-   <b>SM3 完成的那一刻，财务端 S2 按钮解锁</b>；SM4 解锁 S3——S 是钱、SM 是会，两套东西这里交棒。`)}
- ${helpNote(`SM3 是最重的一场：当着客户面验布线、<b>现场登记变更</b>（加/减 计费待估价；移位=电工装错属整改，
-   不计费，填金额直接拒）、电工签字。<b>SM3 之后还要加东西＝「工程追加变更」</b>（已拍板：SM3 后~交付前可追加，
-   登记即发付款人告知短信——入口在安装调试/变更线，财务在 S4 页看到）。`)}
- ${helpNote(`老项目上线：四场会可标「不适用」（必填原因留痕），不卡收款门禁——${'KX-2026-0121'} 刘宅就是这么处理的。
-   烂尾项目（张宅）会停在当时的场次，不再往下开。`)}
- <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:var(--sp-4)">
- ${SM_DEF.map(def=>{const s=d.sm[def.no-1]; const st=smState(s);
-   const chk=smChkList(p.code,def.no);
-   const stPill=st==='done'?`<span class="pill p-green">🔒 ${s.done}</span>`
-     :st==='na'?`<span class="pill p-amber">不适用</span>`
-     :st==='sched'?`<span class="pill p-cyan">已排期 ${s.sched}</span>`
-     :`<span class="pill p-grey">未排期</span>`;
-   return `<div class="panel" style="margin:0"><div class="panel-head">${def.name} ${stPill}</div>
-    <div class="panel-body">
-     <div class="hint" style="margin-bottom:8px">${def.goal}</div>
-     ${st==='na'?`<div class="hint">原因：${s.na}</div>`:`
-     <div style="margin-bottom:8px"><span class="muted" style="font-size:var(--fs-xs)">出发前清单${st==='done'?'（已定格）':'（模板在设置维护）'}</span>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
-       ${chk.map((c,i)=>{const on=s.chk&&s.chk[i];
-         return `<span class="pill ${on?'p-green':'p-grey'}"${st==='done'?'':` style="cursor:pointer" onclick="smToggleChk('${p.code}',${def.no},${i})"`}>${on?'✓ ':''}${c.replace(' ◇有KNX','').replace(' ◇有地暖','')}</span>`;}).join('')}
-      </div></div>
-     ${st==='done'?`<div class="hint">完成人 ${s.by} · 现场照片 ${s.photos} 张${s.elecSign?` · 电工签字：${s.elecSign}`:''}</div>
-      <div style="margin-top:6px"><span class="muted" style="font-size:var(--fs-xs)">到场打卡（每人 · 本场任务 · App 采集）</span>
-       <div class="hint">${(s.att&&s.att.length)?s.att.map(a=>`${a.who} ${a.io}${a.flag?` <span style="color:#b45309">⚠ ${a.flag}</span>`:' ✓'}`).join(' · ')
-         :'—（打卡记录在工程流水账 / 每日上报）'}</div></div>`
-      :`<div class="hint" style="margin-top:6px">开会当天参会人各自在 App 打卡<b>入场 / 离场</b>（每人 · 每任务 · 围栏内）——出勤自动进日结与项目人力</div>`}
-     ${def.no===3?(st==='done'
-       ?`<div style="margin-top:8px"><span class="muted" style="font-size:var(--fs-xs)">本场登记的变更（金额工时都不碰，S4 财务估价）</span>
-          ${(f&&f.vars.filter(v=>v.src==='SM3').length)?`<table style="margin-top:4px">${f.vars.filter(v=>v.src==='SM3').map(v=>`
-            <tr><td>${v.type}</td><td>${v.desc}</td><td class="hint mono">${v.ref}</td>
-            <td>${v.billable?(v.amt!=null?'<span class="pill p-green">已估价</span>':'<span class="pill p-amber">待估价</span>'):'<span class="pill p-grey">不计费</span>'}</td></tr>`).join('')}</table>`
-            :'<div class="hint">本场没有登记变更</div>'}
-          <div class="hint" style="margin-top:4px">SM3 之后要加东西 → 走「工程追加变更」（已拍板：登记即发付款人告知短信）</div></div>`
-       :`<div style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">
-          <span class="muted" style="font-size:var(--fs-xs)">现场登记变更（开会时用）</span>
-          <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
-           <select id="smvty" style="width:auto"><option>加</option><option>减</option><option>移位</option></select>
-           <input id="smvde" placeholder="描述：加了什么 / 减了什么 / 移了哪里" style="flex:1;min-width:170px">
-           <button class="btn" onclick="smVarAdd('${p.code}')">登记</button></div></div>`):''}
-     ${st!=='done'?`<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
-       ${st!=='sched'?`<button class="btn" onclick="smSched('${p.code}',${def.no})">排期</button>`
-                     :`<button class="btn" onclick="smSched('${p.code}',${def.no})">改期</button>`}
-       <button class="btn btn-primary" onclick="smComplete('${p.code}',${def.no})">完成（定格）</button>
-       <button class="btn" onclick="smNa('${p.code}',${def.no})">标不适用</button></div>`:''}
-     `}
-    </div></div>`;}).join('')}
+   交付 / 维护上门）都在工人 App 打卡入场、离场（围栏内，拍照兜底带异常标记）——SM 这里只<b>展示</b>本场的
+   到场记录（「现场记录」浮窗里能看到每人的入场–离场与围栏异常），采集永远在 App；
+   出勤自动进日结工资与项目人力消耗。`)}
+ ${helpNote(`<b>「标不适用」是什么</b>：系统上线<b>之前</b>就在施工的老项目，这四场会现实里早就开过了
+   （或当时根本没按这套流程走）。但系统里 SM3/SM4 不「完成」，财务 S2/S3 的收款门禁就永远打不开。
+   所以给一个出口——标不适用 + <b>必填原因</b>（＝这场会在系统之外发生过/不适用），留痕可查、门禁放行。
+   <b>新项目不该用它</b>；演示里刘宅（上线前老项目）四场全标了不适用。`)}
+ <div class="panel">
+  <div class="panel-head" style="gap:var(--sp-2);flex-wrap:wrap">
+   <span class="muted" style="font-weight:400">过滤项目</span>
+   <select style="width:auto;max-width:320px" onchange="smF=this.value;if(this.value!=='全部'){smDetail=this.value;}renderAll()">
+     <option${smF==='全部'?' selected':''}>全部</option>
+     ${all.map(p=>`<option value="${p.code}"${smF===p.code?' selected':''}>${p.nick} · ${p.street}, ${p.suburb}（${p.code.slice(-4)}）</option>`).join('')}
+   </select>
+   ${smF!=='全部'?`<button class="btn" onclick="smF='全部';smQ='';renderAll()">看全部</button>`:''}
+   <input id="smq" class="search" placeholder="🔍 搜编号 / 昵称 / 地址…" value="${smQ}"
+     style="width:200px;padding:5px var(--sp-2)" oninput="smQ=this.value;keepFocus('smq')">
+   <span class="muted" style="font-weight:400">显示 ${rows.length} / ${all.length}</span>
+  </div>
+  <div style="overflow-x:auto"><table id="smtbl" style="min-width:1080px">
+   <thead><tr><th>编号</th><th>立项时间</th><th>项目 · 地址</th><th>当前阶段</th>
+     ${SM_DEF.map(x=>`<th>${x.name}</th>`).join('')}<th>下游门禁</th><th></th></tr></thead>
+   <tbody>${rows.map(p=>{const st=engStage(p); const ff=finOf(p.code);
+     return `<tr${smDetail===p.code?' style="background:#eef4ff"':''}>
+      <td class="mono">${p.code}</td><td class="mono" style="font-size:11px">${p.opened}</td>
+      <td><b>${p.nick}</b><div class="hint">📍 ${p.street}, ${p.suburb} ${p.state}</div></td>
+      <td><span class="pill ${st.cls}">${st.k}</span></td>
+      ${[1,2,3,4].map(no=>`<td>${cell(p,no)}</td>`).join('')}
+      <td style="font-size:11px">${ff?`<span class="pill ${ff.sm3?'p-green':'p-red'}">S2 ${ff.sm3?'已解锁':'卡住'}</span>
+        <span class="pill ${ff.sm4?'p-green':'p-red'}">S3 ${ff.sm4?'已解锁':'卡住'}</span>`:'<span class="hint">—</span>'}</td>
+      <td><button class="btn${smDetail===p.code?' btn-primary':''}" onclick="smPick('${p.code}')">${smDetail===p.code?'收起':'详细'}</button></td>
+     </tr>`;}).join('')||`<tr><td colspan="10" class="muted" style="padding:var(--sp-4)">没有匹配的项目</td></tr>`}</tbody></table></div>
+  <div class="panel-body hint">🔒＝已完成定格（点「现场记录 →」看照片/记录/打卡）· 已排期＝已进派工排班与 App 日程 ·
+   不适用＝老项目补录留痕（不卡门禁）</div>
  </div>
- <div class="panel"><div class="panel-head">下游门禁现状 <span class="muted" style="font-weight:400">S 是钱——SM 完成才解锁</span></div>
+ ${det?`
+ <div class="panel"><div class="panel-head">${det.nick} · 四场会详细
+   <span class="muted" style="font-weight:400">📍 ${det.street}, ${det.suburb} ${det.state} · 方案：${d.sol}</span>
+   <button class="btn" style="margin-left:auto" onclick="smPick('${det.code}')">收起</button></div>
   <div class="panel-body">
-   ${f?`<div style="display:flex;gap:var(--sp-3);flex-wrap:wrap">
-     <span class="pill ${f.sm3?'p-green':'p-red'}">S2 物料款：${f.sm3?'门禁已解锁（SM3 ✓）':'被 SM3 卡住——财务端按钮灰'}</span>
-     <span class="pill ${f.sm4?'p-green':'p-red'}">S3 人工款：${f.sm4?'门禁已解锁（SM4 ✓）':'被 SM4 卡住——财务端按钮灰'}</span>
-     <span class="pill p-grey">变更待估价：${f.vars.filter(v=>v.billable&&v.amt==null).length} 条（S4 开票前必须估完）</span>
-   </div>`:'<div class="hint">该项目未进收款线（演示数据未配）</div>'}
-   <div class="hint" style="margin-top:6px">完成 SM 的那一刻这里变绿，财务端按钮同步解锁——两个部门看到的是同一个事实</div>
-  </div></div>`;
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:var(--sp-4)">
+  ${SM_DEF.map(def=>{const s=d.sm[def.no-1]; const stt=smState(s);
+    const chk=smChkList(det.code,def.no);
+    const stPill=stt==='done'?`<span class="pill p-green">🔒 ${s.done}</span>`
+      :stt==='na'?`<span class="pill p-amber">不适用</span>`
+      :stt==='sched'?`<span class="pill p-cyan">已排期 ${s.sched}</span>`
+      :`<span class="pill p-grey">未排期</span>`;
+    return `<div class="panel" style="margin:0"><div class="panel-head">${def.name} ${stPill}</div>
+     <div class="panel-body">
+      <div class="hint" style="margin-bottom:8px">${def.goal}</div>
+      ${stt==='na'?`<div class="hint">原因：${s.na}</div>`:`
+      <div style="margin-bottom:8px"><span class="muted" style="font-size:var(--fs-xs)">出发前清单${stt==='done'?'（已定格）':'（模板在设置维护 · 按方案自动增减）'}</span>
+       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+        ${chk.map((c,i)=>{const on=s.chk&&s.chk[i];
+          return `<span class="pill ${on?'p-green':'p-grey'}"${stt==='done'?'':` style="cursor:pointer" onclick="smToggleChk('${det.code}',${def.no},${i})"`}>${on?'✓ ':''}${c.replace(' ◇有KNX','').replace(' ◇有地暖','')}</span>`;}).join('')}
+       </div></div>
+      ${stt==='done'?`<div class="hint">完成人 ${s.by} · 现场照片 ${s.photos} 张${s.elecSign?` · 电工签字：${s.elecSign}`:''}</div>
+       <div style="margin-top:6px"><span class="muted" style="font-size:var(--fs-xs)">到场打卡（每人 · 本场任务 · App 采集）</span>
+        <div class="hint">${(s.att&&s.att.length)?s.att.map(a=>`${a.who} ${a.io}${a.flag?` <span style="color:#b45309">⚠ ${a.flag}</span>`:' ✓'}`).join(' · ')
+          :'—（打卡记录在工程流水账 / 每日上报）'}</div></div>
+       <button class="btn" style="margin-top:8px" onclick="smRecOpen('${det.code}',${def.no})">📷 现场记录 · 照片 · 打卡</button>`
+      :`<div class="hint" style="margin-top:6px">排期后参会人各自在 App 打卡<b>入场 / 离场</b>；
+        现场记录与照片也在 App 里填——<b>App 提交即完成定格</b></div>`}
+      ${def.no===3?(stt==='done'
+        ?`<div style="margin-top:8px"><span class="muted" style="font-size:var(--fs-xs)">本场登记的变更（金额工时都不碰，S4 财务估价）</span>
+           ${(f&&f.vars.filter(v=>v.src==='SM3').length)?`<table style="margin-top:4px">${f.vars.filter(v=>v.src==='SM3').map(v=>`
+             <tr><td>${v.type}</td><td>${v.desc}</td><td class="hint mono">${v.ref}</td>
+             <td>${v.billable?(v.amt!=null?'<span class="pill p-green">已估价</span>':'<span class="pill p-amber">待估价</span>'):'<span class="pill p-grey">不计费</span>'}</td></tr>`).join('')}</table>`
+             :'<div class="hint">本场没有登记变更</div>'}
+           <div class="hint" style="margin-top:4px">SM3 之后要加东西 → 走「工程追加变更」（登记即发付款人告知短信）</div></div>`
+        :`<div style="margin-top:8px;border-top:1px dashed var(--border);padding-top:8px">
+           <span class="muted" style="font-size:var(--fs-xs)">现场登记变更（开会时用，也可在 App 现场填）</span>
+           <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+            <select id="smvty" style="width:auto"><option>加</option><option>减</option><option>移位</option></select>
+            <input id="smvde" placeholder="描述：加了什么 / 减了什么 / 移了哪里" style="flex:1;min-width:170px">
+            <button class="btn" onclick="smVarAdd('${det.code}')">登记</button></div></div>`):''}
+      ${stt!=='done'?`<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn${stt==='sched'?'':' btn-primary'}" onclick="smSchedO('${det.code}',${def.no})">${stt==='sched'?'改期':'排期（＝派工）'}</button>
+        <button class="btn" title="正式系统里由现场工程师在 App 提交，这里是演示按钮" onclick="smAppDone('${det.code}',${def.no})">模拟 App 提交完成</button>
+        <button class="btn" title="老项目补录：这场会在系统之外发生过/不适用，必填原因" onclick="smNa('${det.code}',${def.no})">标不适用</button></div>`:''}
+      `}
+     </div></div>`;}).join('')}
+  </div>
+  <div class="panel" style="margin-top:var(--sp-4)"><div class="panel-head">下游门禁现状 <span class="muted" style="font-weight:400">S 是钱——SM 完成才解锁</span></div>
+   <div class="panel-body">
+    ${f?`<div style="display:flex;gap:var(--sp-3);flex-wrap:wrap">
+      <span class="pill ${f.sm3?'p-green':'p-red'}">S2 物料款：${f.sm3?'门禁已解锁（SM3 ✓）':'被 SM3 卡住——财务端按钮灰'}</span>
+      <span class="pill ${f.sm4?'p-green':'p-red'}">S3 人工款：${f.sm4?'门禁已解锁（SM4 ✓）':'被 SM4 卡住——财务端按钮灰'}</span>
+      <span class="pill p-grey">变更待估价：${f.vars.filter(v=>v.billable&&v.amt==null).length} 条（S4 开票前必须估完）</span>
+    </div>`:'<div class="hint">该项目未进收款线（演示数据未配）</div>'}
+    <div class="hint" style="margin-top:6px">工程师在 App 提交完成的那一刻这里变绿，财务端按钮同步解锁——两个部门看到的是同一个事实</div>
+   </div></div>
+  </div></div>`
+ :`<div class="panel"><div class="panel-body hint">选一行点「详细」→ 这里展开该项目的四张会议卡（出发前清单 / 现场记录 / 变更 / 排期）</div></div>`}`;
 },
 'eng/每日上报':()=>{
  const wl=worklog();

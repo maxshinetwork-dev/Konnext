@@ -809,68 +809,91 @@ const { chromium } = require('playwright');
   ok(r36.updown,'财务操作日志缺上下游事件（签约/未退料/维护完成/出库/SM3）');
   ok(r36.helpAll,'九个财务页面的帮助缺「这页怎么用」总结');
   ok(r36.noQ&&r36.noQ2,'「？」未去干净（左栏按钮或页内引用）');
-  // 7) 三十七轮：工程 Site Meeting（旗舰）——顺序门禁 · 完成定格 · 财务门禁联动 · SM3 变更 · 不适用
-  const w37=await page.evaluate(()=>{
-    loginAs('eng');
-    pj=PROJECTS.findIndex(x=>x.code==='KX-2026-0121'); go('eng','Site Meeting');
-    const naOk=(document.getElementById('main').innerHTML.match(/不适用/g)||[]).length>=4;
-    pj=PROJECTS.findIndex(x=>x.code==='KX-2026-0201'); renderAll();
-    const preOk=document.getElementById('main').innerHTML.includes('还没进工程线');
-    pj=PROJECTS.findIndex(x=>x.code==='KX-2026-0203'); renderAll();
+  // 7) 四十五轮：Site Meeting 总表+过滤+详细 · 现场记录浮窗 · 排期=派工（带日期）· App 提交完成
+  const w45=await page.evaluate(()=>{
+    loginAs('eng'); smF='全部'; smQ=''; smDetail=null; go('eng','Site Meeting');
     const h=document.getElementById('main').innerHTML;
-    const cards=h.includes('SM1 进场')&&h.includes('SM2 布线交流')&&h.includes('SM3 检查布线')&&h.includes('SM4 封板核对');
-    const gateShown=h.includes('被 SM3 卡住——财务端按钮灰')&&h.includes('被 SM4 卡住');
+    const tblRows=document.querySelectorAll('#smtbl tbody tr').length;      // 7 个进工程线的项目
+    const cols=document.querySelectorAll('#smtbl thead th').length;         // 编号/立项/项目/阶段/SM1-4/门禁/详细=10
+    const statuses=h.includes('🔒')&&h.includes('已排期')&&h.includes('未排期')&&h.includes('不适用');
+    const gate=h.includes('S2 卡住')&&h.includes('S3 已解锁');
+    // 过滤：一次一个项目
+    smF='KX-2026-0203'; renderAll();
+    const one=document.querySelectorAll('#smtbl tbody tr').length===1;
+    const autoDetail=smDetail===null;                                       // 下拉才自动设；这里直接改变量
+    smF='全部'; smDetail='KX-2026-0203'; renderAll();
+    const detail=document.getElementById('main').innerHTML.includes('罗宅 · 四场会详细')
+      &&document.getElementById('main').innerHTML.includes('SM1 进场');
+    // 现场记录浮窗（已完成场次）
+    smRecOpen('KX-2026-0188',3);
+    const rp=document.getElementById('rpbox').innerHTML;
+    const recOk=document.getElementById('rpbox').style.display==='block'
+      &&rp.includes('现场记录')&&rp.includes('逐路验线')&&rp.includes('data:image/svg')
+      &&rp.includes('到场打卡')&&rp.includes('围栏外打卡');
+    schRepClose();
+    // 排期＝派工（带日期、参会人多选、写进排班表）
+    const n0=SCH.length;
+    smSchedO('KX-2026-0203',2);
+    const opened=!!document.getElementById('sm-d');
+    const hasDate=document.getElementById('sm-d').type==='date';
+    const noPjPicker=!document.getElementById('sm-pj');                      // 项目不用再选
+    const d=new Date(); d.setDate(d.getDate()+14);
+    const ds=ymdS(d);
+    document.getElementById('sm-d').value=ds.replace(/\//g,'-');
+    document.getElementById('sm-st').value='09:00';
+    document.getElementById('sm-et').value='12:00';
+    [...document.querySelectorAll('.sm-who')].forEach(c=>{c.checked=(c.value==='陈工'||c.value==='阿强');});
+    smSchedSave();
+    const made=SCH.filter(x=>x.d===ds&&x.type==='Site Meeting'&&x.pj==='KX-2026-0203');
+    const schedOk=made.length===2&&made[0].st==='09:00'&&made[0].et==='12:00'&&made.every(x=>x.ack===false);
+    const smSched=SMD['KX-2026-0203'].sm[1].sched===ds+' 09:00';
+    const logOk=OPLOG[0].action==='SM2 排期'&&OPLOG[0].detail.includes('写进派工排班表');
+    // App 提交完成 → 定格 + 解锁财务
     const f=finOf('KX-2026-0203');
-    smComplete('KX-2026-0203',3);                       // SM2 未完成 → 拦
-    const seqBlocked=!SMD['KX-2026-0203'].sm[2].done&&f.sm3===false;
-    document.getElementById('smvty').value='移位';
-    document.getElementById('smvde').value='主卧面板从床头移到门口';
-    const nv0=f.vars.length; smVarAdd('KX-2026-0203');
-    const nv=f.vars[f.vars.length-1];
-    const varReg=f.vars.length===nv0+1&&nv.billable===false&&nv.amt===0&&nv.src==='SM3';
-    smComplete('KX-2026-0203',2); uiOk();               // 完成 SM2（清单已全勾）
-    const sm2done=!!SMD['KX-2026-0203'].sm[1].done;
-    smComplete('KX-2026-0203',3);                       // → 电工签字 uiPrompt
-    document.getElementById('uiinput').value='Leo · VoltPro'; uiOk();
-    uiOk();                                             // 完成确认
-    const sm3done=!!SMD['KX-2026-0203'].sm[2].done;
-    const finUnlocked=f.sm3===true&&finStage(f).gate===null;
-    const sign=SMD['KX-2026-0203'].sm[2].elecSign==='Leo · VoltPro';
-    const logOk=OPLOG[0].action==='SM3 检查布线完成'&&OPLOG[0].rel.includes('fin');
-    const noti=NOTIF[0].what.includes('SM3 完成');
-    const gateGreen=document.getElementById('main').innerHTML.includes('门禁已解锁（SM3 ✓）');
+    smAppDone('KX-2026-0203',3);                                            // SM2 未完成 → 顺序门禁拦
+    const seq=!SMD['KX-2026-0203'].sm[2].done;
+    smAppDone('KX-2026-0203',2); uiOk();
+    const sm2=!!SMD['KX-2026-0203'].sm[1].done;
+    smAppDone('KX-2026-0203',3); uiOk();
+    const sm3=!!SMD['KX-2026-0203'].sm[2].done&&f.sm3===true;
+    const appMark=SMD['KX-2026-0203'].sm[2].by.includes('App 提交')
+      &&SMD['KX-2026-0203'].sm[2].elecSign.includes('App 现场签字');
     loginAs('finance'); go('fin','项目收款S1-S3');
-    const finBtn=!document.getElementById('main').innerHTML.includes('SM3 未完成，不能发起 S2');
+    const finOk=!document.getElementById('main').innerHTML.includes('SM3 未完成，不能发起 S2');
+    // 还原
     loginAs('eng');
-    const d=SMD['KX-2026-0203'];
-    d.sm[1]={sched:'2026/08/05 09:00',chk:[1,1,1]};
-    d.sm[2]={chk:[0,0,0]};
-    f.sm3=false; f.vars.pop(); NOTIF.shift(); NOTIF.shift();
-    loginAs('finance'); go('fin','财务节点');
-    const restore=finStage(finOf('KX-2026-0203')).gate===null===false||true;
-    return JSON.stringify({naOk,preOk,cards,gateShown,seqBlocked,varReg,sm2done,sm3done,
-      finUnlocked,sign,logOk,noti,gateGreen,finBtn,restore});});
-  const r37=JSON.parse(w37);
-  ok(r37.cards,'SM 四卡未渲染齐');
-  ok(r37.naOk,'老项目四场「不适用」未显示（刘宅）');
-  ok(r37.preOk,'售前阶段项目缺空态提示');
-  ok(r37.gateShown,'下游门禁现状条缺失（S2/S3 卡点）');
-  ok(r37.seqBlocked,'顺序门禁失效（SM2 未完成竟能完成 SM3）');
-  ok(r37.varReg,'SM3 现场变更登记失败/移位未标不计费');
-  ok(r37.sm2done&&r37.sm3done&&r37.sign,'SM2/SM3 完成定格或电工签字缺失');
-  ok(r37.finUnlocked&&r37.gateGreen,'SM3 完成未解锁财务 S2 门禁（联动失效）');
-  ok(r37.logOk&&r37.noti,'SM3 完成未留日志（rel 含 fin）/未发通知');
-  ok(r37.finBtn,'财务端 S2 按钮未随 SM3 完成解锁');
+    SMD['KX-2026-0203'].sm[1]={sched:'2026/08/05 09:00',chk:[1,1,1]};
+    SMD['KX-2026-0203'].sm[2]={chk:[0,0,0]};
+    f.sm3=false; SCH.splice(n0,2); OPLOG.splice(0,3); NOTIF.splice(0,3);
+    smF='全部'; smDetail=null; renderAll(); loginAs('finance');
+    return JSON.stringify({tblRows,cols,statuses,gate,one,detail,recOk,opened,hasDate,noPjPicker,
+      schedOk,smSched,logOk,seq,sm2,sm3,appMark,finOk});});
+  const r45=JSON.parse(w45);
+  ok(r45.tblRows===7&&r45.cols===10,`SM 总表行列不对（${r45.tblRows} 行 / ${r45.cols} 列）`);
+  ok(r45.statuses,'SM 总表四种状态未齐（完成/已排期/未排期/不适用）');
+  ok(r45.gate,'SM 总表缺下游门禁列');
+  ok(r45.one,'项目过滤未生效（一次只筛一个）');
+  ok(r45.detail,'点详细未展开该项目四张卡');
+  ok(r45.recOk,'现场记录浮窗缺记录/照片/打卡');
+  ok(r45.opened&&r45.hasDate&&r45.noPjPicker,'排期浮窗缺日期字段/不该再选项目');
+  ok(r45.schedOk&&r45.smSched,'排期未按参会人写进排班表/未回写 SM 排期');
+  ok(r45.logOk,'排期未留痕（写进派工排班表）');
+  ok(r45.seq,'顺序门禁失效（SM2 未完成竟能完成 SM3）');
+  ok(r45.sm2&&r45.sm3&&r45.appMark,'App 提交完成未定格/未标注 App 来源');
+  ok(r45.finOk,'SM3 完成未解锁财务 S2');
   // 三十八轮：入场离场=每人×每天×每任务——SM 每场会显示到场打卡（App 采集，这页只展示）
   const w38=await page.evaluate(()=>{
-    loginAs('eng'); pj=PROJECTS.findIndex(x=>x.code==='KX-2026-0188'); go('eng','Site Meeting');
+    loginAs('eng'); smF='全部'; smDetail='KX-2026-0188'; go('eng','Site Meeting');
     const h=document.getElementById('main').innerHTML;
-    loginAs('finance');
+    smRecOpen('KX-2026-0188',3);
+    const rp=document.getElementById('rpbox').innerHTML; schRepClose();
+    smDetail=null; renderAll(); loginAs('finance');
     return JSON.stringify({
-      att:h.includes('到场打卡（每人 · 本场任务 · App 采集）')&&h.includes('Leo(电工) 09:45–11:30'),
-      flag:h.includes('围栏外打卡·已确认'),
+      att:h.includes('到场打卡（每人 · 本场任务 · App 采集）')&&h.includes('Leo(电工) 09:45–11:30')
+        &&rp.includes('入场 – 离场'),
+      flag:h.includes('围栏外打卡·已确认')&&rp.includes('围栏外打卡'),
       layer:JSON.stringify(HELP['eng/Site Meeting']||{}).includes('入场离场是底层通用动作'),
-      collect:h.includes('开会当天参会人各自在 App 打卡')});});
+      collect:h.includes('排期后参会人各自在 App 打卡')});});
   const r38=JSON.parse(w38);
   ok(r38.att,'SM 已完成卡缺到场打卡记录（每人·本场任务）');
   ok(r38.flag,'围栏外异常标记未显示');
