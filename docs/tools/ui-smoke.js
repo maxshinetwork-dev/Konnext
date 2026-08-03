@@ -546,11 +546,11 @@ const { chromium } = require('playwright');
   ok(b31.ppl,'每人明细人员/人成本列缺失');
   const w31c=await page.evaluate(()=>{const d=document.getElementById('dayrecent').innerHTML;
     return JSON.stringify({noCode:!d.includes('KX-2026'),addr:d.includes('罗宅')&&d.includes('Springdale'),
-      hang:d.includes('挂起 · 无记录')&&d.includes('每日上报')&&!d.includes('>补录</button>'),
+      hang:d.includes('挂起 · 无记录')&&d.includes('每日工时管理')&&!d.includes('>补录</button>'),
       lock:d.includes('🔒 已定格')});});
   const c31=JSON.parse(w31c);
   ok(c31.noCode&&c31.addr,'日结近况项目列应为 昵称+完整地址（不用编号）');
-  ok(c31.hang,'财务侧挂起行应只显示状态+每日上报指路（不能有补录按钮）');
+  ok(c31.hang,'财务侧挂起行应只显示状态+每日工时管理指路（不能有补录按钮）');
   ok(c31.lock,'日结近况缺已定格标');
   const w31d=await page.evaluate(()=>{payGridOpen=true;renderAll();
     const g=document.getElementById('paygrid');
@@ -643,15 +643,16 @@ const { chromium } = require('playwright');
     const finBlocked=!document.getElementById('bf-note');
     go('fin','财务节点');
     const finNoStuck=!document.getElementById('main').innerHTML.includes('日结挂起');
-    const engTodo=TODOS.some(x=>x.dept==='eng'&&x.ev.includes('日结挂起')&&x.act.includes('每日上报'));
+    const engTodo=TODOS.some(x=>x.dept==='eng'&&x.ev.includes('日结挂起')&&x.act.includes('每日工时管理'));
     loginAs('eng'); go('eng','总览');
     const engStuck=document.getElementById('main').innerHTML.includes('日结挂起 2 天');   // 三十九轮起由 engStuckRows 现算派生
-    go('eng','每日上报');
+    go('eng','每日工时管理');
     const eh=document.getElementById('main').innerHTML;
     const engPage=eh.includes('挂起待补录')&&eh.includes('07/29')&&eh.includes('07/30')
       &&document.querySelectorAll('#engbf tbody tr').length===2;
     bfOpen('小陈','07/29','2026/07/29');
     const opened=!!document.getElementById('bf-note');
+    document.getElementById('bf-pj').value='KX-2026-0203';   // 五十轮：下拉改可搜可筛，先选好项目
     document.getElementById('bf-h').value='8';
     document.getElementById('bf-cat').value='';
     document.getElementById('bf-note').value='x';
@@ -662,7 +663,6 @@ const { chromium } = require('playwright');
     bfConfirm('小陈','07/29','2026/07/29');                    // 说明<10字 → 拒
     const gNote=Object.keys(BACKFILL).length===n0;
     document.getElementById('bf-note').value='早上直接去了罗宅现场布线，忘记在 App 打卡，负责人核实确有出工';
-    document.getElementById('bf-pj').value='KX-2026-0203';
     const bh0=hrAgg('KX-2026-0203').T.bh;
     bfConfirm('小陈','07/29','2026/07/29');                    // → 成功定格
     const done=!!BACKFILL['小陈|07/29'];
@@ -685,10 +685,10 @@ const { chromium } = require('playwright');
     return JSON.stringify({finBlocked,finNoStuck,engTodo,engStuck,engPage,opened,
       gCat,gNote,done,grow,engDone,log,noti,finShow,mark,restore});});
   const r32=JSON.parse(w32);
-  ok(r32.finBlocked,'财务点补录未被拦（应指路 工程管理→每日上报）');
+  ok(r32.finBlocked,'财务点补录未被拦（应指路 工程管理→每日工时管理）');
   ok(r32.finNoStuck,'财务节点卡点表不该再列日结挂起（财务只看不办）');
-  ok(r32.engTodo&&r32.engStuck,'工程负责人缺提醒（待办条目/总览卡点指路每日上报）');
-  ok(r32.engPage,'工程每日上报页缺挂起待补录表（应 2 行）');
+  ok(r32.engTodo&&r32.engStuck,'工程负责人缺提醒（待办条目/总览卡点指路每日工时管理）');
+  ok(r32.engPage,'工程每日工时管理页缺挂起待补录表（应 2 行）');
   ok(r32.opened,'工程身份打开补录弹窗失败');
   ok(r32.gCat,'原因类别空未被拒');
   ok(r32.gNote,'详细说明<10字未被拒');
@@ -1521,6 +1521,233 @@ const { chromium } = require('playwright');
   ok(S49c.sch,'排班浮窗缺发件身份（员工短信同样走公司统一号码）');
   await page.evaluate(()=>{loginAs('admin');go('decision','全局参数');});
   await page.screenshot({path:__dirname+'/shot_发送人身份.png'});
+
+  // ═══ 五十轮：工程流水账 · 每日工时管理（改名/搜索/原因类别）· 人员与外包删除 ═══
+  const lg50=await page.evaluate(()=>{ const R={};
+    loginAs('eng');
+    R.noStaffPage=!DEPT.eng.pages.includes('人员与外包');
+    R.renamed=DEPT.eng.pages.includes('每日工时管理')&&!DEPT.eng.pages.includes('每日上报');
+    pj=PROJECTS.findIndex(p=>p.code==='KX-2026-0180'); go('eng','工程流水账');
+    let h=document.getElementById('main').innerHTML;
+    R.full=h.includes('SM1 进场 完成定格')&&h.includes('SM4 封板核对 完成定格')
+      &&h.includes('确认交付')&&h.includes('运维条款签署确认');
+    R.hdr=h.includes('入场天数')&&h.includes('累计人工工时')&&h.includes('派了工没打卡');
+    R.io=h.includes('09:05–14:35');
+    R.flag=h.includes('围栏外打卡·已确认');
+    R.gate=h.includes('解锁财务：S2 物料款可开票')&&h.includes('解锁财务：S3 人工款可开票');
+    pj=PROJECTS.findIndex(p=>p.code==='KX-2026-0203'); renderAll();
+    h=document.getElementById('main').innerHTML;
+    R.miss=h.includes('没打卡')&&h.includes('日结挂起');
+    R.rep=h.includes('每日上报 · 陈工')||h.includes('每日上报 · 小陈');
+    engLgBad=true; renderAll();
+    const bad=document.querySelectorAll('#main tbody tr').length;
+    engLgBad=false; engLgF='Site Meeting'; renderAll();
+    const smOnly=[...document.querySelectorAll('#main tbody tr')].every(t=>t.innerHTML.includes('Site Meeting'));
+    engLgF='全部'; renderAll();
+    R.filter=(bad===2)&&smOnly;
+    pj=PROJECTS.findIndex(p=>p.code==='KX-2026-0201'); renderAll();
+    R.empty=document.getElementById('main').innerHTML.includes('还没有工程流水');
+    pj=0; renderAll();
+    return JSON.stringify(R);});
+  const R50=JSON.parse(lg50);
+  ok(R50.noStaffPage,'「人员与外包」应已删除（工程人员由财务建立）');
+  ok(R50.renamed,'「每日上报」应已更名「每日工时管理」');
+  ok(R50.full,'工程流水账缺 SM1~SM4 完成定格 / 运维条款 / 确认交付');
+  ok(R50.hdr,'工程流水账缺头部三算（入场天数/累计工时/派了工没打卡）');
+  ok(R50.io,'工程流水账缺实际打卡区间（交付当天 09:05–14:35）');
+  ok(R50.flag,'工程流水账未标围栏外打卡异常');
+  ok(R50.gate,'工程流水账缺 SM3/SM4 解锁财务的下游事件');
+  ok(R50.miss,'派了工没打卡的日子未标红（罗宅 07/29–30）');
+  ok(R50.rep,'工程流水账未带出当天每日上报原文');
+  ok(R50.filter,'阶段过滤 / 只看异常 不生效（罗宅异常应 2 天）');
+  ok(R50.empty,'没进工程线的项目应显示空态说明');
+  const wt=await page.evaluate(()=>{ const R={}; const l0=OPLOG.length;
+    loginAs('eng'); go('eng','每日工时管理');
+    let h=document.getElementById('main').innerHTML;
+    R.title=h.includes('每日工时管理')&&h.includes('人员名单与薪酬由财务建立与维护');
+    bfOpen('小陈','07/29','2026/07/29');
+    R.search=!!document.getElementById('bf-pjq');
+    document.getElementById('bf-pjq').value='Springdale'; bfPjFilter();
+    R.auto=document.getElementById('bf-pj').value==='KX-2026-0203';
+    document.getElementById('bf-pjq').value=''; bfPjFilter();
+    document.getElementById('bf-pj').value='';
+    document.getElementById('bf-h').value='8';
+    document.getElementById('bf-cat').value='忘打卡';
+    document.getElementById('bf-note').value='早上直接去了现场布线，忘记在 App 打卡，负责人已核实确有出工';
+    const n0=Object.keys(BACKFILL).length;
+    bfConfirm('小陈','07/29','2026/07/29');
+    R.gPj=Object.keys(BACKFILL).length===n0;
+    bfClose();
+    go('eng','设置');
+    h=document.getElementById('main').innerHTML;
+    R.catPanel=h.includes('补录原因类别')&&h.includes('忘打卡')&&h.includes('兜底项 · 不可删');
+    const c0=BF_CATS.length;
+    document.getElementById('bfcat-new').value='忘打卡'; bfCatAdd();
+    R.gDup=BF_CATS.length===c0;
+    document.getElementById('bfcat-new').value='天气停工'; bfCatAdd();
+    R.add=BF_CATS.includes('天气停工')&&OPLOG[0].action==='新增补录原因类别';
+    bfCatDel(BF_CATS.indexOf('其他'));
+    R.gOther=BF_CATS.includes('其他');
+    BACKFILL['冒烟|01/01']={pj:'company',h:1,cat:'天气停工',note:'x',by:'x',at:'x'};
+    bfCatDel(BF_CATS.indexOf('天气停工'));
+    R.gUsed=BF_CATS.includes('天气停工');
+    delete BACKFILL['冒烟|01/01'];
+    bfCatDel(BF_CATS.indexOf('天气停工')); uiOk();
+    R.del=!BF_CATS.includes('天气停工')&&OPLOG[0].action==='删除补录原因类别';
+    OPLOG.splice(0,OPLOG.length-l0); renderAll();
+    return JSON.stringify(R);});
+  const R50b=JSON.parse(wt);
+  ok(R50b.title,'每日工时管理页标题/人员归属说明缺失');
+  ok(R50b.search,'补录弹窗项目下拉缺搜索框');
+  ok(R50b.auto,'补录搜索筛到唯一项目未自动选中');
+  ok(R50b.gPj,'补录没选项目竟能提交（应拦：不允许无项目归属的工时）');
+  ok(R50b.catPanel,'工程设置缺补录原因类别面板');
+  ok(R50b.gDup,'重复原因类别未拦');
+  ok(R50b.add,'新增原因类别未生效/未留痕');
+  ok(R50b.gOther,'「其他」兜底类别竟被删掉（应拦）');
+  ok(R50b.gUsed,'已被用过的原因类别竟能删（应拦）');
+  ok(R50b.del,'删除原因类别未生效/未留痕');
+  await page.evaluate(()=>{loginAs('eng');pj=PROJECTS.findIndex(p=>p.code==='KX-2026-0180');go('eng','工程流水账');});
+  await page.screenshot({path:__dirname+'/shot_工程流水账.png'});
+  await page.evaluate(()=>{pj=0;renderAll();});
+
+  // ═══ 五十一轮：文档库（树 / 版本 / 链接 / 邮件转发 / 门禁）═══
+  const dc=await page.evaluate(()=>{ const R={}; const l0=OPLOG.length;
+    loginAs('eng'); docDir='p88a'; docQ=''; go('eng','文档库');
+    let h=document.getElementById('main').innerHTML;
+    R.tree=h.includes('项目文档')&&h.includes('技术文档（现场 App 查阅）')&&h.includes('KNX');
+    R.list=h.includes('布线图（KNX 主回路）')&&h.includes('v3')&&h.includes('已发放')
+      &&h.includes('docs.konnext.com.au/d/d-101');
+    docQ='弱电箱'; renderAll();                          // 全库搜（跨文件夹）
+    R.search=document.getElementById('main').innerHTML.includes('弱电箱整理与标签规范')
+      &&document.getElementById('main').innerHTML.includes('技术文档（现场 App 查阅） / 通用施工规范');
+    docQ=''; renderAll();
+    // 版本历史：旧版保留 · 已发放锁定
+    docHistOpen('D-101');
+    h=document.getElementById('dcbox').innerHTML;
+    R.hist=h.includes('v3')&&h.includes('v2')&&h.includes('v1')&&h.includes('当前')&&h.includes('锁定');
+    docVerDel('D-101',3);                                 // 已发放 → 拦
+    R.gSent=DOCS.find(d=>d.id==='D-101').vs.length===3;
+    docClose();
+    // 传新版本：必须写改了什么
+    docVerOpen('D-101');
+    document.getElementById('dc-note').value='短';
+    docVerSave();                                         // 没选文件 → 拦
+    const v0=DOCS.find(d=>d.id==='D-101').vs.length;
+    docPick(); docVerSave();                              // 说明<5字 → 拦
+    R.gNote=DOCS.find(d=>d.id==='D-101').vs.length===v0;
+    document.getElementById('dc-note').value='补车库充电桩 32A 独立回路走线';
+    docVerSave();
+    const d101=DOCS.find(d=>d.id==='D-101');
+    R.newVer=d101.vs.length===4&&d101.vs[0].v===4&&!d101.vs[0].sent
+      &&OPLOG[0].action==='上传文档新版本';
+    // 整份删除：有发放过的版本 → 拦
+    docDel('D-101'); R.gDel=!!DOCS.find(d=>d.id==='D-101');
+    // 邮件转发：发件身份＝工程管理 admin@ · 发出即定格已发放
+    docMailOpen('D-202');
+    h=document.getElementById('dcbox').innerHTML;
+    R.mailBar=h.includes('发件身份')&&h.includes('admin@konnext.com.au')&&h.includes('署名（经办人');
+    document.getElementById('dc-to').value='__manual__';
+    document.getElementById('dc-mail').value='not-an-email';
+    docMailSend();
+    R.gMail=!docCur(DOCS.find(d=>d.id==='D-202')).sent;    // 邮箱格式拦
+    document.getElementById('dc-to').value='Leo · VoltPro|leo@voltpro.com.au';
+    docMailSend();
+    const d202=DOCS.find(d=>d.id==='D-202');
+    R.mailSent=!!docCur(d202).sent&&docCur(d202).sent.includes('Leo')
+      &&OPLOG[0].action==='邮件转发文档'&&OPLOG[0].detail.includes('admin@konnext.com.au');
+    docDel('D-202'); R.gDel2=!!DOCS.find(d=>d.id==='D-202');   // 发放后不可删
+    // 文件夹：非空不让删
+    docDir='tg'; docDirDel();
+    R.gDir=!!DOC_DIRS.find(x=>x.id==='tg');
+    docDir='p88a';
+    // 还原演示态
+    d101.vs=d101.vs.filter(v=>v.v!==4); docCur(d202).sent='';
+    OPLOG.splice(0,OPLOG.length-l0); NOTIF.shift(); renderAll();
+    return JSON.stringify(R);});
+  const D51=JSON.parse(dc);
+  ok(D51.tree,'文档库缺树（项目文档 / 技术文档）');
+  ok(D51.list,'文档列表缺 版本/已发放/固定链接');
+  ok(D51.search,'全库搜索无效（应跨文件夹并显示路径）');
+  ok(D51.hist,'版本历史缺旧版保留 / 当前标 / 已发放锁定');
+  ok(D51.gSent,'已发放版本竟能删（应拦）');
+  ok(D51.gNote,'新版本没写「改了什么」竟能存（应拦）');
+  ok(D51.newVer,'传新版本未存成 v+1 / 未留痕');
+  ok(D51.gDel&&D51.gDel2,'有发放记录的文档竟能整份删（应拦）');
+  ok(D51.mailBar,'邮件转发缺发件身份（工程管理 admin@）/ 署名');
+  ok(D51.gMail,'邮箱格式错竟能发（应拦）');
+  ok(D51.mailSent,'邮件转发未定格「已发放」/ 未留痕发件身份');
+  ok(D51.gDir,'非空文件夹竟能删（应拦）');
+  // ═══ 五十二轮：日志查阅增强 · 设置补齐 · 部门总说明 ═══
+  const lg52=await page.evaluate(()=>{ const R={}; const l0=OPLOG.length;
+    loginAs('eng'); logClear(); go('eng','操作日志');
+    let h=document.getElementById('main').innerHTML;
+    const all=document.querySelectorAll('#main tbody tr').length;
+    R.ui=h.includes('近 7 天')&&h.includes('导出 CSV')&&h.includes('清空筛选')===false
+      &&h.includes('操作人')&&h.includes('全部项目');
+    logRangeSet('今天');
+    const today=document.querySelectorAll('#main tbody tr').length;
+    R.range=today<all&&today>0;
+    logRangeSet('全部'); logPjF='KX-2026-0188'; renderAll();
+    const byPj=[...document.querySelectorAll('#main tbody tr')].every(t=>t.innerHTML.includes('KX-2026-0188'));
+    logPjF='公司级'; renderAll();
+    const coy=[...document.querySelectorAll('#main tbody tr')].every(t=>t.innerHTML.includes('公司级'));
+    R.pjF=byPj&&coy;
+    logPjF='全部'; logWho='陈工'; renderAll();
+    R.whoF=[...document.querySelectorAll('#main tbody tr')].every(t=>t.innerHTML.includes('陈工'));
+    logClear(); renderAll();
+    R.upstream=document.getElementById('main').innerHTML.includes('标记拒付停服')
+      &&document.getElementById('main').innerHTML.includes('出库到场');
+    logExport('eng',3);
+    R.exportLog=OPLOG[0].action==='导出操作日志';
+    OPLOG.splice(0,OPLOG.length-l0); logClear();
+    // 设置：任务类型 + SM 清单
+    go('eng','设置');
+    h=document.getElementById('main').innerHTML;
+    R.setUI=h.includes('排班任务类型')&&h.includes('内建 · 不可删')
+      &&h.includes('SM 模板与出发前清单')&&h.includes('条件项');
+    const t0=SCH_TYPES.length;
+    schTypeDel('安装'); R.gBuiltin=SCH_TYPES.length===t0;
+    document.getElementById('sct-new').value='安装'; schTypeAdd();
+    R.gDupType=SCH_TYPES.length===t0;
+    document.getElementById('sct-new').value='复勘'; schTypeAdd();
+    R.addType=SCH_TYPES.some(t=>t.k==='复勘')&&SCH_NORM['复勘']===240;
+    schTypeDel('复勘'); uiOk();
+    R.delType=!SCH_TYPES.some(t=>t.k==='复勘')&&SCH_NORM['复勘']===undefined;
+    const c0=SM_CHK[2].length;
+    document.getElementById('smchk-new-2').value='网线测试仪';
+    smChkAdd(2);
+    R.chkAdd=SM_CHK[2].length===c0+1&&SM_CHK[2].includes('网线测试仪');
+    smChkDel(2,SM_CHK[2].indexOf('网线测试仪')); uiOk();
+    R.chkDel=SM_CHK[2].length===c0;
+    // 帮助：部门总说明
+    go('eng','总览'); helpTab='dept'; helpOpen();
+    const hb=document.getElementById('helpbody').innerHTML;
+    R.guide=hb.includes('工程管理 · 总说明')&&hb.includes('S 是钱、SM 是会')
+      &&hb.includes('派工是计划，打卡是事实')&&hb.includes('每日工时管理');
+    helpTab='page'; helpOpen();
+    R.pageTab=document.getElementById('helpbody').innerHTML.includes('本页操作');
+    helpClose();
+    OPLOG.splice(0,OPLOG.length-l0); renderAll();
+    return JSON.stringify(R);});
+  const L52=JSON.parse(lg52);
+  ok(L52.ui,'操作日志缺时间/操作人/项目/导出等查阅方式');
+  ok(L52.range,'按时间查（今天）无效');
+  ok(L52.pjF,'按项目查（含公司级一档）无效');
+  ok(L52.whoF,'按操作人查无效');
+  ok(L52.upstream,'工程操作日志缺上下游条目（财务停服 / 库管出库到场）');
+  ok(L52.exportLog,'导出 CSV 本身未留痕');
+  ok(L52.setUI,'工程设置缺任务类型 / SM 出发前清单面板');
+  ok(L52.gBuiltin,'内建任务类型竟能删（应拦）');
+  ok(L52.gDupType,'重复任务类型未拦');
+  ok(L52.addType&&L52.delType,'新增/删除任务类型未生效（含合理时长联动）');
+  ok(L52.chkAdd&&L52.chkDel,'SM 出发前清单项增删未生效');
+  ok(L52.guide,'帮助缺「部门总说明」（工程管理全流程）');
+  ok(L52.pageTab,'帮助「本页说明」页签失效');
+  await page.evaluate(()=>{loginAs('eng');docDir='p88a';go('eng','文档库');});
+  await page.screenshot({path:__dirname+'/shot_文档库.png'});
+  await page.evaluate(()=>{go('eng','操作日志');});
+  await page.screenshot({path:__dirname+'/shot_操作日志查阅.png'});
 
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));

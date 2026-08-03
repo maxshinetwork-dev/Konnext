@@ -360,6 +360,10 @@ tbody tr:hover{background:var(--bg-elevated)}
 <div id="rtbox" style="display:none;position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);z-index:91;
   background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
   width:min(640px,94vw);max-height:90vh;overflow-y:auto;padding:18px 20px"></div>
+<div id="dcback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:90" onclick="docClose()"></div>
+<div id="dcbox" style="display:none;position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);z-index:91;
+  background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
+  width:min(620px,94vw);max-height:90vh;overflow-y:auto;padding:18px 20px"></div>
 <div id="rpback" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:90" onclick="schRepClose()"></div>
 <div id="rpbox" style="display:none;position:fixed;left:50%;top:48%;transform:translate(-50%,-50%);z-index:91;
   background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(16,24,40,.25);
@@ -399,7 +403,7 @@ const WHO = {
 };
 const DEPT = {
   presales:{label:'售前', pages:['项目列表','项目状态表','操作日志','设置']},  /* 用户定：大表=项目列表；状态表=比例图+走向图+状态过滤 */
-  eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','Site Meeting','安装调试','交付','工程流水账','每日上报','人员与外包','文档库','操作日志','设置']},
+  eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','Site Meeting','安装调试','交付','工程流水账','每日工时管理','文档库','操作日志','设置']},
   proc:    {label:'采购', pages:['总览','项目列表','物料主表','汇率','采购单','补货建议','调价历史','RMA索赔','操作日志']},
   wh:      {label:'库管', pages:['总览','项目列表','入库','出库','退库与拒收','RMA登记','盘点','物料在谁手里','库存流水','期初移库','操作日志']},
   fin:     {label:'财务', pages:['财务节点','项目列表','项目收款S1-S3','尾款结算S4与Var','运维财务支持','催账和停服','工资数据','项目报销','成本与利润率','操作日志','设置']},
@@ -465,7 +469,7 @@ function senderMail(k,v){ const nv=(v||'').trim().toLowerCase();
 const COMPANY_PAGES=new Set([
   'proc/总览','proc/物料主表','proc/汇率','proc/采购单','proc/补货建议','proc/调价历史','proc/RMA索赔',
   'wh/总览','wh/入库','wh/盘点','wh/库存流水','wh/期初移库','wh/RMA登记',
-  'eng/总览','eng/派工排班','eng/每日上报','eng/人员与外包','eng/文档库','eng/设置','eng/Site Meeting','eng/安装调试','eng/交付',
+  'eng/总览','eng/派工排班','eng/每日工时管理','eng/文档库','eng/设置','eng/Site Meeting','eng/安装调试','eng/交付',
   'fin/财务节点','fin/项目收款S1-S3','fin/尾款结算S4与Var','fin/运维财务支持','fin/催账和停服',
   'fin/工资数据','fin/项目报销','fin/成本与利润率','fin/设置','fin/总览','fin/工资','presales/总览','presales/项目列表','presales/项目状态表','presales/设置','mt/总览',
   'presales/操作日志','eng/操作日志','proc/操作日志','wh/操作日志','fin/操作日志','mt/操作日志',
@@ -540,7 +544,7 @@ const TODOS=[
  {dept:'eng', ev:'盘点待审批',         from:'库管',     act:'复核并审批盘亏 A$255.60', h:26, sla:24, pj:'',p:'总览'},
  {dept:'mt',  ev:'项目交付完成',       from:'工程管理', act:'接管运维，启动免责维保',   h:14, sla:24, pj:'KX-2026-0180',p:'维保状态'},
  {dept:'eng', ev:'日结挂起 2 天：小陈 07/29–30 未填写', from:'考勤系统',
-  act:'去「每日上报」补录（项目/时长/原因必填 · 进 KPI）· 补录进下月工时计算', h:48, sla:24, pj:'',p:'每日上报'},
+  act:'去「每日工时管理」补录（项目/时长/原因必填 · 进 KPI）· 补录进下月工时计算', h:48, sla:24, pj:'',p:'每日工时管理'},
 ];
 TODOS.forEach((t,i)=>t.id='s'+i);   // 稳定编号：三动作按它记状态（售前现算条目用 pre-项目编号）
 /* 售前管道里未进全公司项目列表演示数据的地址（补给待办抽屉显示） */
@@ -608,7 +612,26 @@ const OPENED={};PROJECTS.forEach(p=>OPENED[p.code]=p.opened);BIGPD.forEach(p=>OP
    每条四要素：时间 · 谁（部门）· 操作了什么 · 改了什么（前→后）
    rel = 与哪些部门相关（本部门操作 + 他部门确认引起的状态改变都要出现）
    正式系统数据源 = audit_log 表（契约已有，触发器写 before/after，只读不可删） */
-let logQ='', logDeptF='全部';
+let logQ='', logDeptF='全部', logWho='全部', logPjF='全部', logRange='全部', logFrom='', logTo='';
+/* 日志查阅：时间范围（快捷档 + 自定义起止）· 操作人 · 项目 —— 与逐字搜索叠加 */
+const logDayShift=n=>{const d=new Date(); d.setDate(d.getDate()-n);
+  const z=x=>String(x).padStart(2,'0');
+  return d.getFullYear()+'/'+z(d.getMonth()+1)+'/'+z(d.getDate());};
+function logInRange(ts){ const d=ts.slice(0,10);
+  if(logRange==='今天')   return d===logDayShift(0);
+  if(logRange==='近 7 天') return d>=logDayShift(6);
+  if(logRange==='近 30 天')return d>=logDayShift(29);
+  if(logRange==='自定义'){ if(logFrom&&d<logFrom.replace(/-/g,'/')) return false;
+    if(logTo&&d>logTo.replace(/-/g,'/')) return false; return true; }
+  return true; }
+function logRangeSet(k){ logRange=k; if(k!=='自定义'){ logFrom=''; logTo=''; } renderAll(); }
+function logClear(){ logQ=''; logDeptF='全部'; logWho='全部'; logPjF='全部';
+  logRange='全部'; logFrom=''; logTo=''; renderAll(); }
+function logExport(d,n){
+  opLog('','导出操作日志','「'+DEPT[d].label+'相关」当前筛选结果 '+n+' 条 → CSV',[d]);
+  renderAll();
+  uiAlert('已导出 '+n+' 条（演示）：konnext_操作日志_'+DEPT[d].label+'.csv\n'+
+    '正式系统按当前筛选条件生成 CSV 下载到本地 —— 导出这个动作本身也留痕'); }
 const nowTs=()=>{const d=new Date(),z=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}/${z(d.getMonth()+1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;};
 const OPLOG=[
@@ -646,6 +669,25 @@ const OPLOG=[
   detail:'5 步引导完成 · 状态=接洽中 · 立项时间落当天',rel:['presales']},
  {ts:'2026/07/28 14:06',who:'小林',dept:'售前',pj:'KX-2026-0155',action:'勾已流失',
   detail:'报价中 → 已流失（终态归档，整行变灰）',rel:['presales']},
+ /* ── 五十二轮：工程线上下游补种（自身操作 + 别人动作引起工程这边变化）── */
+ {ts:'2026/08/03 09:12',who:'陈工',dept:'工程管理',pj:'KX-2026-0188',action:'新增排班',
+  detail:'阿强 '+'本周三：安装 07:30–16:00（8 时 30 分）—— 短信已发 · App 日程已同步 · 等回 Y',rel:['eng']},
+ {ts:'2026/08/02 17:40',who:'陈工',dept:'工程管理',pj:'KX-2026-0188',action:'邮件转发文档',
+  detail:'「布线图（KNX 主回路）」v3 → 电工 Leo · VoltPro —— 该版本定格为已发放，不可删',rel:['eng']},
+ {ts:'2026/08/02 16:05',who:'陈工',dept:'工程管理',pj:'KX-2026-0188',action:'上传文档新版本',
+  detail:'「布线图（KNX 主回路）」v2 → v3：按 SM3 现场变更加花园廊架 4 路灯控',rel:['eng']},
+ {ts:'2026/07/28 13:40',who:'陈工',dept:'工程管理',pj:'KX-2026-0180',action:'确认运维条款已签署',
+  detail:'未签署 → 已签署（置位留痕）· 通知运维：接管与订阅可启动',rel:['eng','mt']},
+ {ts:'2026/07/26 10:05',who:'陈工',dept:'工程管理',pj:'KX-2026-0180',action:'发出交付预约通知',
+  detail:'短信+邮件 → Builder Sam（0422 300 400）· 署名 陈工 · 拟定 2026/07/28 09:00–13:30',rel:['eng']},
+ {ts:'2026/07/24 10:15',who:'陈工',dept:'工程管理',pj:'KX-2026-0188',action:'SM3 检查布线完成定格',
+  detail:'工程师 App 现场提交 · 电工 Leo · VoltPro 签字 · 现场照片 12 张 → 解锁财务 S2 物料款',rel:['eng','fin','proc']},
+ {ts:'2026/07/22 11:30',who:'王姐',dept:'财务',pj:'KX-2026-0160',action:'标记拒付停服',
+  detail:'业主拒付 → 已停服：工程侧该项目任何新任务派不出（项目列表状态转「已停服」）',rel:['fin','eng']},
+ {ts:'2026/07/20 09:52',who:'陈工',dept:'工程管理',pj:'KX-2026-0203',action:'SM1 进场完成定格',
+  detail:'围栏圆心首次到场校准（误差 8m）· 分包商联系表已采集 · 现场照片 5 张',rel:['eng']},
+ {ts:'2026/07/18 15:20',who:'老张',dept:'采购＋库管',pj:'KX-2026-0188',action:'出库到场',
+  detail:'KNX 四联面板 ×24 送达现场，提货人＝电工 Leo（参建方名单）—— 工程侧可排安装',rel:['wh','eng']},
 ];
 function opLog(pj,action,detail,rel){
   OPLOG.unshift({ts:nowTs(),who:WHO[me].name,dept:WHO[me].role,pj:pj||'',action,detail,rel:rel||[tab]}); }
@@ -1081,7 +1123,7 @@ function engStuckRows(){
     why:h.from+' → '+h.to+'：'+h.what,h:hoursSince(h.at),p:h.p,t:h.t}));
   const hg=engHang();
   if(hg.length) rows.push({pj:'',what:'日结挂起 '+hg.length+' 天（'+[...new Set(hg.map(w=>w.who))].join('、')+' '+hg.map(w=>w.md).join('、')+'）',
-    why:'工程员工没交当日上报 —— 负责人补录（项目/时长/原因必填，进 KPI）· 补录进下月工时',h:48,p:'每日上报'});
+    why:'工程员工没交当日上报 —— 负责人补录（项目/时长/原因必填，进 KPI）· 补录进下月工时',h:48,p:'每日工时管理'});
   (STUCK.eng||[]).forEach(s=>rows.push(s));
   return rows.sort((a,b)=>(b.h||0)-(a.h||0)); }
 let engCard=null;
@@ -1101,7 +1143,7 @@ function engNormVal(k,v){ const nv=Math.round((parseInt(v,10)||0)/15)*15;
 /* ═══ 四十一轮：派工排班（周视图）═══
    人员与时薪＝财务在「工资数据/设置」维护，这里只读引用；五类任务；工时→加班/倒休自动算；
    任务必须关联项目（倒休除外，倒休是休假不是工作）；最小 15 分钟；只能改此刻之后；按天/整周锁定 */
-const SCH_TYPES=[
+let SCH_TYPES=[
  {k:'Site Meeting',c:'t-sm',  std:false},
  {k:'安装',        c:'t-inst',std:true},
  {k:'交付',        c:'t-deli',std:true},
@@ -1165,6 +1207,32 @@ function schSum(who,days){ const sys=(STAFF.find(s=>s.name===who)||{}).sys||'时
     if(m>STD_MIN&&sys!=='外包日薪') ot+=m-STD_MIN; toil+=schToilMin(who,d);});
   return {sys,work,ot,toil,
     otTo:sys==='月薪'?'转倒休':(sys==='时薪'?'付加班费（倍数 1.0）':'外包无加班概念')}; }
+/* ── 工程设置：任务类型 与 SM 出发前清单（必选下拉都做成可维护，写死的选项永远不够用）── */
+function schTypeAdd(){ const el=document.getElementById('sct-new'); const v=((el&&el.value)||'').trim();
+  if(!v){ renderAll(); return; }
+  if(SCH_TYPES.some(t=>t.k===v)){ uiAlert('门禁：任务类型「'+v+'」已经有了 —— 重复类型会让排班统计与工时归属对不上'); return; }
+  SCH_TYPES.push({k:v,c:'t-inst',std:true}); SCH_NORM[v]=240;
+  opLog('','新增排班任务类型','「'+v+'」· 合理时长默认 4 时（可在下方改）· 计入工时',['eng']);
+  renderAll(); uiAlert('已新增任务类型：'+v+'（合理时长默认 4 时，记得按实际改）'); }
+function schTypeDel(k){
+  if(['Site Meeting','安装','交付','维护','倒休'].includes(k)){
+    uiAlert('门禁：「'+k+'」是系统内建类型 —— 五类任务与 SM/安装/交付/维护/倒休的算法绑死，删不得'); return; }
+  if(SCH.some(x=>x.type===k)){ uiAlert('门禁：已经有排班用了「'+k+'」—— 删掉之后那些任务就成了孤儿，工时算不出来'); return; }
+  uiConfirm('删除任务类型「'+k+'」？以后排班时不再出现',ok=>{ if(!ok) return;
+    SCH_TYPES=SCH_TYPES.filter(t=>t.k!==k); delete SCH_NORM[k];
+    opLog('','删除排班任务类型','「'+k+'」（没有任何排班在用）',['eng']);
+    renderAll(); uiAlert('已删除任务类型：'+k); }); }
+function smChkAdd(no){ const el=document.getElementById('smchk-new-'+no); const v=((el&&el.value)||'').trim();
+  if(!v){ renderAll(); return; }
+  if(SM_CHK[no].includes(v)){ uiAlert('门禁：SM'+no+' 清单里已经有「'+v+'」了'); return; }
+  SM_CHK[no].push(v);
+  opLog('','新增 SM 出发前清单项','SM'+no+'：「'+v+'」—— 下一场 SM'+no+' 的出发前清单立即多这一条',['eng']);
+  renderAll(); uiAlert('已加入 SM'+no+' 出发前清单：'+v); }
+function smChkDel(no,i){ const v=SM_CHK[no][i];
+  uiConfirm('从 SM'+no+' 出发前清单里删掉「'+v+'」？（已完成的场次不受影响）',ok=>{ if(!ok) return;
+    SM_CHK[no].splice(i,1);
+    opLog('','删除 SM 出发前清单项','SM'+no+'：「'+v+'」',['eng']);
+    renderAll(); uiAlert('已删除：'+v); }); }
 /* ── 排班弹层：新增/修改一条任务 ── */
 function schAdd(who,d){
   if(schPast(d)){ uiAlert('门禁：只能修改此刻之后的排班——'+d+' 已过去，记录不可更改'); return; }
@@ -1481,7 +1549,7 @@ const SM_DEF=[
  {no:3,name:'SM3 检查布线',goal:'当着客户面验布线 · 现场登记变更（加/减/移位）· 电工签字'},
  {no:4,name:'SM4 封板核对',goal:'封板前最后核对 · 完成即可发起 S3 人工款'},
 ];
-const SM_CHK={
+let SM_CHK={
  1:['围栏圆心首次到场校准','项目档案打印','分包商联系表'],
  2:['布线图（最新版）','线材清单（按方案）','KNX 测试仪 ◇有KNX','地暖联动清单 ◇有地暖'],
  3:['布线图对照表','变更登记表','签字板'],
@@ -1671,6 +1739,338 @@ function instSave(){ const o=instOpen; if(!o) return;
     who.map(w=>({who:w+'（App 日程）',how:'短信 + App',ok:false})));
   instClose(); renderAll();
   uiAlert('已排入排班表 ✓ '+d+' '+st+'–'+et+'\n'+who.join('、')+' 各一条安装任务（短信已发，等回 Y 变绿点）'); }
+/* ═══ 五十一轮：文档库（用户 2026-08-03 定）═══
+   一个库装两类文档：
+   ①<协作>SM1~4 要**递交给配合团队**的文档（布线图/线材清单/变更签字单 → Builder·电工·设计师）
+   ②<技术>我方工程人员在**施工端 App 现场查阅**的技术文档（接线规范/面板手册/调试步骤）
+   树状归档（工程管理自己整理命名）· 上传下载 · <b>旧版本自动保留</b>（可手动删）·
+   每份一个固定链接（现场随时看 / 邮件转发）· 每一次动作都进变更日志。
+   ★门禁：已经发出去给外部团队的版本 <b>删不得</b>（发放版本是定格证据，删了以后扯皮没依据）。*/
+const DOC_DIRS=[
+ {id:'p',   pid:null, name:'项目文档'},
+ {id:'p88', pid:'p',  name:'林宅 · 11 Bond St, Mosman（KX-2026-0188）'},
+ {id:'p88a',pid:'p88',name:'SM 协作文档（交配合团队）'},
+ {id:'p88b',pid:'p88',name:'变更与签字单'},
+ {id:'p80', pid:'p',  name:'陈宅 · 22 Rosamond St, Hornsby（KX-2026-0180）'},
+ {id:'p80a',pid:'p80',name:'SM 协作文档（交配合团队）'},
+ {id:'p80b',pid:'p80',name:'交付资料'},
+ {id:'t',   pid:null, name:'技术文档（现场 App 查阅）'},
+ {id:'tk',  pid:'t',  name:'KNX'},
+ {id:'tc',  pid:'t',  name:'C-Bus'},
+ {id:'tg',  pid:'t',  name:'通用施工规范'},
+];
+let DOCS=[
+ {id:'D-101',dir:'p88a',name:'布线图（KNX 主回路）',kind:'协作',app:false,
+  vs:[{v:3,at:'2026/07/22 16:40',by:'陈工',size:'2.4 MB',note:'按 SM3 现场变更加花园廊架 4 路灯控',
+       sent:'2026/07/22 17:05 → 电工 Leo · VoltPro（邮件）'},
+      {v:2,at:'2026/06/23 11:20',by:'陈工',size:'2.2 MB',note:'补地暖联动 6 处点位',
+       sent:'2026/06/23 11:35 → 电工 Leo · VoltPro（邮件）'},
+      {v:1,at:'2026/06/09 09:05',by:'陈工',size:'2.0 MB',note:'首版（SM1 后出图）',sent:''}]},
+ {id:'D-102',dir:'p88a',name:'线材清单（按方案 · 含地暖条件项）',kind:'协作',app:false,
+  vs:[{v:2,at:'2026/06/23 11:25',by:'陈工',size:'186 KB',note:'KNX 总线 300m→340m，网线 24→26 箱',
+       sent:'2026/06/23 11:35 → Builder Sam · NorthBuild（邮件）'},
+      {v:1,at:'2026/06/20 15:10',by:'陈工',size:'180 KB',note:'首版',sent:''}]},
+ {id:'D-103',dir:'p88b',name:'SM3 变更登记与电工签字单',kind:'协作',app:false,
+  vs:[{v:1,at:'2026/07/24 11:40',by:'陈工',size:'1.1 MB',note:'现场签字扫描件（Leo · VoltPro）',
+       sent:'2026/07/24 12:02 → 财务 · 采购（邮件）'}]},
+ {id:'D-201',dir:'p80a',name:'布线图（C-Bus）',kind:'协作',app:false,
+  vs:[{v:2,at:'2025/11/27 17:00',by:'陈工',size:'1.9 MB',note:'封板前最后一版',
+       sent:'2025/11/27 17:10 → 电工 Leo · VoltPro（邮件）'},
+      {v:1,at:'2025/10/19 10:00',by:'陈工',size:'1.8 MB',note:'首版',sent:''}]},
+ {id:'D-202',dir:'p80b',name:'交付点位清单与验收表',kind:'协作',app:true,
+  vs:[{v:1,at:'2026/07/26 09:30',by:'陈工',size:'640 KB',note:'交付验收当天用',sent:''}]},
+ {id:'D-301',dir:'tk',name:'KNX 总线接线与拓扑规范',kind:'技术',app:true,
+  vs:[{v:4,at:'2026/05/18 14:00',by:'陈工',size:'3.6 MB',note:'补 IP 路由器段落与常见接线错误图',sent:''},
+      {v:3,at:'2025/12/02 09:40',by:'陈工',size:'3.1 MB',note:'按厂家新版手册更新',sent:''}]},
+ {id:'D-302',dir:'tk',name:'KNX 面板安装与对码步骤',kind:'技术',app:true,
+  vs:[{v:2,at:'2026/03/11 10:15',by:'陈工',size:'1.4 MB',note:'加四联面板对码顺序图',sent:''},
+      {v:1,at:'2025/09/01 08:50',by:'陈工',size:'1.2 MB',note:'首版',sent:''}]},
+ {id:'D-311',dir:'tc',name:'C-Bus 调试与场景编程手册',kind:'技术',app:true,
+  vs:[{v:1,at:'2025/08/20 16:00',by:'陈工',size:'5.2 MB',note:'首版',sent:''}]},
+ {id:'D-321',dir:'tg',name:'弱电箱整理与标签规范',kind:'技术',app:true,
+  vs:[{v:3,at:'2026/06/30 13:20',by:'陈工',size:'820 KB',note:'标签打印格式统一为「回路号-房间-用途」',sent:''},
+      {v:2,at:'2026/02/14 11:00',by:'陈工',size:'760 KB',note:'补交叉走线示例',sent:''},
+      {v:1,at:'2025/07/10 09:00',by:'陈工',size:'700 KB',note:'首版',sent:''}]},
+ {id:'D-322',dir:'tg',name:'现场安全与围栏打卡须知',kind:'技术',app:true,
+  vs:[{v:1,at:'2026/01/06 08:30',by:'陈工',size:'420 KB',note:'首版',sent:''}]},
+];
+/* 配合团队收件人候选（演示；正式＝project_party + 联系人表里带邮箱的那些） */
+const DOC_TO=[
+ {role:'电工',   name:'Leo · VoltPro',     email:'leo@voltpro.com.au'},
+ {role:'电工',   name:'Tony · Spark电气',  email:'tony@sparkelec.com.au'},
+ {role:'Builder',name:'Sam · NorthBuild',  email:'sam@northbuild.com.au'},
+ {role:'Builder',name:'Mike · BuildCo',    email:'mike@buildco.com.au'},
+ {role:'Builder',name:'Ken · MetroCon',    email:'ken@metrocon.com.au'},
+ {role:'设计师', name:'Lily · 设计工作室', email:'lily@design.com.au'},
+];
+let docDir='p88a', docOpenD={p:1,p88:1,t:1}, docQ='', docDlg=null;
+const docKids=pid=>DOC_DIRS.filter(d=>d.pid===pid);
+const docOf=id=>DOC_DIRS.find(d=>d.id===id)||{};
+const docPath=id=>{const out=[]; let c=docOf(id); while(c&&c.id){out.unshift(c.name); c=docOf(c.pid);} return out.join(' / ');};
+const docIn=dir=>DOCS.filter(d=>d.dir===dir);
+const docCnt=id=>docIn(id).length+docKids(id).reduce((a,k)=>a+docCnt(k.id),0);
+const docCur=d=>d.vs[0];
+const docUrl=d=>'https://docs.konnext.com.au/d/'+d.id.toLowerCase();
+const docSentAny=d=>d.vs.some(v=>v.sent);
+/* ── 树 ── */
+function docTree(pid,lv){ return docKids(pid).map(d=>{
+  const kids=docKids(d.id), on=docOpenD[d.id], cur=docDir===d.id;
+  return `<div><div style="display:flex;align-items:center;gap:4px;padding:3px 6px;border-radius:5px;cursor:pointer;
+      ${cur?'background:var(--bg-elevated);color:var(--accent);font-weight:600':''}"
+      onclick="docDir='${d.id}';docOpenD['${d.id}']=1;renderAll()">
+     <span style="width:12px;text-align:center;color:var(--text-muted)"
+       onclick="event.stopPropagation();docOpenD['${d.id}']=!docOpenD['${d.id}'];renderAll()">${kids.length?(on?'▾':'▸'):''}</span>
+     <span style="padding-left:${lv*10}px">📁 ${d.name}</span>
+     <span class="muted" style="margin-left:auto;font-size:var(--fs-xs)">${docCnt(d.id)||''}</span></div>
+   ${kids.length&&on?docTree(d.id,lv+1):''}</div>`;}).join(''); }
+/* ── 新建 / 重命名 / 删除 文件夹 ── */
+function docDirNew(){ uiPrompt('在「'+docPath(docDir)+'」下新建子文件夹，名称：',v=>{
+  const n=(v||'').trim(); if(!n) return;
+  if(docKids(docDir).some(k=>k.name===n)){ uiAlert('门禁：同一层已经有「'+n+'」了 —— 重名文件夹以后没人分得清哪个是哪个'); return; }
+  const id='F'+(DOC_DIRS.length+1)+Math.floor(Math.random?0:0);
+  DOC_DIRS.push({id,pid:docDir,name:n}); docOpenD[docDir]=1; docDir=id;
+  opLog('','新建文档文件夹','「'+docPath(id)+'」',['eng']);
+  renderAll(); uiAlert('已新建：'+n); }); }
+function docDirRename(){ const d=docOf(docDir); if(!d.id) return;
+  uiPrompt('重命名「'+d.name+'」为：',v=>{ const n=(v||'').trim(); if(!n||n===d.name) return;
+    if(docKids(d.pid).some(k=>k.name===n)){ uiAlert('门禁：同一层已经有「'+n+'」了'); return; }
+    const old=d.name; d.name=n;
+    opLog('','重命名文档文件夹','「'+old+'」→「'+n+'」',['eng']);
+    renderAll(); uiAlert('已重命名：'+old+' → '+n); }); }
+function docDirDel(){ const d=docOf(docDir); if(!d.id) return;
+  if(docCnt(d.id)){ uiAlert('门禁：「'+d.name+'」里还有 '+docCnt(d.id)+' 份文档（含子文件夹）——\n'+
+    '先把文档移走或删掉再删文件夹，否则文档连同链接一起消失，现场 App 打开就是 404'); return; }
+  uiConfirm('删除空文件夹「'+d.name+'」？',ok=>{ if(!ok) return;
+    const i=DOC_DIRS.findIndex(x=>x.id===d.id); DOC_DIRS.splice(i,1); docDir=d.pid||'p';
+    opLog('','删除文档文件夹','「'+d.name+'」（空文件夹）',['eng']);
+    renderAll(); uiAlert('已删除：'+d.name); }); }
+/* ── 弹层：上传新文档 / 传新版本 / 版本历史 / 邮件转发 ── */
+function docClose(){ docDlg=null; document.getElementById('dcback').style.display='none';
+  const b=document.getElementById('dcbox'); b.style.display='none'; b.innerHTML=''; }
+function docShow(html){ const b=document.getElementById('dcbox'); b.innerHTML=html;
+  document.getElementById('dcback').style.display='block'; b.style.display='block'; }
+function docUpOpen(){ docDlg={m:'up'};
+  docShow('<div style="font-weight:600;margin-bottom:2px">上传文档</div>'+
+   '<div class="hint" style="margin-bottom:10px">存到：<b>'+docPath(docDir)+'</b></div>'+
+   '<div class="field"><label>文档名称（工程管理自己命名 —— 名字就是以后大家找它的方式）</label>'+
+     '<input id="dc-name" style="width:100%" placeholder="如：布线图（KNX 主回路）"></div>'+
+   '<div class="field"><label>用途</label><select id="dc-kind">'+
+     '<option value="协作">协作 —— SM 要递交给配合团队（Builder / 电工 / 设计师）</option>'+
+     '<option value="技术">技术 —— 我方工程人员现场查阅</option></select></div>'+
+   '<div class="field"><label><input type="checkbox" id="dc-app" style="width:auto"> '+
+     '在施工端 App 里可查阅（勾了才出现在工人手机上）</label></div>'+
+   '<div class="field"><label>选择文件（演示：这里只记文件名与大小）</label>'+
+     '<div style="display:flex;gap:6px;align-items:center">'+
+     '<button class="btn" onclick="docPick()">📎 选择文件…</button>'+
+     '<span id="dc-file" class="hint">还没选文件</span></div></div>'+
+   '<div class="field"><label>说明（这份文档是什么 · 必填 ≥5 字）</label>'+
+     '<textarea id="dc-note" style="width:100%;min-height:60px;font-size:12px"></textarea></div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="docClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="docUpSave()">上传（存为 v1）</button></div>'); }
+function docPick(){ const e=document.getElementById('dc-file'); if(!e) return;
+  e.innerHTML='<b>'+(docDlg&&docDlg.m==='ver'?'布线图_v新.pdf':'新文档.pdf')+'</b> · 1.8 MB（演示占位）';
+  docDlg.file=1; }
+function docUpSave(){ const v=id=>((document.getElementById(id)||{}).value||'').trim();
+  const name=v('dc-name'), kind=v('dc-kind'), note=v('dc-note');
+  const app=(document.getElementById('dc-app')||{}).checked;
+  if(!name){ uiAlert('门禁：文档必须有名字 —— 没名字的文件三个月后谁也认不出是什么'); return; }
+  if(docIn(docDir).some(d=>d.name===name)){ uiAlert('门禁：这个文件夹里已经有「'+name+'」了 ——\n'+
+    '同名文档请用「传新版本」，别新建一份（两份同名的以后没人知道该看哪份）'); return; }
+  if(!docDlg||!docDlg.file){ uiAlert('门禁：还没选文件'); return; }
+  if(note.replace(/\s/g,'').length<5){ uiAlert('门禁：说明必填（≥5 字）—— 写清楚这份是什么，以后别人才找得到'); return; }
+  const id='D-'+(900+DOCS.length);
+  DOCS.unshift({id,dir:docDir,name,kind,app,
+    vs:[{v:1,at:nowTs(),by:WHO[me].name,size:'1.8 MB',note,sent:''}]});
+  opLog('','上传文档','「'+name+'」v1 存入 '+docPath(docDir)+' · '+kind+(app?' · App 可查阅':''),['eng']);
+  docClose(); renderAll(); uiAlert('已上传：'+name+' v1 ✓ 链接已生成，可复制给现场或邮件转发'); }
+function docVerOpen(id){ const d=DOCS.find(x=>x.id===id); if(!d) return; docDlg={m:'ver',id};
+  docShow('<div style="font-weight:600;margin-bottom:2px">传新版本 · '+d.name+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">当前 <b>v'+docCur(d).v+'</b>（'+docCur(d).at+' · '+docCur(d).by+'）——'+
+     '新版本存为 <b>v'+(docCur(d).v+1)+'</b>，<b>旧版本自动保留</b>，链接不变</div>'+
+   '<div class="field"><label>选择文件</label><div style="display:flex;gap:6px;align-items:center">'+
+     '<button class="btn" onclick="docPick()">📎 选择文件…</button>'+
+     '<span id="dc-file" class="hint">还没选文件</span></div></div>'+
+   '<div class="field"><label>这一版改了什么（必填 ≥5 字 —— 版本之间的差别只有这一句能说明）</label>'+
+     '<textarea id="dc-note" style="width:100%;min-height:64px;font-size:12px" '+
+     'placeholder="如：按 SM3 现场变更加花园廊架 4 路灯控"></textarea></div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="docClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="docVerSave()">存为 v'+(docCur(d).v+1)+'</button></div>'); }
+function docVerSave(){ const d=DOCS.find(x=>x.id===docDlg.id); if(!d) return;
+  const note=((document.getElementById('dc-note')||{}).value||'').trim();
+  if(!docDlg.file){ uiAlert('门禁：还没选文件'); return; }
+  if(note.replace(/\s/g,'').length<5){
+    uiAlert('门禁：必须写这一版改了什么（≥5 字）——\n不写的话，现场拿到两版图纸没人知道差在哪，照旧版施工就是返工'); return; }
+  const nv=docCur(d).v+1;
+  d.vs.unshift({v:nv,at:nowTs(),by:WHO[me].name,size:'1.8 MB',note,sent:''});
+  opLog('','上传文档新版本','「'+d.name+'」v'+(nv-1)+' → v'+nv+'：'+note,['eng']);
+  docClose(); renderAll();
+  uiAlert('已存为 v'+nv+' ✓ 旧版自动保留（版本历史里能下载）· 链接不变\n'+
+    '★ 发过给外部团队的文档，改版后记得重新发一次'); }
+function docHistOpen(id){ const d=DOCS.find(x=>x.id===id); if(!d) return; docDlg={m:'hist',id};
+  docShow('<div style="font-weight:600;margin-bottom:2px">版本历史 · '+d.name+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">旧版本<b>自动保留</b>，随时可下载回看；'+
+     '<b>已发放出去的版本删不得</b>（发出去的是证据）</div>'+
+   '<table><thead><tr><th>版本</th><th>时间 / 上传人</th><th>改了什么</th><th>发放记录</th><th></th></tr></thead><tbody>'+
+   d.vs.map((v,i)=>'<tr><td><b class="mono">v'+v.v+'</b>'+(i===0?' <span class="pill p-green">当前</span>':'')+
+     '<div class="hint">'+v.size+'</div></td>'+
+     '<td class="mono" style="font-size:11px">'+v.at+'<div class="hint">'+v.by+'</div></td>'+
+     '<td style="font-size:var(--fs-xs)">'+v.note+'</td>'+
+     '<td style="font-size:var(--fs-xs)">'+(v.sent?'<span class="pill p-cyan">已发放</span><div class="hint">'+v.sent+'</div>'
+        :'<span class="muted">未发出</span>')+'</td>'+
+     '<td style="white-space:nowrap"><a style="color:var(--accent);cursor:pointer" onclick="docDl(\''+d.id+'\','+v.v+')">下载</a>'+
+       (d.vs.length>1&&!v.sent?' · <a style="color:#c62828;cursor:pointer" onclick="docVerDel(\''+d.id+'\','+v.v+')">删除</a>'
+         :(v.sent?' · <span class="hint" title="已发放版本不可删">锁定</span>':''))+'</td></tr>').join('')+
+   '</tbody></table>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="docClose()">关闭</button></div>'); }
+function docVerDel(id,v){ const d=DOCS.find(x=>x.id===id); if(!d) return;
+  const ver=d.vs.find(x=>x.v===v); if(!ver) return;
+  if(ver.sent){ uiAlert('门禁：v'+v+' 已经发放给外部团队（'+ver.sent+'）—— 删不得。\n'+
+    '发出去过的版本是日后扯皮的唯一依据，系统必须留着'); return; }
+  if(d.vs.length<2){ uiAlert('门禁：只剩这一版了，删了文档就空了 —— 要整份删请用列表里的「删除」'); return; }
+  uiConfirm('删除「'+d.name+'」的 v'+v+'？（其余版本不受影响）',ok=>{ if(!ok) return;
+    d.vs=d.vs.filter(x=>x.v!==v);
+    opLog('','删除文档版本','「'+d.name+'」v'+v+'（未发放过）',['eng']);
+    docHistOpen(id); renderAll(); uiAlert('已删除 v'+v); }); }
+function docDl(id,v){ const d=DOCS.find(x=>x.id===id); if(!d) return;
+  opLog('','下载文档','「'+d.name+'」v'+(v||docCur(d).v),['eng']);
+  uiAlert('已开始下载（演示）：'+d.name+' v'+(v||docCur(d).v)+'\n正式系统走存储直链，浏览器直接存到本地'); }
+function docLink(id){ const d=DOCS.find(x=>x.id===id); if(!d) return;
+  uiAlert('链接已复制（演示）：\n'+docUrl(d)+'\n'+
+    '这个链接<b>永远指向最新版</b>——现场 App 扫一眼就是最新的，不用重发链接'); }
+function docAppTog(id){ const d=DOCS.find(x=>x.id===id); if(!d) return;
+  d.app=!d.app;
+  opLog('','改文档 App 可见','「'+d.name+'」→ '+(d.app?'施工端 App 可查阅':'App 不再显示'),['eng']);
+  renderAll(); }
+function docDel(id){ const d=DOCS.find(x=>x.id===id); if(!d) return;
+  if(docSentAny(d)){ uiAlert('门禁：「'+d.name+'」有版本已经发放给外部团队 —— 整份删不得。\n'+
+    '不想让人看到就取消 App 可查阅；发放记录必须留着'); return; }
+  uiConfirm('删除文档「'+d.name+'」（连同 '+d.vs.length+' 个版本）？链接会失效',ok=>{ if(!ok) return;
+    DOCS=DOCS.filter(x=>x.id!==id);
+    opLog('','删除文档','「'+d.name+'」及其 '+d.vs.length+' 个版本（从未发放过）',['eng']);
+    renderAll(); uiAlert('已删除：'+d.name); }); }
+/* 邮件转发：发件身份＝工程管理（四十九轮统一），收件人来自项目参建方，也可手填 */
+function docMailOpen(id){ const d=DOCS.find(x=>x.id===id); if(!d) return; docDlg={m:'mail',id};
+  const pool=DOC_TO;
+  docShow('<div style="font-weight:600;margin-bottom:2px">邮件转发 · '+d.name+'</div>'+
+   '<div class="hint" style="margin-bottom:8px">当前 <b>v'+docCur(d).v+'</b> · '+docCur(d).at+' —— 邮件里带下载链接，对方点开就是这一版</div>'+
+   fromBar('eng','email')+
+   '<div class="field"><label>发给谁（配合团队 —— 来自售前采集的参建方，也可手填）</label>'+
+     '<select id="dc-to">'+pool.map(x=>'<option value="'+x.name+'|'+x.email+'">'+x.role+' · '+x.name+' · '+x.email+'</option>').join('')+
+     '<option value="__manual__">手填邮箱…</option></select>'+
+     '<input id="dc-mail" style="width:100%;margin-top:6px" placeholder="选「手填邮箱」时在这里写"></div>'+
+   '<div class="field"><label>附言</label><textarea id="dc-msg" style="width:100%;min-height:70px;font-size:12px">'+
+     '附上 '+d.name+'（v'+docCur(d).v+'）：'+docCur(d).note+'\n下载链接：'+docUrl(d)+'\n\n如有疑问请回复本邮件。'+
+     '</textarea></div>'+
+   '<div class="field"><label>署名（经办人 —— 只出现在正文末尾）</label>'+
+     '<input id="dc-by" value="'+WHO[me].name+'" style="width:180px"></div>'+
+   '<div class="hint">发出即在版本历史里记<b>已发放</b>（定格：谁、何时、发给谁）—— 这一版从此删不掉</div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="docClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="docMailSend()">确认发送</button></div>'); }
+function docMailSend(){ const d=DOCS.find(x=>x.id===docDlg.id); if(!d) return;
+  const v=id=>((document.getElementById(id)||{}).value||'').trim();
+  let to=v('dc-to'), name='', mail='';
+  if(to==='__manual__'){ mail=v('dc-mail'); name=mail;
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)){
+      uiAlert('门禁：邮箱格式不对 —— 必须是「名字@域名」。地址填错＝文档没送到，系统不会报错'); return; } }
+  else { const a=to.split('|'); name=a[0]; mail=a[1]; }
+  const by=v('dc-by')||WHO[me].name;
+  const cur=docCur(d);
+  cur.sent=(cur.sent?cur.sent+' ／ ':'')+nowTs()+' → '+name+'（邮件）';
+  opLog('','邮件转发文档','「'+d.name+'」v'+cur.v+' → '+name+'（'+mail+'）· 署名 '+by+
+    ' · 发件 '+fromTxt('eng','email')+' —— 该版本定格为已发放，不可删',['eng']);
+  notifAdd('','文档发放：'+d.name+' v'+cur.v+' → '+name,[{who:name,how:'邮件（含下载链接）',ok:true}]);
+  docClose(); renderAll();
+  uiAlert('已发送 ✓ '+d.name+' v'+cur.v+' → '+name+'\n'+
+    '版本历史里已记「已发放」（谁、何时、发给谁定格）——这一版从此删不掉'); }
+/* ═══ 五十轮：工程流水账（用户 2026-08-03 定）═══
+   一个项目一本账：顶部项目条选项目 → 下面从「第一次 SM」到「交付」，
+   ★以入场天为行，逐天列出：谁来了（人力投放：计划 vs 实际打卡）· 当天发生了什么 · 当天有哪些回执。
+   ★这页只读 —— 流水账不许改，一个字都不自己造，全部来自别处：
+     派工排班 SCH（计划 + 短信回 Y 回执）· App 打卡（每人×每天×每任务）· 每日上报 SCH_REPORTS ·
+     Site Meeting SMD（完成定格 / 电工签字 / 现场照片 / 到场打卡）· 变更 FINPAY.vars ·
+     交付 DELIV（客户通知 / 交付排班 / 运维条款 / 确认交付）
+   ★计划 ≠ 事实：过去的日子派了工却没打卡＝红字「没打卡」，围栏外打卡带标 —— 绝不显示成正常。*/
+const ENG_ATT={
+ /* 林宅：SM1→SM3 已完成，安装期（SM 的到场打卡在 SMD.att 里，自动并入，这里不重复） */
+ 'KX-2026-0188':[
+  {d:'2026/07/28',who:'阿强',type:'安装',plan:'07:30–16:00',io:'07:34–16:02'},
+  {d:'2026/07/28',who:'老李',type:'安装',plan:'08:00–16:30',io:'08:03–16:35'},
+  {d:'2026/07/29',who:'阿强',type:'安装',plan:'07:30–16:00',io:'07:28–15:50'},
+  {d:'2026/07/30',who:'老李',type:'安装',plan:'08:00–16:30',io:'08:10–16:20'},
+  {d:'2026/07/31',who:'老李',type:'安装',plan:'08:00–16:30',io:'07:58–16:28'},
+  {d:'2026/08/01',who:'阿强',type:'安装',plan:'07:30–16:00',io:'07:31–16:05'}],
+ /* 罗宅：小陈 07/29–30 派了工没打卡 —— 就是「每日上报」页那两天挂起的由来（同一件事，两处看得见） */
+ 'KX-2026-0203':[
+  {d:'2026/07/22',who:'小陈',type:'安装',plan:'08:00–16:30',io:'08:05–16:20'},
+  {d:'2026/07/23',who:'小陈',type:'安装',plan:'08:00–16:30',io:'08:02–16:33'},
+  {d:'2026/07/29',who:'小陈',type:'安装',plan:'08:00–16:30',io:null},
+  {d:'2026/07/30',who:'小陈',type:'安装',plan:'08:00–16:30',io:null},
+  {d:'2026/08/01',who:'小陈',type:'安装',plan:'08:00–16:30',io:'08:00–16:40'}],
+ /* 陈宅：SM1~SM4 到交付走完整条命，最后一天＝交付验收（实际 5.5h，超标准 4h） */
+ 'KX-2026-0180':[
+  {d:'2026/05/06',who:'阿强',type:'安装',plan:'08:00–16:30',io:'08:04–16:28'},
+  {d:'2026/05/07',who:'阿强',type:'安装',plan:'08:00–16:30',io:'08:01–16:30'},
+  {d:'2026/06/18',who:'老李',type:'安装',plan:'08:00–16:00',io:'08:07–15:55',flag:'围栏外打卡·已确认'},
+  {d:'2026/07/26',who:'陈工',type:'安装',plan:'09:00–12:00',io:'09:02–12:10',note:'交付前点位复核'},
+  {d:'2026/07/28',who:'陈工',type:'交付',plan:'09:00–13:30',io:'09:05–14:35',note:'交付验收 · 全屋演示与培训'}],
+};
+const attMin=io=>{ if(!io) return 0; const m=io.split('–'); return m.length===2?spanMin(m[0].trim(),m[1].trim()):0; };
+const engDate=d=>d&&d.length<=5?('2026/'+d.replace('-','/')):(d||'').replace(/-/g,'/');
+/* 合并成「一天一条」：ppl 人力投放 · ev 事件 · ack 回执 · rep 每日上报 */
+function engLedger(code){
+  const D={}; const day=d=>(D[d]=D[d]||{d,ppl:[],ev:[],ack:[],rep:[]});
+  (ENG_ATT[code]||[]).forEach(a=>day(a.d).ppl.push({who:a.who,type:a.type,plan:a.plan,io:a.io,
+    min:attMin(a.io),flag:a.flag,note:a.note,src:'App'}));
+  const S=SMD[code];
+  if(S) S.sm.forEach((sm,i)=>{ const no=i+1; if(!sm.done) return;
+    const x=day(sm.done.slice(0,10));
+    (sm.att||[]).forEach(a=>x.ppl.push({who:a.who,type:'SM'+no,plan:'—',io:a.io,min:attMin(a.io),flag:a.flag,src:'App'}));
+    x.ev.push({k:'sm',txt:'<b>'+SM_DEF[i].name+' 完成定格</b>（'+(sm.by||'—')+'）'+(sm.photos?' · 现场照片 '+sm.photos+' 张':'')});
+    if(sm.elecSign) x.ack.push({w:'电工现场签字 · '+sm.elecSign,ok:true,how:'签字板'});
+    if(no===3){ x.ev.push({k:'gate',txt:'↳ 解锁财务：S2 物料款可开票'});
+      ((FINPAY.find(f=>f.code===code)||{}).vars||[]).filter(v=>v.src==='SM3').forEach(v=>
+        x.ev.push({k:'var',txt:'现场登记变更（'+v.type+'）：'+v.desc+
+          (v.billable?' → 并入 S4 由财务估价':' → 移位属整改，不计费')}));}
+    if(no===4) x.ev.push({k:'gate',txt:'↳ 解锁财务：S3 人工款可开票'}); });
+  SCH.filter(x=>x.pj===code).forEach(x=>{ const y=day(x.d);
+    const hit=y.ppl.find(q=>q.who===x.who&&q.src==='App');
+    if(hit){ hit.plan=x.st+'–'+x.et; hit.note=hit.note||x.note; }
+    else y.ppl.push({who:x.who,type:x.type,plan:x.st+'–'+x.et,io:null,min:0,note:x.note,
+      src:'排班',future:x.d>=todayS()});
+    y.ack.push({w:'排班短信 → '+x.who,ok:!!x.ack,how:x.ack?'已回 Y':'待回 Y'}); });
+  (SCH_REPORTS[code]||[]).forEach(r=>day(engDate(r.d)).rep.push(r));
+  const dv=DELIV[code];
+  if(dv){
+    if(dv.contactAt){ const x=day(dv.contactAt.slice(0,10));
+      x.ev.push({k:'dv',txt:'客户联络：发出交付预约通知（'+(dv.contactCh||'—')+' · '+(dv.contactBy||'')+'）'});
+      x.ack.push({w:'客户 · 交付预约通知',ok:false,how:'已送达（回不回都不挡进度）'}); }
+    if(dv.sched) day(dv.sched.slice(0,10)).ev.push({k:'dv',
+      txt:'<b>交付验收</b> '+dv.sched.slice(11)+'（'+((dv.schedWho||[]).join('、')||'—')+'）'});
+    if(dv.mtAt){ const x=day(dv.mtAt.slice(0,10));
+      x.ev.push({k:'dv',txt:'运维条款签署确认（'+(dv.mtBy||'')+'）'});
+      x.ack.push({w:'运维条款签署 · '+(dv.mtBy||''),ok:true,how:'工程管理置位'}); }
+    if(dv.delivered) day((dv.doneAt||dv.sched||'').slice(0,10)).ev.push({k:'dv',
+      txt:'<b>确认交付</b> · 工程利润率当天定格 · 移交运维'}); }
+  const rows=Object.values(D).filter(r=>r.d).sort((a,b)=>a.d<b.d?1:-1);
+  const first=rows.length?rows[rows.length-1].d:null;
+  rows.forEach(r=>{
+    /* 阶段以「当天人在干什么」为准；一个人也没有的日子才看事件属于哪条线 */
+    r.stage=r.ppl.some(q=>/^SM/.test(q.type)||q.type==='Site Meeting')?'Site Meeting'
+      :r.ppl.some(q=>q.type==='交付')?'交付'
+      :r.ppl.some(q=>q.type==='维护')?'维护'
+      :r.ppl.length?'安装'
+      :(r.ev.some(e=>e.k==='sm')?'Site Meeting':(r.ev.some(e=>e.k==='dv')?'交付':'安装'));
+    r.n=first?Math.round((new Date(r.d)-new Date(first))/864e5)+1:1;
+    r.min=r.ppl.reduce((a,q)=>a+q.min,0);
+    r.miss=r.ppl.filter(q=>!q.io&&!q.future).length;      // 派了工没打卡（过去的日子才算问题）
+    r.on=r.ppl.filter(q=>q.io).length; });
+  return rows; }
+let engLgF='全部', engLgBad=false;
+const ENG_LG_STAGES=['全部','Site Meeting','安装','交付','维护'];
 /* ═══ 四十八轮：交付 ═══
    待交付＝①施工部分已结束（安装项清零／工程管理确认完工）②S4 尾款已结清（收款线现算）
    —— 两条都满足才进列表；交付当天人工进项目成本；标准交付工时可在设置调 */
@@ -2246,18 +2646,36 @@ function finStaffToggle(i){ const s=STAFF[i]; if(!s) return;
 /* ── 三十二轮：挂起补录（用户定）——0 点定格后本人不可自改；工程负责人补录：
    项目+时长（0=定案没出工）+原因类别+详细说明（≥10 字）缺一不可，进 KPI；
    补录即定格、工资滚到下月补发；财务只读（日结表归工程写） ── */
-const BF_CATS=['忘打卡','围栏/GPS 异常','手机没电·设备问题','临时外派未建任务','其他'];
+/* 补录原因类别：工程负责人在「工程设置」里自行增删（写死的类别永远不够用，
+   但类别乱加也不行——同一件事永远选同一个类别，KPI 才对得上） */
+let BF_CATS=['忘打卡','围栏/GPS 异常','手机没电·设备问题','临时外派未建任务','其他'];
+function bfCatAdd(){ const el=document.getElementById('bfcat-new'); const v=((el&&el.value)||'').trim();
+  if(!v){ renderAll(); return; }
+  if(BF_CATS.includes(v)){ uiAlert('门禁：「'+v+'」已经在类别里了 —— 重复类别会让 KPI 统计对不上'); return; }
+  BF_CATS.push(v);
+  opLog('','新增补录原因类别','「'+v+'」—— 每日工时管理的补录弹窗里立即可选',['eng','fin']);
+  renderAll(); uiAlert('已新增原因类别：'+v); }
+function bfCatDel(i){ const v=BF_CATS[i]; if(!v) return;
+  if(v==='其他'){ uiAlert('门禁：「其他」是兜底项，删不得 —— 删了就会有人硬套一个不对的类别'); return; }
+  if(Object.values(BACKFILL).some(b=>b.cat===v)){
+    uiAlert('门禁：已经有补录记录用了「'+v+'」—— 删掉之后历史记录的类别就成了孤儿，统计对不上。\n'+
+      '要停用请改用新类别，旧的留着不选就行'); return; }
+  uiConfirm('删除原因类别「'+v+'」？以后补录时不再出现（已有记录不受影响）',ok=>{ if(!ok) return;
+    BF_CATS.splice(i,1);
+    opLog('','删除补录原因类别','「'+v+'」—— 补录弹窗里不再出现',['eng','fin']);
+    renderAll(); uiAlert('已删除原因类别：'+v); }); }
 let BACKFILL={};   // who|md → {pj,h,cat,note,by,at}
 function bfOpen(who,md,d){
   if(me!=='admin'&&me!=='eng'){
-    uiAlert('补录是工程负责人的操作（日结表归工程写）——财务只读。工程负责人在「工程管理 → 每日上报」里补录'); return; }
-  const opts=PROJECTS.filter(p=>['施工中','项目交付','项目维护中'].includes(p.status))
-    .map(p=>`<option value="${p.code}">${p.nick} · ${p.street}, ${p.suburb}</option>`).join('');
+    uiAlert('补录是工程负责人的操作（日结表归工程写）——财务只读。工程负责人在「工程管理 → 每日工时管理」里补录'); return; }
   document.getElementById('bfbox').innerHTML=
    '<div style="font-weight:600;margin-bottom:4px">补录日结 · '+who+' · '+md+'（挂起）</div>'+
    '<div class="hint" style="margin-bottom:10px">挂起与补录都永久进 KPI · 补录即定格、工资<b>滚到下月补发</b> · 金额按当天该人阶段时薪现算</div>'+
-   '<div class="field"><label>当天在哪个项目（必选）</label><select id="bf-pj">'+opts+
-     '<option value="company">公司级（仓库 / 内勤等）</option></select></div>'+
+   '<div class="field"><label>当天在哪个项目（必选 —— 可搜可筛）</label>'+
+     '<input id="bf-pjq" class="search" placeholder="🔍 搜编号 / 昵称 / 地址…（项目多的时候先筛）" '+
+       'style="width:100%;padding:5px 8px;margin-bottom:5px" oninput="bfPjFilter()">'+
+     '<select id="bf-pj" size="5" style="width:100%"></select>'+
+     '<div class="hint" id="bf-pjn"></div></div>'+
    '<div class="field"><label>付薪时长（小时 · 填 0 = 定案那天没出工）</label>'+
      '<input id="bf-h" class="mono" style="width:90px" oninput="bfCalc(\''+who+'\',\''+d+'\')">'+
      '<span id="bf-prev" class="hint" style="margin-left:8px"></span></div>'+
@@ -2269,7 +2687,22 @@ function bfOpen(who,md,d){
    '<button class="btn" onclick="bfClose()">取消</button>'+
    '<button class="btn btn-primary" onclick="bfConfirm(\''+who+'\',\''+md+'\',\''+d+'\')">确认补录（定格）</button></div>';
   document.getElementById('bfback').style.display='block';
-  document.getElementById('bfbox').style.display='block'; }
+  document.getElementById('bfbox').style.display='block';
+  bfPjFilter(); }
+/* 项目下拉可搜可筛（同派工排班：上百个项目手选不现实；筛到唯一自动选中省一次点击） */
+const bfPjList=()=>PROJECTS.filter(p=>['施工中','项目交付','项目维护中'].includes(p.status));
+function bfPjFilter(){ const sel=document.getElementById('bf-pj'); if(!sel) return;
+  const q=((document.getElementById('bf-pjq')||{}).value||'').trim().toLowerCase();
+  const cur=sel.value;
+  const list=bfPjList().filter(p=>!q||
+    `${p.code} ${p.nick} ${p.street} ${p.suburb} ${p.state}`.toLowerCase().includes(q));
+  sel.innerHTML=list.map(p=>`<option value="${p.code}">${p.nick} · ${p.street}, ${p.suburb}（${p.code.slice(-4)}）</option>`).join('')
+    +'<option value="company">公司级（仓库 / 内勤等 —— 真不属于任何项目才选）</option>';
+  if([...list.map(p=>p.code),'company'].includes(cur)) sel.value=cur;
+  else if(list.length===1) sel.value=list[0].code;
+  else sel.value='';
+  const n=document.getElementById('bf-pjn');
+  if(n) n.textContent='可选 '+list.length+' 个在途项目'+(q?'（已筛选）':'')+' · 外加「公司级」兜底'; }
 function bfClose(){ document.getElementById('bfback').style.display='none';
   document.getElementById('bfbox').style.display='none'; }
 function bfCalc(who,d){ const h=parseFloat((document.getElementById('bf-h')||{}).value);
@@ -2281,6 +2714,8 @@ function bfCalc(who,d){ const h=parseFloat((document.getElementById('bf-h')||{})
 function bfConfirm(who,md,d){
   const v=id=>{const e=document.getElementById(id);return e?e.value:'';};
   const pj=v('bf-pj'), h=parseFloat(v('bf-h')), cat=v('bf-cat'), note=v('bf-note').trim();
+  if(!pj){ uiAlert('门禁：必须选当天在哪个项目 —— 不允许没有项目归属的工时。\n'+
+    '真不属于任何单个项目（仓库/内勤）就选下拉最后一项「公司级」'); return; }
   if(isNaN(h)||h<0){ uiAlert('付薪时长必填（填 0 = 定案那天没出工）'); return; }
   if(h>14){ uiAlert('付薪时长 '+h+'h 超过单日上限 14h —— 请确认是否填错'); return; }
   if(!cat){ uiAlert('请选择原因类别 —— 挂起与补录都进 KPI'); return; }
@@ -2677,6 +3112,83 @@ function view(){
   return (PAGES[key]||PAGES[tab+'/总览']||placeholder)();
 }
 /* ── 帮助弹层：ops()/helpNote() 只登记不上屏，点「？帮助」才展示 ── */
+/* ═══ 五十二轮：部门总说明（用户定：把一个部门所有页面的用法与逻辑串起来讲清楚）═══ */
+const DEPT_GUIDE={
+ eng:`
+<div style="font-size:var(--fs-sm);line-height:1.95">
+<b style="font-size:var(--fs-md)">工程管理这条线在干什么</b><br>
+一句话：<b>把签好的合同变成装好的房子，并且每一步都留下证据。</b>
+钱的事在财务、料的事在采购库管，工程这边只管三件——<b>什么时候派谁去、现场做了什么、做完通知谁</b>。
+金额在工程页面<b>一律隐藏</b>（合同额、已收款都看不到），因为工程判断该不该做事跟金额无关，看得见反而容易被带偏。
+<div class="panel-head" style="padding:12px 0 6px 0">一个项目在工程线上的完整走法</div>
+<b>①总览</b> 看今天卡在哪 → <b>②项目列表</b> 指定业主/Builder/电工 →
+<b>③Site Meeting</b> SM1 进场 → SM2 布线交流 → SM3 检查布线（电工签字，<b>完成即解锁财务 S2 物料款</b>）→
+SM4 封板核对（<b>完成即解锁财务 S3 人工款</b>）→ <b>④安装调试</b> 盯工时占比别超支 →
+<b>⑤交付</b> 约客户、排班、签运维条款、确认交付（<b>利润率当天定格</b>、移交运维）。
+全程用 <b>⑥派工排班</b> 派人，用 <b>⑦每日工时管理</b> 收工时，
+用 <b>⑧工程流水账</b> 回看这个项目每一天到底发生了什么，
+用 <b>⑨文档库</b> 发图纸给配合团队、给现场工人查技术文档，
+用 <b>⑩操作日志</b> 查谁在什么时候改了什么。
+<div class="panel-head" style="padding:12px 0 6px 0">十页各自干什么</div>
+<b>总览</b>：五块——在建/维护双计数（各自停留超阈值的挑出来）· 今日派工<b>按小时</b>算 ·
+未记录工时 · 超期交接 · 卡点与异常。每块都能点开看明细，「去处理 →」直达对应页并只显示那个项目。<br>
+<b>项目列表</b>：六态（Site Meeting 阶段 / 施工中 / 项目交付 / 项目维护 / 已停服 / 已烂尾），
+显示当前阶段与停留天数；<b>业主 / Builder / 电工由工程负责人在这里指定</b>（候选来自售前采集），
+保存即📌标注并通知财务（付款人候选）与库管（提货人）。<br>
+<b>派工排班</b>：周视图，一天一格可排 2~4 段。每段填 <b>开始→截止</b>（15 分钟一档，时长自动算）、
+<b>必须关联项目</b>（倒休除外）、工作内容多行、<b>剩余工作自动带出</b>（取该项目最近一次每日上报留下的剩余）。
+门禁：同人当天两段不许重叠 · 倒休不能超余额 · 只能改此刻之后 · 锁定后要先解锁。
+保存即发短信+同步 App 日程，<b>红点＝等回 Y，绿点＝已回</b>（不论回不回，日程都已经在他手机上）。
+点人名看当天 <b>A/B/C/D 路线</b>。<br>
+<b>Site Meeting</b>：总表一眼看全项目 × SM1~4 状态与下游门禁；「详细」展开四张卡（目标 / 出发前清单 /
+现场记录照片打卡 / 完成定格）。<b>排期＝派工带日期</b>（参会人多选，自动写进排班表）；
+<b>完成定格由工程师在 App 现场提交</b>（后台不能替他点）；老项目用「标不适用」补录出口。<br>
+<b>安装调试</b>：只列 SM4 之后、交付之前的项目。两张环形图（项目状态四档 / 合计工时对比），
+表里看<b>剩余工作量</b>、已投入 vs 预计总工时、<b>工时占比四档</b>（充裕 / 正常 / 接近超支预警 / 已超支亏损，
+预警线在设置里改）。「资源分配」直接把人排进排班表。<br>
+<b>交付</b>：待交付＝<b>施工结束 + S4 尾款已结清</b>（钱没到位只能先联系不建议排期）。
+四步：约客户（短信/邮件弹窗，内容可改）→ 排交付班 → 工时对比（实际 > 标准即标红，超时吃的是自己的利润率）→
+签运维条款置位 → <b>确认交付</b>（两条门禁：条款已签 + 当天实际工时已回；确认即利润率定格、移交运维）。<br>
+<b>工程流水账</b>：一个项目一本账，<b>一行＝一个入场天</b>，从第一次 SM 到交付。
+每行看：人力投放（<b>计划 vs 实际打卡</b>）· 当天事件（SM 完成 / 电工签字 / 现场变更 / 下游解锁 / 交付各步）·
+回执记录 · 每日上报原文与剩余工作。<b>只读</b>，要改去源头改。
+过去的日子派了工却没打卡＝<b>红字「没打卡」</b>——那天工时算不出来、日结会挂起。<br>
+<b>每日工时管理</b>：员工在 App 一人一天分段上报，当夜 0 点定格后本人不可自改；
+没上报＝<b>挂起</b>，由工程负责人在这里<b>补录</b>（项目可搜 + 付薪时长 + 原因类别 + 详细说明≥10 字，四样缺一不可），
+补录即定格进 KPI，<b>账目滚到下个月的工时计算</b>（当月封账不被挂起卡住）。
+<b>人员名单与薪酬由财务建立与维护</b>，工程这边不重复建人。<br>
+<b>文档库</b>：树状归档，两类文档——<b>协作</b>（SM 要递交给 Builder/电工/设计师的图纸清单签字单）与
+<b>技术</b>（工人在 App 现场查阅的规范手册）。改版用「传新版本」（必须写改了什么），
+<b>旧版自动保留、链接永远指向最新版</b>；邮件转发用<b>工程管理身份 admin@</b> 发出，
+<b>发放过的版本从此不可删</b>（发出去的是日后扯皮唯一的依据）。<br>
+<b>操作日志</b>：工程自己的每一步 + 别的部门动作引起工程这边变化（财务停服、库管出库到场…）。
+可按<b>时间 / 操作人 / 项目 / 关键字</b>查，可导出 CSV。<b>只读，谁都改不了删不了。</b><br>
+<b>设置</b>：阈值与必选下拉都在这里——在建/维护停留天数 · 交接 SLA · 打卡围栏半径 ·
+工时预警线 · 合理时长参考 · 排班任务类型 · 补录原因类别 · SM 出发前清单模板。改完立即生效、全部留痕。
+<div class="panel-head" style="padding:12px 0 6px 0">最容易搞错的三件事</div>
+<b>①S 是钱、SM 是会</b>：S1~S4 是收款阶段（定金/物料款/人工款/尾款），SM1~4 是现场会议。
+工程只管 SM，S 的按钮在财务那边——但 <b>SM3 完成解锁 S2、SM4 完成解锁 S3</b>，是同一件事的两端。<br>
+<b>②派工是计划，打卡是事实</b>：两个数不一样很正常，但系统绝不把它显示成一样。
+流水账里红字的「没打卡」不是 bug，是真的要有人去补。<br>
+<b>③定格的东西改不了</b>：SM 完成时间、交付利润率、发放过的文档版本、当夜 0 点后的日结——
+都写明了什么时候定的，只读。要修正走补录/新版本，<b>不是改历史</b>。
+</div>`,
+ presales:`<div style="font-size:var(--fs-sm);line-height:1.95">
+  <b style="font-size:var(--fs-md)">售前这条线</b><br>整个售前就<b>一页长大表</b>：一行一个项目，
+  6+1 个状态勾（接洽→设计→报价→修订→待签约→已签约，第⑦红＝已流失）点着走，每勾定格日期并显示停留天数。
+  三个填写时点：立项填基本信息与<b>预测报价范围</b>；过程中补联系人/成员/参建方/房屋结构；
+  待签约时一并填<b>报价单号 · 预测工时 · 签约定价</b>（定金只读，财务写）。
+  勾「已签约」是唯一会惊动别人的动作——自动通知财务开 S1 定金 Invoice。
+  <b>项目状态表</b>看比例与走向；<b>设置</b>里改提醒阈值与各种下拉选项。详见各页「本页说明」。</div>`,
+ fin:`<div style="font-size:var(--fs-sm);line-height:1.95">
+  <b style="font-size:var(--fs-md)">财务这条线</b><br><b>真正的账在外部财务系统</b>，这里只做
+  <b>流程控制与信息效率</b>：请款 → 收款 → 结清 → 催款全过程留痕，财务的结清状态就是别的部门的门禁。
+  收款 S1~S3 与尾款 S4/变更分两页；催账和停服管超期与拒付；工资数据是<b>数据平台</b>（项目人力消耗 + 人员薪酬 +
+  日结近况，挂起由工程负责人补录，这里只读）；项目报销只做上报与审批（<b>付款不走本系统</b>）；
+  成本与利润率含项目分布地图。详见各页「本页说明」。</div>`,
+};
+let helpTab='page';
+function helpTabSet(k){ helpTab=k; helpOpen(); }
 function helpOpen(){
   const h=HELP[tab+'/'+page]||{};
   document.getElementById('helptitle').textContent=`${DEPT[tab].label} · ${page} · 帮助`;
@@ -2690,7 +3202,18 @@ function helpOpen(){
     <div style="font-size:var(--fs-sm);line-height:1.9;color:var(--text-muted)">
       ${h.notes.map(n=>`<div style="margin-bottom:10px">${n}</div>`).join('')}</div>`:'';
   const none=(!opsHtml&&!notesHtml)?'<div class="muted">本页暂无专门说明。</div>':'';
-  document.getElementById('helpbody').innerHTML=opsHtml+notesHtml+none+`
+  const guide=DEPT_GUIDE[tab]||`<div class="muted" style="font-size:var(--fs-sm);line-height:1.9">
+    ${DEPT[tab].label}的页面还在陆续做，整体说明等这个部门定稿后补齐 —— 先看每页的「本页说明」。</div>`;
+  const tabs=`<div style="display:flex;gap:6px;margin-bottom:var(--sp-3)">
+    <button class="btn${helpTab==='page'?' btn-primary':''}" onclick="helpTabSet('page')">本页说明</button>
+    <button class="btn${helpTab==='dept'?' btn-primary':''}" onclick="helpTabSet('dept')">${DEPT[tab].label} · 总说明</button>
+   </div>`;
+  if(helpTab==='dept'){
+    document.getElementById('helpbody').innerHTML=tabs+guide;
+    document.getElementById('helpback').classList.add('open');
+    document.getElementById('helpbox').classList.add('open');
+    return; }
+  document.getElementById('helpbody').innerHTML=tabs+opsHtml+notesHtml+none+`
     <div class="panel-head" style="padding:12px 0 8px 0">全系统通用规则</div>
     <div style="font-size:var(--fs-xs);line-height:1.9;color:var(--text-muted)">
       门禁报错都是完整中文句，照着读就知道为什么不行 · 金额显示 — — 是您无权查看（不是 0）·
@@ -2714,14 +3237,23 @@ function opLogPage(d){
  const dl=DEPT[d].label;
  const mine=OPLOG.filter(r=>r.rel.includes(d));
  const rows=mine.filter(r=>logDeptF==='全部'||r.dept===logDeptF)
+   .filter(r=>logWho==='全部'||r.who===logWho)
+   .filter(r=>logPjF==='全部'||(logPjF==='公司级'?!r.pj:r.pj===logPjF))
+   .filter(r=>logInRange(r.ts))
    .filter(r=>{const q=logQ.trim().toLowerCase(); if(!q) return true;
-     return (r.pj+' '+r.who+' '+r.dept+' '+r.action+' '+r.detail).toLowerCase().includes(q);});
+     return (r.pj+' '+r.who+' '+r.dept+' '+r.action+' '+r.detail+' '+pjNick(r.pj)+' '+pjAddr(r.pj)).toLowerCase().includes(q);});
  const chips=['全部',...new Set(mine.map(r=>r.dept))];
+ const whos=['全部',...new Set(mine.map(r=>r.who))];
+ const pjs=['全部','公司级',...new Set(mine.filter(r=>r.pj).map(r=>r.pj))];
+ const filtered=logDeptF!=='全部'||logWho!=='全部'||logPjF!=='全部'||logRange!=='全部'||logQ.trim();
  return `<h2>操作日志 <span class="muted" style="font-size:var(--fs-sm);font-weight:400">· ${dl}相关</span></h2>
  <div class="page-sub">${dl}的每一步操作留痕 + 其他部门确认引起的状态改变 · 四要素：什么时间 / 谁 / 操作了什么 / 改了什么 · 最新在最上</div>
  ${ops([
-  ['逐字搜索（编号/人/操作/内容一框全搜）','—','打一个字过滤一次'],
+  ['逐字搜索（编号/昵称/地址/人/操作/内容一框全搜）','—','打一个字过滤一次'],
   ['按操作人部门筛选（点 chip）','—','选「全部」才看得到他部门确认的条目'],
+  ['按时间查（今天 / 近 7 天 / 近 30 天 / 自定义起止）','—','和其他筛选条件叠加'],
+  ['按操作人、按项目查','—','项目下拉含「公司级」一档（不属于任何单个项目的改动）'],
+  ['导出 CSV','—','按当前筛选条件导出到本地 · <b>导出这个动作本身也留痕</b>'],
   ['想改或删某条日志','不可能 —— 日志只读，谁都不能改删（正式系统同样）','—'],
  ])}
  ${helpNote(`这页记什么：①<b>${dl}自己的每一步操作</b>——状态勾推进/回退、立项建档、大表直改（前值→后值）、
@@ -2731,11 +3263,32 @@ function opLogPage(d){
  ${helpNote(`怎么读：每条四要素 <b>时间 · 谁（部门）· 操作 · 改了什么（前 → 后）</b>；最新在最上；
    项目编号后固定跟立项时间，公司级改动（如设置）标「公司级」。
    日志<b>只读</b>——不能改、不能删；正式系统落 audit_log 表并带触发器留痕，连管理员也只能看。`)}
- <div style="display:flex;gap:var(--sp-2);margin:var(--sp-3) 0;flex-wrap:wrap;align-items:center">
+ <div style="display:flex;gap:var(--sp-2);margin:var(--sp-3) 0 var(--sp-2);flex-wrap:wrap;align-items:center">
+   <span class="muted" style="font-size:var(--fs-xs)">操作人部门</span>
    ${chips.map(x=>`<button class="btn${logDeptF===x?' btn-primary':''}" onclick="logDeptF='${x}';renderAll()">${x}</button>`).join('')}
-   <input id="logq" placeholder="🔍 搜编号 / 人 / 操作 / 内容…" style="width:240px" value="${logQ}"
+   <input id="logq" class="search" placeholder="🔍 搜编号 / 昵称 / 地址 / 人 / 操作 / 内容…" style="width:280px;padding:6px var(--sp-2)" value="${logQ}"
      oninput="logQ=this.value;keepFocus('logq')">
-   <span class="muted" style="font-size:var(--fs-xs)">共 ${rows.length} 条</span>
+ </div>
+ <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);flex-wrap:wrap;align-items:center">
+   <span class="muted" style="font-size:var(--fs-xs)">时间</span>
+   ${['全部','今天','近 7 天','近 30 天','自定义'].map(x=>
+     `<button class="btn${logRange===x?' btn-primary':''}" onclick="logRangeSet('${x}')">${x}</button>`).join('')}
+   ${logRange==='自定义'?`<input type="date" value="${logFrom}" style="width:auto;padding:4px 6px"
+       onchange="logFrom=this.value;renderAll()"> <span class="muted">→</span>
+     <input type="date" value="${logTo}" style="width:auto;padding:4px 6px"
+       onchange="logTo=this.value;renderAll()">`:''}
+   <span class="sep" style="width:1px;height:20px;background:var(--border)"></span>
+   <span class="muted" style="font-size:var(--fs-xs)">操作人</span>
+   <select style="width:auto" onchange="logWho=this.value;renderAll()">
+     ${whos.map(w=>`<option${logWho===w?' selected':''}>${w}</option>`).join('')}</select>
+   <span class="muted" style="font-size:var(--fs-xs)">项目</span>
+   <select style="width:auto;max-width:230px" onchange="logPjF=this.value;renderAll()">
+     ${pjs.map(x=>`<option value="${x}"${logPjF===x?' selected':''}>${
+       x==='全部'?'全部项目':x==='公司级'?'公司级（不属于单个项目）':x+' · '+pjNick(x)}</option>`).join('')}</select>
+   ${filtered?`<button class="btn" onclick="logClear()">清空筛选</button>`:''}
+   <span style="margin-left:auto;display:flex;gap:var(--sp-2);align-items:center">
+     <span class="muted" style="font-size:var(--fs-xs)">命中 <b>${rows.length}</b> / 共 ${mine.length} 条</span>
+     <button class="btn" onclick="logExport('${d}',${rows.length})">⬇ 导出 CSV</button></span>
  </div>
  <table><thead><tr><th>时间</th><th>项目编号</th><th>立项时间</th><th>项目 · 地址</th><th>操作人</th><th>操作</th><th>改了什么</th></tr></thead>
  <tbody>${rows.map(r=>`<tr>
@@ -3855,6 +4408,171 @@ ${helpNote(`<b>发送人身份</b>：全公司对外只有<b>一个短信号码<
    「确认交付」是人肉判断，系统只保证：条款签了、工时回来了、点的人和时间留痕了</div>
  </div>`;
 },
+'eng/文档库':()=>{
+ const d0=docOf(docDir);
+ const q=docQ.trim().toLowerCase();
+ const list=(q?DOCS:docIn(docDir)).filter(d=>!q||
+   (d.name+' '+docPath(d.dir)+' '+d.kind+' '+docCur(d).note).toLowerCase().includes(q));
+ return `
+<h2>文档库</h2>
+<div class="page-sub">一个库装两类文档：①<b>协作</b>——SM1~4 要递交给配合团队的（布线图/线材清单/签字单）
+  ②<b>技术</b>——我方工程人员在施工端 App 现场查阅的。树状归档 · <b>旧版本自动保留</b> · 每份一个固定链接</div>
+${ops([
+ ['新建 / 重命名 / 删除文件夹','同层重名拦 · 非空文件夹删不得（删了文档链接就成 404）','—'],
+ ['上传文档','名称必填 · 同文件夹重名拦（改版请用「传新版本」）· 说明≥5 字','存为 v1 并生成固定链接'],
+ ['传新版本','必须写「这一版改了什么」（≥5 字）','存为 v+1，旧版自动保留，<b>链接不变</b>'],
+ ['邮件转发','发件身份＝工程管理 admin@（全公司统一）· 收件人来自参建方或手填 · 邮箱格式拦','该版本定格为「已发放」，从此不可删'],
+ ['删除文档 / 删除某个版本','★<b>发放过的版本删不得</b>（发出去的是日后扯皮的唯一依据）· 只剩一版时不让删','—'],
+ ['App 可查阅开关','勾了才出现在工人手机上','施工端 App「技术文档」屏立即跟着变'],
+])}
+${helpNote(`<b>这页怎么用</b>：左边是<b>树</b>（工程管理自己整理和命名），右边是当前文件夹里的文档。
+  顶层两类：<b>项目文档</b>（按项目 → SM 协作文档 / 变更签字单 / 交付资料）与
+  <b>技术文档</b>（按品牌与通用规范，勾了 App 可查阅的会出现在工人手机上）。
+  搜索框是<b>全库搜</b>（不限当前文件夹）——文档多了以后靠搜比靠翻快。`)}
+${helpNote(`<b>版本怎么管</b>：同一份文档改了，用<b>「传新版本」</b>，不要新建一份同名的。
+  新版存成 v+1，<b>旧版自动保留</b>可随时下载回看；<b>链接永远指向最新版</b>——
+  现场用同一个链接，永远看到的是最新的，不用满世界重发链接。
+  每一版必须写「改了什么」，否则现场拿到两版图纸不知道差在哪，照旧版施工就是返工。`)}
+${helpNote(`<b>为什么发放过的版本删不掉</b>：发给 Builder / 电工的那一版，是日后「按谁给的图施工」
+  唯一说得清的依据。系统把<b>谁、何时、发给谁</b>定格在版本历史里，谁也删不掉——
+  这不是限制，是保护。不想让人再看到，就取消「App 可查阅」，但记录留着。`)}
+<div style="display:flex;gap:var(--sp-4);align-items:flex-start">
+ <div class="panel" style="width:290px;flex-shrink:0;margin:0">
+  <div class="panel-head">文件夹树 <span class="muted" style="font-weight:400;margin-left:auto;font-size:var(--fs-xs)">${DOCS.length} 份文档</span></div>
+  <div class="panel-body" style="padding:var(--sp-2);font-size:var(--fs-sm)">${docTree(null,0)}</div>
+  <div class="panel-body" style="border-top:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap">
+   <button class="btn" onclick="docDirNew()">＋ 子文件夹</button>
+   <button class="btn" onclick="docDirRename()">重命名</button>
+   <button class="btn" style="color:#c62828" onclick="docDirDel()">删除</button>
+  </div>
+ </div>
+ <div style="flex:1;min-width:0">
+  <div style="display:flex;gap:var(--sp-2);align-items:center;margin-bottom:var(--sp-3);flex-wrap:wrap">
+   <button class="btn btn-primary" onclick="docUpOpen()">⬆ 上传文档</button>
+   <input id="docq" class="search" placeholder="🔍 全库搜：名称 / 路径 / 说明…" value="${docQ}"
+     style="width:250px;padding:6px var(--sp-2)" oninput="docQ=this.value;keepFocus('docq')">
+   <span class="muted" style="font-size:var(--fs-xs);margin-left:auto">
+     ${q?`全库搜「${docQ}」· 命中 ${list.length} 份`:`📁 ${docPath(docDir)} · ${list.length} 份`}</span>
+  </div>
+  <div class="panel" style="margin:0"><table>
+   <thead><tr><th>文档</th><th style="width:70px">用途</th><th style="width:74px">当前版本</th>
+     <th style="width:150px">最近更新</th><th style="width:78px">App 可查</th><th style="width:210px">操作</th></tr></thead>
+   <tbody>${list.map(d=>{const c=docCur(d);
+     return `<tr>
+      <td><b>${d.name}</b>
+        <div class="hint">${q?`📁 ${docPath(d.dir)} · `:''}${c.note}</div>
+        <div class="hint mono" style="font-size:10px">${docUrl(d)}</div></td>
+      <td><span class="pill ${d.kind==='协作'?'p-amber':'p-cyan'}">${d.kind}</span></td>
+      <td><b class="mono">v${c.v}</b>
+        <div class="hint">${d.vs.length} 个版本${docSentAny(d)?' · <span style="color:var(--accent)">已发放</span>':''}</div></td>
+      <td class="mono" style="font-size:11px">${c.at}<div class="hint">${c.by} · ${c.size}</div></td>
+      <td><label style="cursor:pointer"><input type="checkbox" style="width:auto"${d.app?' checked':''}
+        onchange="docAppTog('${d.id}')"> ${d.app?'<span class="pill p-green">在 App</span>':'<span class="muted">否</span>'}</label></td>
+      <td style="white-space:nowrap;font-size:var(--fs-xs)">
+        <a style="color:var(--accent);cursor:pointer" onclick="docDl('${d.id}')">下载</a> ·
+        <a style="color:var(--accent);cursor:pointer" onclick="docVerOpen('${d.id}')">传新版</a> ·
+        <a style="color:var(--accent);cursor:pointer" onclick="docHistOpen('${d.id}')">版本历史</a><br>
+        <a style="color:var(--accent);cursor:pointer" onclick="docLink('${d.id}')">复制链接</a> ·
+        <a style="color:var(--accent);cursor:pointer" onclick="docMailOpen('${d.id}')">邮件转发</a> ·
+        <a style="color:${docSentAny(d)?'var(--text-muted)':'#c62828'};cursor:pointer" onclick="docDel('${d.id}')"
+          ${docSentAny(d)?'title="有版本已发放 —— 整份删不得"':''}>删除</a></td>
+     </tr>`;}).join('')||`<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">
+       ${q?'全库没有匹配的文档':'这个文件夹还是空的 —— 点左上「⬆ 上传文档」放第一份进来'}</td></tr>`}</tbody></table>
+   <div class="panel-body hint">链接<b>永远指向最新版</b>（现场 App 用同一个链接，看到的永远是最新的）；
+    旧版在「版本历史」里随时下载回看。<b>发放过的版本锁定不可删</b> —— 发出去的是日后说得清的唯一依据</div>
+  </div>
+ </div>
+</div>`;
+},
+'eng/工程流水账':()=>{
+ schSeed();
+ const p=PROJECTS[pj];
+ const all=engLedger(p.code);
+ const rows=all.filter(r=>(engLgF==='全部'||r.stage===engLgF)&&(!engLgBad||r.miss||r.ppl.some(q=>q.flag)));
+ const dayMin=all.reduce((a,r)=>a+r.min,0);
+ const onDays=all.filter(r=>r.on).length;
+ const missDays=all.filter(r=>r.miss).length;
+ const heads=all.filter(r=>r.on).map(r=>r.ppl.filter(q=>q.io).length).reduce((a,b)=>a+b,0);
+ const first=all.length?all[all.length-1].d:null, last=all.length?all[0].d:null;
+ const hh=m=>Math.round(m/6)/10+' h';
+ const stg=k=>({'Site Meeting':'p-amber','安装':'p-cyan','交付':'p-green','维护':'p-grey'})[k]||'p-grey';
+ return `
+<h2>工程流水账 <span class="muted" style="font-size:var(--fs-sm);font-weight:400">· ${p.nick} ${p.code}</span></h2>
+<div class="page-sub">这一个项目从<b>第一次 SM 到交付</b>的逐日流水 —— 一行＝一个入场天：谁来了 · 发生了什么 · 有哪些回执。
+  换项目在<b>上方项目条</b>里选。<b>本页只读</b>，流水账不许改</div>
+${ops([
+ ['换项目','—','顶部项目条下拉 —— 这页永远只讲一个项目'],
+ ['按阶段过滤 / 只看异常','—','阶段 chip 与「只看异常」开关，都只影响显示'],
+ ['想改某一天的记录','不可能 —— 流水账只读','去源头改：排班在「派工排班」、工时在「每日工时管理」、SM 在「Site Meeting」'],
+])}
+${helpNote(`<b>这页怎么用</b>：先在顶部项目条选项目，下面就是这个项目<b>从第一次 SM 到交付</b>的逐日流水。
+  一行＝<b>一个入场天</b>（没人到场的日子不占行，否则一屏全是空白）。每行四样：
+  <b>人力投放</b>（每人 计划 vs 实际打卡 与时长）· <b>当天事件</b>（SM 完成定格 / 电工签字 / 现场变更 /
+  下游解锁 / 交付各步）· <b>回执记录</b>（排班短信回没回 Y、打卡、签字、客户通知）· <b>每日上报原文与剩余工作</b>。`)}
+${helpNote(`<b>为什么要分「计划」和「实际」</b>：派工是计划，打卡是事实，两个数不一样很正常，
+  但<b>不一样这件事必须看得见</b>。过去的日子派了工却没打卡＝<b style="color:#dc2626">没打卡</b>（红字），
+  那天工时算不出来、日结会挂起，要负责人去「每日工时管理」补录；围栏外打卡带<b>异常标</b>。
+  <b>未来的排班不算异常</b>（还没到），只标「已排期」。`)}
+${helpNote(`数据来自哪儿（这页自己不存任何东西）：派工排班 · App 打卡（每人×每天×每任务）· 每日上报 ·
+  Site Meeting（完成定格/电工签字/照片/到场打卡）· SM3 现场变更 · 交付（客户通知/排班/运维条款/确认交付）。
+  正式系统对应 attendance / daily_report / site_meeting / variation / project_delivery 几张表的联表查询。`)}
+${!all.length?`<div class="warn-bar"><span class="grow"><b>${p.nick}（${p.code}）还没有工程流水</b> ——
+   这个项目还没进工程线（当前状态：${p.status}），或还没有任何 SM、派工与打卡记录。
+   在上方项目条换一个施工中/已交付的项目看。</span></div>`
+:`
+<div class="cards">
+  <div class="card"><div class="card-label">入场天数</div><div class="card-value">${onDays}</div>
+    <div class="card-foot">首次 ${first} → 最近 ${last}<br>日历跨度 ${all[0].n} 天（没人来的日子不占行）</div></div>
+  <div class="card"><div class="card-label">累计人工工时</div><div class="card-value">${hh(dayMin)}</div>
+    <div class="card-foot">按 App 打卡的入退场现算 · 共 ${heads} 人次到场</div></div>
+  <div class="card"><div class="card-label">当前阶段</div><div class="card-value" style="font-size:var(--fs-lg)">${engStage(p).k}</div>
+    <div class="card-foot">${DELIV[p.code]&&DELIV[p.code].delivered?'已交付 · 已移交运维':'流水到「确认交付」那天为止'}</div></div>
+  <div class="card"><div class="card-label">派了工没打卡</div>
+    <div class="card-value" style="color:${missDays?'#dc2626':'inherit'}">${missDays}</div>
+    <div class="card-foot">${missDays?'这些天工时算不出来 · 日结挂起 → 去「每日工时管理」补录':'每一天都有打卡 ✓'}</div></div>
+</div>
+<div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);flex-wrap:wrap;align-items:center">
+  ${ENG_LG_STAGES.map(x=>`<button class="btn${engLgF===x?' btn-primary':''}" onclick="engLgF='${x}';renderAll()">${x}</button>`).join('')}
+  <label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-sm);margin-left:var(--sp-2)">
+    <input type="checkbox" style="width:auto"${engLgBad?' checked':''} onchange="engLgBad=this.checked;renderAll()">
+    只看异常（没打卡 / 围栏外）</label>
+  <span class="muted" style="font-size:var(--fs-xs);margin-left:auto">共 ${rows.length} 个入场天 · 最近的在最上</span>
+</div>
+<div class="panel"><table>
+ <thead><tr><th style="width:104px">日期</th><th style="width:52px">第 N 天</th><th style="width:92px">阶段</th>
+   <th style="width:300px">人力投放（计划 → 实际打卡）</th><th>当天事件与上报</th><th style="width:210px">回执记录</th></tr></thead>
+ <tbody>${rows.map(r=>`<tr>
+   <td class="mono" style="white-space:nowrap"><b>${r.d.slice(5)}</b>
+     <div class="hint">${r.d.slice(0,4)} · ${DOW_CN[(new Date(r.d).getDay()+6)%7]}</div></td>
+   <td class="num">${r.n}</td>
+   <td><span class="pill ${stg(r.stage)}">${r.stage}</span>
+     <div class="hint">${r.min?hh(r.min):'—'}</div></td>
+   <td>${r.ppl.map(q=>`<div style="margin-bottom:5px;line-height:1.6">
+       <b>${q.who}</b> <span class="muted">${q.type}</span>
+       <div class="hint" style="margin:0">计划 ${q.plan||'—'} →
+         ${q.io?`<b class="mono">${q.io}</b> <span class="mono">${minLab(q.min)}</span>`
+           :(q.future?'<span class="pill p-cyan">已排期 · 还没到</span>'
+                     :'<b style="color:#dc2626">没打卡</b> —— 工时算不出来，日结挂起')}
+         ${q.flag?`<span class="pill p-amber" style="margin-left:4px">⚠ ${q.flag}</span>`:''}</div>
+       ${q.note?`<div class="hint" style="margin:0">${q.note}</div>`:''}</div>`).join('')
+     ||'<span class="hint">当天没有人到场（只有事件）</span>'}</td>
+   <td>${r.ev.map(e=>`<div style="margin-bottom:4px;line-height:1.6">${
+       e.k==='gate'?`<span class="pill p-green">${e.txt}</span>`
+       :e.k==='var'?`<span class="pill p-amber">变更</span> ${e.txt}`
+       :e.txt}</div>`).join('')||'<span class="hint">—</span>'}
+     ${r.rep.map(x=>`<div style="background:var(--bg-elevated);border-radius:5px;padding:6px 8px;margin-top:5px;
+        font-size:var(--fs-xs);line-height:1.7"><b>每日上报 · ${x.who}</b>（${x.kind}）<br>${x.txt}
+        <div style="margin-top:3px">剩余工作：${'remain' in x?(x.remain||'无'):'<b style="color:#b45309">上次没填</b>'}</div></div>`).join('')}</td>
+   <td>${r.ack.map(a=>`<div class="hint" style="margin:0 0 3px">
+       ${a.ok?'<span style="color:#16a34a">●</span>':'<span style="color:#dc2626">●</span>'} ${a.w}
+       ${a.how?`<span class="muted">· ${a.how}</span>`:''}</div>`).join('')
+     ||'<span class="hint">—</span>'}</td>
+ </tr>`).join('')||`<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">这个过滤条件下没有入场天</td></tr>`}</tbody></table>
+ <div class="panel-body hint">绿点＝已回执（回了 Y / 签了字 / 已置位）· 红点＝发出去了还没回来。
+   <b>没打卡</b>那几天是真问题：工时算不出来、日结会挂起——去「每日工时管理」补录（要填项目、时长、原因类别与详细说明）。
+   这页任何一行都改不了：要改去源头改，改完这里自动跟着变</div>
+</div>`}`;
+},
 'eng/安装调试':()=>{
  schSeed();
  const rows=instList().map(instRow);
@@ -3950,13 +4668,15 @@ ${helpNote(`<b>发送人身份</b>：全公司对外只有<b>一个短信号码<
   </div>
  </div>`;
 },
-'eng/每日上报':()=>{
+'eng/每日工时管理':()=>{
  const wl=worklog();
  const pend=wl.filter(w=>w.hang);
  const done=wl.filter(w=>w.backfilled);
  const recent=wl.filter(w=>!w.rest&&!w.hang&&!w.backfilled).slice().reverse().slice(0,8);
- return `<h2>每日上报 <span class="pill p-cyan">员工 App 一人一天分段上报 · 当夜 0 点定格</span></h2>
- <div class="page-sub">全员出勤与分段一览 · 挂起补录（负责人操作）· 说明看左下「帮助」</div>
+ return `<h2>每日工时管理 <span class="pill p-cyan">员工 App 一人一天分段上报 · 当夜 0 点定格</span></h2>
+ <div class="page-sub">全员出勤与分段一览 · 挂起补录（负责人操作）· 说明看左下「帮助」
+   <br><span class="muted">工时事实由员工在施工端 App「每日上报」采集，后台在这一页管理与补录 ——
+   <b>人员名单与薪酬由财务建立与维护</b>，工程这边不重复建人</span></div>
  ${ops([
   ['补录挂起日结','只有工程负责人/管理员能补 · 项目+付薪时长（0=定案没出工）+原因类别+详细说明（≥10 字）缺一不可 · 单日>14h 拦','补录即定格进 KPI · 通知财务 · 账目进下一个月工时计算（滚下月补发）'],
   ['查看全员分段','今天的段 ⏳ 未定格（0 点定格后本人不可自改）','—'],
@@ -4627,6 +5347,7 @@ ${ops([
  ['改停留阈值','在建 / 维护各一条 · 只能填正数','总览卡片、卡点与异常、项目列表「停留」列立即跟着变'],
  ['改交接 SLA','超过即算超期交接，进卡点表','—'],
  ['改围栏半径','工人 App 打卡判定用（每人×每天×每任务）','—'],
+ ['增删补录原因类别','重复拦 · 已被用过的删不掉 · 「其他」不可删','「每日工时管理」补录弹窗的下拉立即跟着变 · 改动进操作日志'],
 ])}
 ${helpNote(`<b>这页怎么用</b>：这里的四个数是全公司工程口径——<b>在建停留</b>与<b>维护停留</b>两条阈值分开设
   （在建卡住多半是缺料缺人，维护卡住多半是该回访了，两者容忍度本来就不同）；交接 SLA 决定「超期交接」怎么算；
@@ -4665,10 +5386,55 @@ ${helpNote(`<b>这页怎么用</b>：这里的四个数是全公司工程口径�
     <div class="hint">当前 ${minLab(SCH_NORM[k])}${k==='Site Meeting'||k==='交付'?' · <b>重点节点</b>：也是跟客户解释工期的依据':''}</div></div>`).join('')}
   <div class="hint">派工时超出参考 30% 或不足 60% 会给橙色提示——现场情况千差万别，<b>只提示不拦</b></div>
  </div></div>
-<div class="panel" style="max-width:560px"><div class="panel-head">SM 模板与出发前清单</div>
- <div class="panel-body"><div class="hint">SM1~4 每场填什么、出发前带什么（含 KNX / 地暖条件项）——模板维护下一轮做进这里；
-  当前清单见 Site Meeting 页各卡。</div>
-  <button class="btn" onclick="go('eng','Site Meeting')">去 Site Meeting 看当前清单 →</button></div></div>
+<div class="panel" style="max-width:560px"><div class="panel-head">补录原因类别
+  <span class="muted" style="font-weight:400">「每日工时管理」补录挂起日结时的下拉选项</span></div>
+ <div class="panel-body">
+  <table><tbody>${BF_CATS.map((c,i)=>`<tr><td>${c}</td>
+    <td style="text-align:right;width:90px">${c==='其他'
+      ?'<span class="hint">兜底项 · 不可删</span>'
+      :`<span class="delx" title="删除这个类别" onclick="bfCatDel(${i})">✕</span>`}</td></tr>`).join('')}</tbody></table>
+  <div style="display:flex;gap:6px;margin-top:var(--sp-3)">
+    <input id="bfcat-new" placeholder="新增类别，如：交通事故 / 客户临时取消 / 天气停工" style="flex:1">
+    <button class="btn btn-primary" onclick="bfCatAdd()">新增</button></div>
+  <div class="hint">类别是给 KPI 统计用的：<b>同一件事永远选同一个类别</b>，数才对得上。
+    重复类别拦；<b>已经被用过的类别删不掉</b>（删了历史记录的类别成孤儿）；「其他」是兜底项不可删。</div>
+ </div></div>
+<div class="panel" style="max-width:560px"><div class="panel-head">排班任务类型
+  <span class="muted" style="font-weight:400">派工排班「工作类型」下拉的选项</span></div>
+ <div class="panel-body">
+  <table><tbody>${SCH_TYPES.map(t=>`<tr><td><span class="schtask ${t.c}" style="display:inline-block">${t.k}</span></td>
+    <td class="hint">${t.std?'计入工时与加班':'不计加班（'+(t.k==='倒休'?'休假，扣倒休余额':'按会议算')+'）'}</td>
+    <td style="text-align:right;width:80px">${['Site Meeting','安装','交付','维护','倒休'].includes(t.k)
+      ?'<span class="hint">内建 · 不可删</span>'
+      :`<span class="delx" onclick="schTypeDel('${t.k}')">✕</span>`}</td></tr>`).join('')}</tbody></table>
+  <div style="display:flex;gap:6px;margin-top:var(--sp-3)">
+    <input id="sct-new" placeholder="新增类型，如：复勘 / 售后整改 / 培训" style="flex:1">
+    <button class="btn btn-primary" onclick="schTypeAdd()">新增</button></div>
+  <div class="hint">五类内建类型（SM/安装/交付/维护/倒休）跟工时与倒休算法绑死，<b>不可删</b>；
+    自建类型默认计入工时、合理时长 4 时（在上面「合理时长参考」里改）。
+    <b>已经被排班用过的类型删不掉</b>——删了那些任务就成孤儿。</div>
+ </div></div>
+<div class="panel" style="max-width:700px"><div class="panel-head">SM 模板与出发前清单
+  <span class="muted" style="font-weight:400">Site Meeting 四场各自「出发前带什么」——改完下一场立即生效</span></div>
+ <div class="panel-body">
+  <div class="split" style="gap:var(--sp-3)">
+   ${SM_DEF.map(def=>`<div>
+     <div style="font-weight:600;font-size:var(--fs-sm);margin-bottom:2px">${def.name}</div>
+     <div class="hint" style="margin-bottom:6px">${def.goal}</div>
+     <table><tbody>${SM_CHK[def.no].map((c,i)=>`<tr><td style="font-size:var(--fs-xs)">${c}
+       ${/◇/.test(c)?'<span class="pill p-amber" style="margin-left:4px">条件项</span>':''}</td>
+       <td style="text-align:right;width:34px"><span class="delx" onclick="smChkDel(${def.no},${i})">✕</span></td></tr>`).join('')
+       ||'<tr><td class="hint">这一场还没有清单项</td></tr>'}</tbody></table>
+     <div style="display:flex;gap:5px;margin-top:6px">
+       <input id="smchk-new-${def.no}" placeholder="加一项…（条件项写 ◇有KNX 这种）" style="flex:1;font-size:11px;padding:4px 6px">
+       <button class="btn" style="padding:3px 9px;font-size:11px" onclick="smChkAdd(${def.no})">＋</button></div>
+    </div>`).join('')}
+  </div>
+  <div class="hint" style="margin-top:var(--sp-3)">带 <b>◇</b> 的是<b>条件项</b>：只有方案里有那一项（如 ◇有KNX / ◇有地暖）时才出现在出发前清单里
+   —— 这样清单永远只列「这个项目真要带的东西」，不会让人对着一堆不相干的项打勾。
+   改动只影响<b>之后</b>的场次，已完成的场次定格不动。</div>
+  <button class="btn" style="margin-top:var(--sp-2)" onclick="go('eng','Site Meeting')">去 Site Meeting 看效果 →</button>
+ </div></div>
 <div class="panel" style="max-width:560px"><div class="panel-head">改动留痕</div>
  <div class="panel-body"><div class="hint">本页所有改动自动写入左栏「操作日志」—— 什么时间、谁、把哪个阈值从多少改成多少 · 只读不可删。</div>
   <button class="btn" onclick="go('eng','操作日志')">打开操作日志 →</button></div></div>`,
@@ -4895,13 +5661,13 @@ ${helpNote(`<b>这页怎么用</b>：这里的四个数是全公司工程口径�
   ['查看项目人力消耗','范围=施工中 / 项目交付 / 项目维护中 · 人成本只有财务与管理层可见','—'],
   ['休假（扣倒休）','只有倒休余额>0 且在职的人显示按钮 · 不能透支','员工短信回 Y 自动扣减；不回复财务可强制扣减（红字留痕）'],
   ['本周期全员日结','周期=上个 21 号 → 今天 · 每月 21 号自动滚动','—'],
-  ['查看挂起 / 补录状态','补录在工程端「每日上报」由负责人操作 —— 财务这里只读','已补录亮琥珀标（悬停看原因）· 账目进下一个月工时计算'],
+  ['查看挂起 / 补录状态','补录在工程端「每日工时管理」由负责人操作 —— 财务这里只读','已补录亮琥珀标（悬停看原因）· 账目进下一个月工时计算'],
   ['查看月度汇总','汇总=日结定格逐日加总，随时最新、无需手动生成 · 周期 21 号自动滚动（即封账）· 挂起天按 0 计','发钱在外部工资系统操作 —— 本系统不碰钱'],
   ['添加 / 停用工资人员','在左栏「设置」页 · 成本时薪不填建人直接被拒','人员变动通知工程管理'],
  ])}
  ${helpNote(`<b>这页怎么用</b>：这是数据平台、不发钱——从上往下：①项目人力消耗（售前预计 vs 已消耗，点「每人明细」看人）；
    ②人员与薪酬（有倒休余额的点「休假」，员工短信回 Y 自动扣，不回可强制扣减红字留痕）；
-   ③日结近况（挂起＝等工程负责人在工程端「每日上报」补录，这里只看状态）＋「本周期全员日结」网格；
+   ③日结近况（挂起＝等工程负责人在工程端「每日工时管理」补录，这里只看状态）＋「本周期全员日结」网格；
    ④倒休 · 休假流水；⑤月度汇总（自动封账，拿去外部发钱）。薪酬金额只有财务与管理层可见。`)}
  ${helpNote(`本页是<b>数据平台</b>，不发钱：人力消耗按项目归集——<b>售前预计人工</b>=签约「预测工时」，
    <b>已消耗</b>=日结定格逐日加总（今天的段未定格、明天计入），<b>人成本</b>=每天工时×当天该人<b>阶段时薪</b>
@@ -4909,7 +5675,7 @@ ${helpNote(`<b>这页怎么用</b>：这里的四个数是全公司工程口径�
  ${helpNote(`三种制度一张表：<b>月薪</b>=固定月薪，加班攒<b>倒休</b>不发钱；<b>时薪</b>=付薪时长×时薪，加班按倍数付（现全 1.0）；
    <b>外包</b>=固定日薪去了就一天，无加班概念，成本时薪=日薪÷参考时间自动算。周末/公共假日整天算加班（NSW 名单已录）。`)}
  ${helpNote(`日结<b>当夜 0 点定格</b>，定格后本人不可自改；挂起（无记录）会给<b>工程负责人</b>发提醒任务，
-   由他在工程端「每日上报」补录（项目+时长+原因类别+详细说明四样必填）——<b>财务这里只显示状态</b>。
+   由他在工程端「每日工时管理」补录（项目+时长+原因类别+详细说明四样必填）——<b>财务这里只显示状态</b>。
    补录账目<b>进入下一个月的工时计算</b>（滚下月补发）；挂起天当月按 0 计、<b>不卡封账</b>。
    没打卡那天不扣钱（Fair Work 不允许惩罚性扣薪）。月度周期=上月 21 → 本月 20。`)}
  ${helpNote(`倒休：流水只增不改、余额现算。休假=财务点人员表「休假」填 从→至（年月日时），确认即给员工发短信；
@@ -4978,9 +5744,9 @@ ${helpNote(`<b>这页怎么用</b>：这里的四个数是全公司工程口径�
      <td><span class="pill p-amber" title="${w.bf.cat}：${w.bf.note}（${w.bf.by} ${w.bf.at}）">🔒 已补录 · ${w.hEff>0?'滚下月补发':'零工时定案'}</span></td></tr>`).join('')}
    ${hangRows.map(w=>`<tr><td class="mono">${w.md}</td><td>${w.who}</td><td>—</td><td class="num">—</td><td class="num">—</td>
      <td><span class="pill p-red">挂起 · 无记录</span>
-       <div class="hint">等工程负责人在「每日上报」补录</div></td></tr>`).join('')}</tbody></table>
+       <div class="hint">等工程负责人在「每日工时管理」补录</div></td></tr>`).join('')}</tbody></table>
    <div class="panel-body hint">挂起=工程员工没交当日上报（0 点定格后本人不可自改）——系统给<b>工程负责人</b>发提醒任务，
-     补录在工程端「每日上报」页操作，<b>财务这里只显示状态</b>（已补录亮琥珀标，悬停看原因）；
+     补录在工程端「每日工时管理」页操作，<b>财务这里只显示状态</b>（已补录亮琥珀标，悬停看原因）；
      补录账目<b>进入下一个月的工时计算</b>（滚下月补发）——当月封账不被挂起卡住，挂起天按 0 计</div></div>
  </div>
  ${payGridOpen?`<div class="panel"><div class="panel-head">本周期全员日结 <span class="pill p-cyan">${psLab} → 今天 · 每月 21 号自动滚动</span>
@@ -4989,7 +5755,7 @@ ${helpNote(`<b>这页怎么用</b>：这里的四个数是全公司工程口径�
   <tbody>${gridStaff.map(s=>{const rows=wl.filter(w=>w.who===s.name); let tot=0;
     const cells=rows.map(w=>{
       if(w.rest) return '<td style="text-align:center" class="muted">休</td>';
-      if(w.hang) return '<td style="text-align:center"><b style="color:#c62828" title="待补录（工程负责人 · 每日上报）">挂</b></td>';
+      if(w.hang) return '<td style="text-align:center"><b style="color:#c62828" title="待补录（工程负责人 · 每日工时管理）">挂</b></td>';
       if(w.today) return '<td style="text-align:center">⏳</td>';
       tot+=w.hEff;
       return `<td class="mono" style="text-align:center"${w.backfilled?` title="补录：${w.bf.cat}"`:''}>${w.hEff}${w.backfilled?'<span style="color:#b45309">°</span>':''}</td>`;}).join('');
@@ -5612,7 +6378,7 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
      <table><thead><tr><th>日期</th><th>员工</th><th>状态</th><th>处理</th></tr></thead>
      <tbody>${hg.length?hg.map(w=>`<tr><td class="mono">${w.md}</td><td><b>${w.who}</b></td>
        <td><span class="pill p-red">挂起 · 无记录</span></td>
-       <td><button class="btn" onclick="go('eng','每日上报')">去补录 →</button></td></tr>`).join('')
+       <td><button class="btn" onclick="go('eng','每日工时管理')">去补录 →</button></td></tr>`).join('')
        :'<tr><td colspan="4" class="muted">没有挂起 —— 全员日结齐了</td></tr>'}</tbody></table>
      <div class="panel-body hint">补录四样必填（项目/时长/原因类别/详细说明≥10字）· 进 KPI · 账目进下一个月工时计算</div></div>`; }
   if(engCard==='handoff'){
