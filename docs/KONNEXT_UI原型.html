@@ -411,7 +411,7 @@ const DEPT = {
 const COMPANY_PAGES=new Set([
   'proc/总览','proc/物料主表','proc/汇率','proc/采购单','proc/补货建议','proc/调价历史','proc/RMA索赔',
   'wh/总览','wh/入库','wh/盘点','wh/库存流水','wh/期初移库','wh/RMA登记',
-  'eng/总览','eng/派工排班','eng/每日上报','eng/人员与外包','eng/文档库','eng/设置','eng/Site Meeting','eng/安装调试',
+  'eng/总览','eng/派工排班','eng/每日上报','eng/人员与外包','eng/文档库','eng/设置','eng/Site Meeting','eng/安装调试','eng/交付',
   'fin/财务节点','fin/项目收款S1-S3','fin/尾款结算S4与Var','fin/运维财务支持','fin/催账和停服',
   'fin/工资数据','fin/项目报销','fin/成本与利润率','fin/设置','fin/总览','fin/工资','presales/总览','presales/项目列表','presales/项目状态表','presales/设置','mt/总览',
   'presales/操作日志','eng/操作日志','proc/操作日志','wh/操作日志','fin/操作日志','mt/操作日志',
@@ -1534,7 +1534,7 @@ function hourBand(pct){
   if(pct>=70)   return {k:'正常',cls:'p-cyan',c:'#2563eb'};
   return {k:'充裕',cls:'p-green',c:'#047857'};
 }
-const instList=()=>engScope().filter(p=>engStage(p).k==='施工中');
+const instList=()=>engScope().filter(p=>engStage(p).k==='施工中'&&!(DELIV[p.code]&&DELIV[p.code].done));
 function instRow(p){ const a=hrAgg(p.code); const est=a.est, used=a.T.bh;
   const pct=est?Math.round(used/est*1000)/10:null;
   return {p,est,used,pct,band:hourBand(pct),left:est?Math.round((est-used)*10)/10:null,
@@ -1607,6 +1607,176 @@ function instSave(){ const o=instOpen; if(!o) return;
     who.map(w=>({who:w+'（App 日程）',how:'短信 + App',ok:false})));
   instClose(); renderAll();
   uiAlert('已排入排班表 ✓ '+d+' '+st+'–'+et+'\n'+who.join('、')+' 各一条安装任务（短信已发，等回 Y 变绿点）'); }
+/* ═══ 四十八轮：交付 ═══
+   待交付＝①施工部分已结束（安装项清零／工程管理确认完工）②S4 尾款已结清（收款线现算）
+   —— 两条都满足才进列表；交付当天人工进项目成本；标准交付工时可在设置调 */
+let DELIV={
+ /* 吴宅：施工部分已结束，但 S4 尾款还没结清 → 灰行「等 S4 结清」，不能约交付 */
+ 'KX-2026-0199':{done:true, s4:false, contactIdx:0, contacted:false, sched:null, actual:0, mtSigned:false},
+ /* 陈宅：两条前置都满足 · 已联系 · 已排班 · 已签运维条款 · 当天实际 5.5h（超标准 4h）→ 可确认交付 */
+ 'KX-2026-0180':{done:true, s4:true, contactIdx:0, contacted:true, contactCh:'短信+邮件',
+   contactAt:'2026/07/26 10:05', contactBy:'陈工',
+   sched:'2026/07/28 09:00–13:30', schedWho:['陈工'], actual:5.5, mtSigned:true, mtBy:'陈工',
+   mtAt:'2026/07/28 13:40', delivered:false},
+};
+const DELIV_TPL={
+ sms:'【{公司名}】{称呼}您好，您位于 {项目地址} 的智能家居工程已全部完工，我们希望与您预约<b>交付验收</b>时间。'+
+     '拟定 {交付时间}，届时会为您做全屋功能演示与操作培训，并签署运维条款。方便请回复确认。—— {发送人}',
+ emailTitle:'【{公司名}】{项目地址} · 交付验收预约',
+ email:'{称呼}您好：\n\n您位于 {项目地址} 的工程已全部完工，现与您预约交付验收。\n\n'+
+   '拟定时间：{交付时间}\n当天内容：全屋功能演示 · 操作培训 · 遗留问题确认 · 运维条款签署\n\n'+
+   '如时间不便，请回复方便的时段，我们再做安排。\n\n{公司名} 工程管理　{发送人}',
+};
+const delivReady=p=>{const d=DELIV[p.code]; if(!d||!d.done) return false;
+  const f=finOf(p.code); const s4=f?f.ms[3]:null;
+  if(f) return !!(s4&&s4.settled);   // 进了收款线的：以财务 S4 结清为准
+  return d.s4!==false;               // 演示项目：DELIV.s4 显式标志
+};
+/* 待交付列表：施工结束 + S4 结清；已交付的自动移出（状态变项目交付/维护中） */
+function delivList(){ return PROJECTS.filter(p=>DELIV[p.code]&&!DELIV[p.code].delivered
+  &&['施工中','项目交付'].includes(p.status)); }
+function delivPeople(code){ const ppl=finPeople(code);
+  return ppl.length?ppl:[{src:'业主',name:(PROJECTS.find(x=>x.code===code)||{}).owner||'业主',phone:'—',email:''}]; }
+/* 标准交付工时（设置可调）+ 实际工时（当天派工/打卡现算） */
+function delivHours(code){ const d=DELIV[code]||{};
+  const planned=SCH.filter(x=>x.pj===code&&x.type==='交付').reduce((a,x)=>a+x.min,0)/60;
+  const actual=d.actual||0;
+  const std=SCH_NORM['交付']/60*(d.schedWho?d.schedWho.length:1);
+  const pct=std?Math.round((actual||planned)/std*1000)/10:null;
+  return {planned:Math.round(planned*10)/10,actual,std:Math.round(std*10)/10,pct}; }
+/* 客户联络：短信/邮件/两者 —— 弹窗可改内容、选收件人（同财务催款机制） */
+let DLV=null;
+function delivNotifyOpen(code){ const p=PROJECTS.find(x=>x.code===code)||{}; const d=DELIV[code];
+  DLV={code,ch:'sms',lang:'zh',to:d.contactIdx||0,by:WHO[me].name}; delivNotifyPaint(); }
+function delivNotifyClose(){ DLV=null;
+  document.getElementById('smback').style.display='none';
+  const b=document.getElementById('smbox'); b.style.display='none'; b.innerHTML=''; }
+function delivTplRender(str){ const p=PROJECTS.find(x=>x.code===DLV.code)||{}; const d=DELIV[DLV.code];
+  const ppl=delivPeople(DLV.code); const to=ppl[DLV.to]||ppl[0];
+  return str.replace(/\{公司名\}/g,'KONNEXT').replace(/\{称呼\}/g,(to.name||'')+(to.title?'（'+to.title+'）':''))
+    .replace(/\{项目地址\}/g,(p.street||'')+', '+(p.suburb||'')+' '+(p.state||''))
+    .replace(/\{交付时间\}/g,d.sched||'（待定，见面再约）').replace(/\{发送人\}/g,DLV.by); }
+function delivNotifyPaint(){ if(!DLV) return; const code=DLV.code;
+  const p=PROJECTS.find(x=>x.code===code)||{}; const ppl=delivPeople(code); const d=DELIV[code];
+  const chBtn=(k,lab)=>`<button class="btn${DLV.ch===k?' btn-primary':''}" onclick="DLV.ch='${k}';delivNotifyPaint()">${lab}</button>`;
+  document.getElementById('smbox').innerHTML=
+   '<div style="font-weight:600;margin-bottom:2px">交付预约通知 · '+p.nick+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">📍 '+p.street+', '+p.suburb+' '+p.state+
+     ' · 拟定交付：'+(d.sched||'未排期（可先联系再排）')+'</div>'+
+   '<div class="field"><label>发给谁（客户方联系人 —— 来自售前采集）</label>'+
+     '<select onchange="DLV.to=+this.value;delivNotifyPaint()">'+
+     ppl.map((x,i)=>'<option value="'+i+'"'+(DLV.to===i?' selected':'')+'>'+x.src+' · '+x.name+
+       (x.phone?'（'+x.phone+'）':'')+(x.email?' · '+x.email:'')+'</option>').join('')+'</select></div>'+
+   '<div class="field"><label>渠道</label><div style="display:flex;gap:6px">'+
+     chBtn('sms','只发短信')+chBtn('email','只发邮件')+chBtn('both','短信 + 邮件')+'</div></div>'+
+   '<div class="field"><label>发送人</label><input id="dlv-by" value="'+DLV.by+'" style="width:180px" oninput="DLV.by=this.value"></div>'+
+   (DLV.ch!=='email'?'<div class="field"><label>短信正文（可临时改 · 默认模版在下方说明）</label>'+
+     '<textarea id="dlv-sms" style="width:100%;min-height:96px;font-size:12px;line-height:1.7">'+
+     delivTplRender(DELIV_TPL.sms).replace(/<b>|<\/b>/g,'')+'</textarea></div>':'')+
+   (DLV.ch!=='sms'?'<div class="field"><label>邮件标题</label>'+
+     '<input id="dlv-et" style="width:100%;font-size:12px" value="'+delivTplRender(DELIV_TPL.emailTitle)+'"></div>'+
+     '<div class="field"><label>邮件正文</label>'+
+     '<textarea id="dlv-em" style="width:100%;min-height:150px;font-size:12px;line-height:1.7">'+
+     delivTplRender(DELIV_TPL.email)+'</textarea></div>':'')+
+   '<div class="hint">客户回不回都不挡进度——回复只是记录（同催款口径）；发出即留痕并记「已联系」</div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="delivNotifyClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="delivNotifySend()">确认发送</button></div>';
+  document.getElementById('smback').style.display='block';
+  document.getElementById('smbox').style.display='block'; }
+function delivNotifySend(){ const code=DLV.code; const d=DELIV[code];
+  const ppl=delivPeople(code); const to=ppl[DLV.to]||ppl[0];
+  const chCn=DLV.ch==='sms'?'短信':DLV.ch==='email'?'邮件':'短信+邮件';
+  if(DLV.ch!=='sms'&&!to.email){ uiAlert('门禁：'+to.name+' 没有邮箱（售前没采集到）——改发短信，或先去售前补邮箱'); return; }
+  d.contacted=true; d.contactAt=nowTs(); d.contactIdx=DLV.to; d.contactBy=DLV.by; d.contactCh=chCn;
+  opLog(code,'发出交付预约通知',chCn+' → '+to.src+' '+to.name+'（'+(to.phone||to.email)+'）· 发送人 '+DLV.by+
+    ' · 拟定 '+(d.sched||'未排期'),['eng']);
+  notifAdd(code,'交付预约通知（'+chCn+'）→ '+to.name,[{who:'客户 '+to.name,how:chCn,ok:false}]);
+  delivNotifyClose(); renderAll();
+  uiAlert('已发送 ✓ '+chCn+' → '+to.name+'\n客户回不回都不挡进度（回复只作记录）；本行已记「已联系」'); }
+/* 交付排班：同安装调试的资源分配，写进派工排班表 */
+let DSC=null;
+function delivSchedOpen(code){ DSC={code}; delivSchedPaint(); }
+function delivSchedClose(){ DSC=null;
+  document.getElementById('smback').style.display='none';
+  const b=document.getElementById('smbox'); b.style.display='none'; b.innerHTML=''; }
+function delivSchedPaint(){ if(!DSC) return; const code=DSC.code;
+  const p=PROJECTS.find(x=>x.code===code)||{}; const h=delivHours(code);
+  const d0=new Date(); d0.setDate(d0.getDate()+3);
+  const staff=['陈工',...STAFF.filter(x=>x.active).map(x=>x.name).filter(x=>x!=='陈工')];
+  document.getElementById('smbox').innerHTML=
+   '<div style="font-weight:600;margin-bottom:2px">交付排班 · '+p.nick+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">📍 '+p.street+', '+p.suburb+
+     ' —— 保存后写进<b>派工排班表</b>并进 App 日程；<b>交付当天人工自动进项目成本</b></div>'+
+   '<div class="field"><label>交付日期</label><input type="date" id="dl-d" value="'+ymdS(d0).replace(/\//g,'-')+'" style="width:180px"></div>'+
+   '<div class="field"><label>开始 → 截止（15 分钟一档）</label>'+
+     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+     '<select id="dl-st" style="width:auto" onchange="delivSchedPrev()">'+
+       SLOTS.map(x=>'<option'+(x==='09:00'?' selected':'')+'>'+x+'</option>').join('')+'</select>'+
+     '<span class="muted">→</span>'+
+     '<select id="dl-et" style="width:auto" onchange="delivSchedPrev()">'+
+       SLOTS.map(x=>'<option'+(x==='13:00'?' selected':'')+'>'+x+'</option>').join('')+'</select>'+
+     '<span id="dl-prev" class="hint"></span></div></div>'+
+   '<div class="field"><label>谁去交付（工程管理指派 · 可多选）</label>'+
+     '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+     staff.map((n,i)=>'<label style="font-size:12px"><input type="checkbox" class="dl-who" value="'+n+'"'+
+       (i===0?' checked':'')+' style="width:auto"> '+n+'</label>').join('')+'</div></div>'+
+   '<div class="field"><label>交付当天内容</label>'+
+     '<textarea id="dl-note" style="width:100%;min-height:80px;font-size:12px;line-height:1.7">'+
+     '· 全屋功能演示与操作培训\n· 遗留问题现场确认\n· 运维条款签署与订阅说明</textarea></div>'+
+   '<div class="hint">标准交付工时参考 '+h.std+' h（设置里「合理时长参考 · 交付」可改）</div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="delivSchedClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="delivSchedSave()">保存排班并通知</button></div>';
+  document.getElementById('smback').style.display='block';
+  document.getElementById('smbox').style.display='block'; delivSchedPrev(); }
+function delivSchedPrev(){ const s=document.getElementById('dl-st'), e=document.getElementById('dl-et'),
+   p=document.getElementById('dl-prev'); if(!s||!e||!p) return;
+  const m=spanMin(s.value,e.value); const nh=schNormHint('交付',m);
+  p.innerHTML=m>0?('＝ <b>'+minLab(m)+'</b>'+(nh?' · <span style="color:#b45309">'+nh+'</span>':''))
+    :'<span style="color:#c62828">截止时间必须晚于开始时间</span>'; }
+function delivSchedSave(){ if(!DSC) return; const code=DSC.code;
+  const v=id=>{const e=document.getElementById(id);return e?e.value:'';};
+  const dRaw=v('dl-d'); if(!dRaw){ uiAlert('门禁：请选择交付日期'); return; }
+  const d=dRaw.replace(/-/g,'/');
+  if(d<todayS()){ uiAlert('门禁：只能排此刻之后的日期'); return; }
+  const st=v('dl-st'), et=v('dl-et'); const min=spanMin(st,et);
+  if(!(min>0)){ uiAlert('门禁：截止时间必须晚于开始时间'); return; }
+  const who=[...document.querySelectorAll('.dl-who:checked')].map(x=>x.value);
+  if(!who.length){ uiAlert('门禁：至少指派一个人去交付'); return; }
+  const bad=who.map(w=>({w,ov:schOverlap(w,d,st,et,null)})).filter(x=>x.ov);
+  if(bad.length){ uiAlert('门禁：'+bad[0].w+' 当天已有「'+bad[0].ov.type+' '+bad[0].ov.st+'–'+bad[0].ov.et+'」时间重叠'); return; }
+  const note=v('dl-note').trim();
+  const p=PROJECTS.find(x=>x.code===code)||{};
+  who.forEach(w=>SCH.push({id:'DL-'+code.slice(-4)+'-'+w,d,who:w,type:'交付',pj:code,st,et,min,
+    note,remain:'',sent:true,ack:false}));
+  DELIV[code].sched=d+' '+st+'–'+et; DELIV[code].schedWho=who;
+  opLog(code,'交付排班',d+' '+st+'–'+et+'（'+minLab(min)+'）· '+who.join('、')+
+    ' —— 已写进派工排班表；当天人工自动进项目成本',['eng','fin']);
+  notifAdd(code,'交付排班 '+d+' '+st+'–'+et+' @ '+p.nick,
+    who.map(w=>({who:w+'（App 日程）',how:'短信 + App',ok:false})));
+  delivSchedClose(); renderAll();
+  uiAlert('已排班 ✓ '+d+' '+st+'–'+et+'\n'+who.join('、')+' 各一条交付任务（短信已发，等回 Y 变绿点）'); }
+/* 运维条款签署：工程管理勾选置位（留痕）*/
+function delivMtSign(code){ const d=DELIV[code];
+  if(d.mtSigned){ uiAlert('运维条款已于 '+d.mtAt+' 由 '+d.mtBy+' 确认签署——已置位不可撤（要改走运维订阅流程）'); return; }
+  uiConfirm('确认客户已签署运维条款？\n（勾了就置位留痕：谁、什么时候确认的；运维接管与订阅按这个走）',ok=>{
+    if(!ok) return; d.mtSigned=true; d.mtBy=WHO[me].name; d.mtAt=nowTs();
+    opLog(code,'确认运维条款已签署','签署确认人 '+d.mtBy+' · '+d.mtAt+' —— 运维接管与订阅可启动',['eng','mt','fin']);
+    notifAdd(code,'运维条款已签署 · 可启动接管与订阅',[{who:'运维 小周',how:'待办',ok:false}]);
+    renderAll(); uiAlert('已置位 ✓ 已通知运维（接管与订阅可启动）'); }); }
+/* 交付完成：人肉确认（系统不卡好坏），但留痕 + 利润率定格 */
+function delivDone(code){ const d=DELIV[code]; const p=PROJECTS.find(x=>x.code===code)||{};
+  if(!d.mtSigned){ uiAlert('门禁：运维条款还没确认签署——交付前必须置位（否则运维接管与订阅没依据）'); return; }
+  if(!d.actual){ uiAlert('门禁：交付当天实际工时还没回来（等 App 打卡/每日上报）——工时没落地，成本算不出来'); return; }
+  uiConfirm('确认 '+p.nick+' 交付完成？\n交付当天工程利润率<b>定格</b>（之后只读）· 项目转「项目交付」并移交运维。',ok=>{
+    if(!ok) return; d.delivered=true; d.deliveredAt=nowTs(); d.deliveredBy=WHO[me].name;
+    p.status='项目交付'; p.band='p-green';
+    opLog(code,'确认交付完成','确认人 '+d.deliveredBy+' · '+d.deliveredAt+
+      ' · 工程利润率交付当天定格 · 移交运维启动免责维保',['eng','fin','mt']);
+    notifAdd(code,'交付完成 · 移交运维 + 利润率定格',
+      [{who:'运维 小周',how:'待办',ok:false},{who:'财务 王姐',how:'待办',ok:false}]);
+    renderAll(); uiAlert('已确认交付 ✓ 已通知：运维（接管+免责维保起算）· 财务（利润率定格 / S4 收尾）'); }); }
 let smF='全部', smQ='', smDetail=null, smSchedOpen=null;
 function smPick(code){ smDetail=(smDetail===code?null:code); renderAll(); }
 /* 现场记录 · 照片 · 到场打卡（已完成的场次才有） */
@@ -3506,6 +3676,86 @@ ${ops([
    </div></div>
   </div></div>`
  :`<div class="panel"><div class="panel-body hint">选一行点「详细」→ 这里展开该项目的四张会议卡（出发前清单 / 现场记录 / 变更 / 排期）</div></div>`}`;
+},
+'eng/交付':()=>{
+ schSeed();
+ const rows=delivList();
+ const ready=rows.filter(p=>delivReady(p));
+ const wait=rows.filter(p=>!delivReady(p));
+ const doneCnt=Object.keys(DELIV).filter(k=>DELIV[k].delivered).length;
+ return `<h2>交付 <span class="pill p-cyan">施工结束 + S4 结清 = 待交付</span></h2>
+ <div class="page-sub">约客户 → 排交付班 → 当天工时进成本 → 签运维条款 → 确认交付（利润率定格）· 说明看左下「帮助」</div>
+ ${ops([
+  ['发交付预约通知','选客户方联系人（售前采集）· 短信 / 邮件 / 两者 · 内容可临时改','留痕并记「已联系」· 客户回不回都不挡进度'],
+  ['交付排班','日期 + 起止（15 分钟档）+ 指派谁去交付','写进派工排班表 + App 日程；当天人工自动进项目成本'],
+  ['确认运维条款已签署','工程管理勾选置位 · 留痕（谁/何时）','通知运维：接管与订阅可启动'],
+  ['确认交付完成','门禁：运维条款未签 / 当天实际工时未回，都不让确认','工程利润率交付当天定格 · 项目转「项目交付」· 通知运维与财务'],
+ ])}
+ ${helpNote(`<b>这页怎么用</b>：待交付＝<b>两条同时满足</b>——①施工部分已结束（安装项清零/工程确认完工）
+   ②<b>S4 尾款已结清</b>（收款线现算，钱没到位只出现在「等 S4 结清」区，不能约交付）。
+   一行走完四步：<b>约客户</b>（发通知）→ <b>排交付班</b>（进排班表）→ 交付当天 <b>工时对比</b>（超标标红）→
+   <b>签运维条款</b> → <b>确认交付</b>（利润率定格、移交运维）。`)}
+ ${helpNote(`<b>工时对比</b>：标准交付工时＝设置里「合理时长参考 · 交付」× 指派人数；
+   实际工时来自当天 App 打卡/每日上报。<b>实际 > 标准</b> 就标红——交付超时多半是遗留问题没清干净，
+   属于我们的效率问题（不挂客户，吃工程利润率，口径同 §7.3）。`)}
+ ${helpNote(`<b>交付好不好，系统不判断</b>（"干得够不够好"没法写成规则）——但<b>谁、何时、看着哪版数据点的确认必须留痕</b>；
+   确认那一刻工程利润率<b>定格</b>（此后只读），运维接管与免责维保起算。<b>运维条款没签不让确认交付</b>：
+   否则运维接管和订阅收费都没有依据。`)}
+ <div class="cards">
+  <div class="card"><div class="card-label">待交付（可约）</div>
+    <div class="card-value">${ready.length}</div>
+    <div class="card-foot">施工已结束 + S4 已结清</div></div>
+  <div class="card"><div class="card-label">等 S4 结清</div>
+    <div class="card-value"${wait.length?' style="color:var(--warning)"':''}>${wait.length}</div>
+    <div class="card-foot">${wait.length?wait.map(p=>p.nick).join('、')+'：钱没到位不能约交付':'没有卡在钱上的'}</div></div>
+  <div class="card"><div class="card-label">已约未交付</div>
+    <div class="card-value">${rows.filter(p=>DELIV[p.code].sched).length}</div>
+    <div class="card-foot">已排交付班，等当天完成确认</div></div>
+  <div class="card"><div class="card-label">本季已交付</div>
+    <div class="card-value">${doneCnt}</div>
+    <div class="card-foot">已定格利润率 · 已移交运维</div></div>
+ </div>
+ <div class="panel">
+  <div class="panel-head">待交付项目
+    <span class="muted" style="font-weight:400">四步：约客户 → 排班 → 工时对比 → 签条款 + 确认交付</span></div>
+  <div style="overflow-x:auto"><table id="delivtbl" style="min-width:1240px">
+   <thead><tr><th>编号</th><th>立项时间</th><th>项目 · 地址</th><th>前置条件</th>
+     <th style="min-width:190px">客户联络</th><th style="min-width:170px">交付排班</th>
+     <th style="min-width:150px">工时对比</th><th>运维条款</th><th></th></tr></thead>
+   <tbody>${rows.map(p=>{const d=DELIV[p.code]; const f=finOf(p.code); const s4=f?f.ms[3]:null;
+     const rdy=delivReady(p); const h=delivHours(p.code); const ppl=delivPeople(p.code);
+     const to=ppl[d.contactIdx]||ppl[0];
+     const over=h.actual&&h.std&&h.actual>h.std;
+     return `<tr${rdy?'':' style="opacity:.62"'}>
+      <td class="mono">${p.code}</td><td class="mono" style="font-size:11px">${p.opened}</td>
+      <td><b>${p.nick}</b><div class="hint">📍 ${p.street}, ${p.suburb} ${p.state}</div></td>
+      <td><div><span class="pill ${d.done?'p-green':'p-grey'}">${d.done?'✓ 施工已结束':'施工未完'}</span></div>
+        <div style="margin-top:3px"><span class="pill ${rdy?'p-green':'p-red'}">${
+          rdy?'✓ S4 已结清':'S4 未结清 —— 钱没到位不能约交付'}</span></div></td>
+      <td>${d.contacted
+        ? `<span class="pill p-green">已联系</span><div class="hint">${d.contactCh||'短信'} → ${to.name}<br>${d.contactAt}${d.contactBy?' · '+d.contactBy:''}</div>`
+        : `<span class="pill p-amber">未联系</span><div class="hint">联系人：${to.name}${to.phone&&to.phone!=='—'?'（'+to.phone+'）':''}</div>`}
+        <button class="btn" style="padding:2px 8px;font-size:11px;margin-top:4px"${rdy?'':' title="S4 未结清，先别约客户"'}
+          onclick="delivNotifyOpen('${p.code}')">${d.contacted?'再发通知':'发交付预约'}</button></td>
+      <td>${d.sched?`<span class="pill p-cyan">已排</span><div class="hint mono">${d.sched}</div>
+          <div class="hint">${(d.schedWho||[]).join('、')}</div>`:'<span class="pill p-grey">未排期</span>'}
+        <button class="btn" style="padding:2px 8px;font-size:11px;margin-top:4px" onclick="delivSchedOpen('${p.code}')">${d.sched?'改排班':'排交付班'}</button></td>
+      <td>${h.actual
+        ? `<b class="mono"${over?' style="color:var(--breach)"':''}>${h.actual} h</b> / 标准 ${h.std} h
+           <div class="hint"${over?' style="color:var(--breach)"':''}>${over?`超标 ${Math.round((h.actual-h.std)*10)/10} h（${h.pct}%）`:`占标准 ${h.pct}%`}</div>
+           <div class="hint">当天人工已进项目成本</div>`
+        : `<span class="hint">标准 ${h.std} h${h.planned?` · 已排 ${h.planned} h`:''}</span>
+           <div class="hint">实际工时等当天 App 打卡</div>`}</td>
+      <td>${d.mtSigned
+        ? `<span class="pill p-green">✓ 已签署</span><div class="hint">${d.mtBy} ${d.mtAt}</div>`
+        : `<span class="pill p-amber">未签署</span>
+           <div><button class="btn" style="padding:2px 8px;font-size:11px;margin-top:4px" onclick="delivMtSign('${p.code}')">确认已签署</button></div>`}</td>
+      <td><button class="btn btn-primary"${(d.mtSigned&&d.actual)?'':' title="运维条款未签 或 当天实际工时未回 —— 先补齐"'}
+        onclick="delivDone('${p.code}')">确认交付</button></td>
+     </tr>`;}).join('')||`<tr><td colspan="9" class="muted" style="padding:var(--sp-4)">此刻没有待交付项目</td></tr>`}</tbody></table></div>
+  <div class="panel-body hint">灰行＝前置条件没齐（施工没完或 S4 没结清）——可以先联系客户探口风，但不建议排期；
+   「确认交付」是人肉判断，系统只保证：条款签了、工时回来了、点的人和时间留痕了</div>
+ </div>`;
 },
 'eng/安装调试':()=>{
  schSeed();
