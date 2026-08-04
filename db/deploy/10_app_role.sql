@@ -25,3 +25,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO konnext_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO konnext_app;
+
+-- ★v0.36：验证码表连表级权限都收回（上面那句 GRANT ON ALL TABLES 会把它也放开）。
+--   auth_otp 只由 /api/auth/*（登录前查号、写验证码）以 owner 身份读写。
+--   为什么要单独一刀：契约里它已经开了 RLS 且不建任何策略（行级全拒），
+--   这里再收表级权限——两道都关才叫纵深。任何业务代码都不该出现 auth_otp 这个词。
+REVOKE ALL ON auth_otp FROM konnext_app;
