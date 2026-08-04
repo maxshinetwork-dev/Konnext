@@ -411,7 +411,7 @@ const DEPT = {
   presales:{label:'售前', pages:['项目列表','项目状态表','操作日志','设置']},  /* 用户定：大表=项目列表；状态表=比例图+走向图+状态过滤 */
   eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','Site Meeting','安装调试','交付','工程流水账','每日工时管理','文档库','操作日志','设置']},
   proc:    {label:'采购', pages:['总览','采购需求','采购单','供应商','项目采购状态','物料主表','汇率','调价历史','RMA退换','操作日志','设置']},
-  wh:      {label:'库管', pages:['总览','项目出库状态','入库','出库','退库与拒收','RMA登记','盘点','物料在谁手里','库存流水','期初移库','操作日志']},
+  wh:      {label:'库管', pages:['总览','项目出库状态','入库','出库','退库与拒收','盘点','物料在谁手里','库存流水','操作日志','设置']},
   fin:     {label:'财务', pages:['财务节点','项目列表','项目收款S1-S3','尾款结算S4与Var','运维财务支持','催账和停服','工资数据','项目报销','成本与利润率','操作日志','设置']},
   mt:      {label:'运维', pages:['总览','报修受理','运维派工状态','维护单跟踪','维保状态','业主订阅','操作日志','设置']},
   decision:{label:'决策页', pages:['决策看板','风险看板','悬而未决','账号与权限','系统健康','审计日志','全局参数']},
@@ -483,7 +483,7 @@ function senderMail(k,v){ const nv=(v||'').trim().toLowerCase();
 const COMPANY_PAGES=new Set([
   'proc/总览','proc/物料主表','proc/汇率','proc/采购单','proc/采购需求','proc/供应商','proc/调价历史',
   'proc/RMA退换','proc/项目采购状态','proc/设置',
-  'wh/总览','wh/入库','wh/盘点','wh/库存流水','wh/期初移库','wh/RMA登记',
+  'wh/总览','wh/入库','wh/出库','wh/退库与拒收','wh/盘点','wh/物料在谁手里','wh/库存流水','wh/设置',
   'eng/总览','eng/派工排班','eng/每日工时管理','eng/文档库','eng/设置','eng/Site Meeting','eng/安装调试','eng/交付',
   'fin/财务节点','fin/项目收款S1-S3','fin/尾款结算S4与Var','fin/运维财务支持','fin/催账和停服',
   'fin/工资数据','fin/项目报销','fin/成本与利润率','fin/设置','fin/总览','fin/工资','presales/总览','presales/项目列表','presales/项目状态表','presales/设置','mt/总览',
@@ -1030,7 +1030,10 @@ function finSettleUnret(code){ const f=finOf(code);
     ref:'出库台账',by:WHO[me].name,at:todayS(),note:'出库单价定格值'});
   opLog(code,'结算未退料',A$(f.unret)+' 按出库价转入 S4 变更 · 库管销台账 · Builder 收结算告知',['fin','wh','eng']);
   uiAlert('未退料 '+A$(f.unret)+' 已转入 S4 结算 ✓\n已通知：库管（销未退台账）· Builder（结算告知）');
-  f.unret=0; s4Open[code]=true; renderAll(); }
+  f.unret=0; s4Open[code]=true;
+  /* ★同步销库管台账：结算掉的<b>不等于退回来了</b>，标 stl 与 back 分开记 —— 混了就查不出货去哪 */
+  outOf(code).forEach(o=>o.lines.forEach(l=>{ if(l.qty>l.back) l.stl=true; }));
+  renderAll(); }
 function finS4Req(code){ needStepUp('标记 S4 已请款（尾款+变更+未退料一并定格）',()=>finS4ReqDo(code)); }
 function finS4ReqDo(code){ const f=finOf(code),m=f.ms[3];
   const pend=f.vars.filter(v=>v.billable&&v.amt==null).length;
@@ -1532,10 +1535,33 @@ const matOf=code=>MATS.find(x=>x.code===code)||{};
 /* 落地成本（AUD）＝（单价 + 运费）× 汇率 —— 采购价与毛利率只有采购与管理层能看 */
 const matAud=m=>Math.round(((m.price||0)+(m.freight||0))*fxOf(m.cur)*100)/100;
 
-/* ── 库存（库管的数，采购只读）——补货建议就是从这儿来的 ── */
-const STOCKQ={'M-KNX-P4W':12,'M-KNX-DIM4':4,'M-KNX-GW':3,'M-CB-SW6':22,
-  'M-SEN-PIR':9,'M-CBL-CAT6':3,'M-CBL-KNX':14};
-const stockOf=c=>STOCKQ[c]==null?0:STOCKQ[c];
+/* ── 库存（库管的数，采购只读）——补货建议就是从这儿来的 ──
+   ★六十一轮改：库存<b>不落库</b>，＝期初 + 全部流水现算（CLAUDE.md「定格 vs 现算」里库存属现算）。
+   写死一个数最危险：出库了没扣、退库了没加，数字悄悄错，而且永远不报错。 */
+const WH_OPEN={'M-KNX-P4W':6,'M-KNX-DIM4':8,'M-KNX-GW':3,'M-CB-SW6':8,
+  'M-SEN-PIR':4,'M-CBL-CAT6':7,'M-CBL-KNX':17};      /* 上线那天盘出来的数，之后只由流水改 */
+/* 库存流水：一切进出都记这里。kind＝期初/入库/出库/退库/盘盈/盘亏；qty 带正负 */
+let WHMOVE=[
+ {at:'2026/08/01 15:05',kind:'出库',mat:'M-CB-SW6', qty:-10,pj:'KX-2026-0170',ref:'OUT-2026-0170-01',by:'老张',note:'提货人 Tony'},
+ {at:'2026/07/30 16:40',kind:'出库',mat:'M-KNX-P4W',qty:-12,pj:'KX-2026-0142',ref:'OUT-2026-0142-01',by:'老张',note:'提货人 Tony'},
+ {at:'2026/07/30 16:40',kind:'出库',mat:'M-KNX-DIM4',qty:-6,pj:'KX-2026-0142',ref:'OUT-2026-0142-01',by:'老张',note:'提货人 Tony'},
+ {at:'2026/07/30 16:40',kind:'出库',mat:'M-CBL-KNX',qty:-8,pj:'KX-2026-0142',ref:'OUT-2026-0142-01',by:'老张',note:'提货人 Tony'},
+ {at:'2026/07/28 08:30',kind:'出库',mat:'M-KNX-P4W',qty:-18,pj:'KX-2026-0188',ref:'OUT-2026-0188-01',by:'老张',note:'提货人 小陈'},
+ {at:'2026/07/28 08:30',kind:'出库',mat:'M-CBL-CAT6',qty:-3,pj:'KX-2026-0188',ref:'OUT-2026-0188-01',by:'老张',note:'提货人 小陈'},
+ {at:'2026/07/26 11:15',kind:'入库',mat:'M-KNX-P4W',qty:30,pj:'',ref:'PO-2026-029',by:'老张',note:'点数无差异'},
+ {at:'2026/07/24 17:00',kind:'退库',mat:'M-KNX-P4W',qty:6, pj:'KX-2026-0142',ref:'RT-2026-0142-01',by:'老张',note:'Tony 退回，外观完好'},
+ {at:'2026/07/24 17:00',kind:'退库',mat:'M-KNX-DIM4',qty:2,pj:'KX-2026-0142',ref:'RT-2026-0142-01',by:'老张',note:'Tony 退回，外观完好'},
+ {at:'2026/07/24 17:00',kind:'退库',mat:'M-CBL-KNX',qty:5,pj:'KX-2026-0142',ref:'RT-2026-0142-01',by:'老张',note:'整卷未拆'},
+ {at:'2026/07/23 10:20',kind:'退库',mat:'M-SEN-PIR',qty:6, pj:'KX-2026-0142',ref:'RT-2026-0142-02',by:'老张',note:'小陈全数退回'},
+ {at:'2026/07/22 09:10',kind:'出库',mat:'M-SEN-PIR',qty:-6,pj:'KX-2026-0142',ref:'OUT-2026-0142-02',by:'老张',note:'提货人 小陈'},
+ {at:'2026/07/20 14:30',kind:'入库',mat:'M-CB-SW6',qty:24,pj:'',ref:'PO-2026-028',by:'老张',note:'点数无差异'},
+ {at:'2026/07/20 14:30',kind:'入库',mat:'M-SEN-PIR',qty:5, pj:'',ref:'PO-2026-028',by:'老张',note:'散件补货'},
+ {at:'2026/07/10 16:00',kind:'盘亏',mat:'M-CBL-CAT6',qty:-1,pj:'',ref:'CT-2026-07',by:'老张',note:'月度盘点：账面 7 实盘 6，一箱破损报废'},
+];
+/* ★库存＝期初 + 流水，永远现算 */
+const stockOf=c=>(WH_OPEN[c]||0)+WHMOVE.reduce((x,m)=>x+(m.mat===c?m.qty:0),0);
+const whMoveAdd=(kind,mat,qty,pj,ref,note)=>WHMOVE.unshift(
+  {at:nowTs(),kind,mat,qty,pj:pj||'',ref,by:WHO[me].name,note:note||''});
 
 /* ── 采购需求：两个来源都是"别人给的指令"，采购是执行者 ──
    ①库管补货建议：C1 类库存低于红线，自动现算出来（不用人填）
@@ -1724,6 +1750,302 @@ function rmaChaseSend(id){ const r=PCRMA.find(x=>x.id===id); if(!r) return; cons
   notifAdd(r.pj,'退换催确认：'+id+' → '+sp.name+'（'+ask+'）',[{who:sp.contact,how:'短信+邮件',ok:false}]);
   pcClose(); renderAll();
   uiAlert('已发出催问 ✓ 第 '+r.chase.length+' 次\n对方回复之后，回到这页把状态推进到下一步（要填凭据）'); }
+
+/* ── 出库单（库管）：★物料在「出库」这一刻才落到具体项目上
+   用户 2026-08-04 定：物料<b>既跟着项目走，也跟着提货人走</b>。
+   back＝已退库数量；stl＝已按 S4 结算掉（不再算未退料，但那不等于货退回来了，两回事别混）── */
+let WHOUT=[
+ {id:'OUT-2026-0142-01',pj:'KX-2026-0142',taker:'Tony',role:'电工 · Spark电气',phone:'+61 422 000 222',
+  at:'2026/07/30 16:40',ack:false,ackAt:'',chase:[],
+  lines:[{mat:'M-KNX-P4W', qty:12,unit:137.10,back:6},
+         {mat:'M-KNX-DIM4',qty:6, unit:224.96,back:2},
+         {mat:'M-CBL-KNX', qty:8, unit:97.13, back:5}]},
+ {id:'OUT-2026-0142-02',pj:'KX-2026-0142',taker:'小陈',role:'我方工程人员',phone:'0433 100 220',
+  at:'2026/07/22 09:10',ack:true,ackAt:'2026/07/22 09:41',chase:[],
+  lines:[{mat:'M-SEN-PIR',qty:6,unit:37.80,back:6}]},
+ {id:'OUT-2026-0188-01',pj:'KX-2026-0188',taker:'小陈',role:'我方工程人员',phone:'0433 100 220',
+  at:'2026/07/28 08:30',ack:true,ackAt:'2026/07/28 09:02',chase:[],
+  lines:[{mat:'M-KNX-P4W',  qty:18,unit:137.10,back:0},
+         {mat:'M-CBL-CAT6',qty:3, unit:210.00,back:0}]},
+ {id:'OUT-2026-0170-01',pj:'KX-2026-0170',taker:'Tony',role:'电工 · Spark电气',phone:'+61 422 000 222',
+  at:'2026/08/01 15:05',ack:false,ackAt:'',chase:[],
+  lines:[{mat:'M-CB-SW6',qty:10,unit:198.00,back:0}]},
+];
+/* 到货点数对不上的（拒收 / 少收）—— 数量差异必须留痕并交采购去跟供应商，库管不许自己抹平 */
+let WHREJ=[
+ {id:'DF-2026-004',po:'PO-2026-028',supp:'S-CN',mat:'M-SEN-PIR',ordered:8,got:5,
+  at:'2026/07/20 14:30',by:'老张',kind:'少收',why:'外箱完好但内数不足 3 件，已拍照',st:'已通知采购'},
+];
+let whSet={ackH:72, ctDiffPct:2};
+let whQ='', whKind='全部';   /* 库存流水页的搜索与类型筛选 */
+let whFrom='';               /* 从「项目出库状态」点去出库时带过来的项目，只影响高亮 */
+function whGoOut(i){ pickPj(i); go('wh','出库'); whFrom=PROJECTS[i].code; renderAll(); }
+const outOf=pj=>WHOUT.filter(o=>o.pj===pj);
+const outQty=o=>o.lines.reduce((x,l)=>x+l.qty,0);
+const outUnret=o=>o.lines.reduce((x,l)=>x+(l.stl?0:(l.qty-l.back)),0);
+const outUnretAmt=o=>Math.round(o.lines.reduce((x,l)=>x+(l.stl?0:(l.qty-l.back)*l.unit),0)*100)/100;
+/* 提货人回 YES 之前挂了多久 —— 没回执＝没人认领这批货 */
+const outAckH=o=>o.ack?0:Math.max(0,Math.round((Date.now()-dOf(o.at.slice(0,10)).getTime())/36e5));
+const outLate=o=>!o.ack&&outAckH(o)>=whSet.ackH;
+/* 一个项目的出库汇总（全部现算，不落库） */
+function whPjOut(code){ const os=outOf(code);
+  const f=finOf(code); const s2=f?f.ms[1]:null;
+  const pos=PCPO.filter(x=>x.pj===code&&x.st!=='已取消');
+  return {os, qty:os.reduce((x,o)=>x+outQty(o),0),
+    unret:os.reduce((x,o)=>x+outUnret(o),0),
+    unretAmt:Math.round(os.reduce((x,o)=>x+outUnretAmt(o),0)*100)/100,
+    late:os.filter(outLate), wait:os.filter(o=>!o.ack),
+    holders:[...new Set(os.filter(o=>outUnret(o)>0).map(o=>o.taker))],
+    s2:!f?null:!!s2.settled, s2At:(s2&&s2.settled&&s2.recv&&s2.recv.length)?s2.recv[s2.recv.length-1].at:'',
+    pos, arrived:pos.filter(x=>x.arrivedAt)}; }
+/* 物料在谁手里：按<提货人>汇总（跨项目）—— 与「项目出库状态」是同一批货的两个看法 */
+function whHolders(){ const m={};
+  WHOUT.forEach(o=>{ const n=outUnret(o); if(!n) return;
+    const h=m[o.taker]=m[o.taker]||{taker:o.taker,role:o.role,phone:o.phone,qty:0,amt:0,outs:[],pjs:new Set()};
+    h.qty+=n; h.amt=Math.round((h.amt+outUnretAmt(o))*100)/100; h.outs.push(o); h.pjs.add(o.pj); });
+  return Object.values(m).map(h=>({...h,pjs:[...h.pjs],
+    days:Math.max(...h.outs.map(o=>-dayLeft(dOf(o.at.slice(0,10)))))}))
+    .sort((a,b)=>b.qty-a.qty); }
+/* 待入库：①采购到货点数上架 ②退换换回来的新件（采购标已接收即通知库管） */
+function whInPend(){ const out=[];
+  PCPO.filter(p=>p.arrivedAt&&!p.whInAt&&p.st!=='已取消').forEach(p=>out.push(
+    {k:'采购到货',id:p.id,at:p.arrivedAt,supp:p.supp,pj:p.pj,
+     lines:p.lines.map(l=>({mat:l.mat,qty:l.qty})),src:p}));
+  PCRMA.filter(r=>r.st==='已接收'&&!r.whInAt).forEach(r=>out.push(
+    {k:'退换换回',id:r.id,at:r.recvAt||r.at,supp:r.supp,pj:r.pj,
+     lines:[{mat:r.mat,qty:r.recvQty||r.qty}],src:r}));
+  return out.sort((a,b)=>a.at<b.at?-1:1); }
+/* 低于红线（C1 常备件）——补货建议的来源，指令由库管下给采购 */
+const whLow=()=>MATS.filter(m=>m.active!==false&&m.cls==='C1'&&m.reorder>0&&stockOf(m.code)<m.reorder);
+/* 库管卡点（全部现算派生） */
+function whStuckRows(){ const out=[];
+  whInPend().forEach(x=>{const h=Math.max(0,Math.round((Date.now()-dOf(x.at.slice(0,10)).getTime())/36e5));
+    out.push({pj:x.pj,what:'待入库：'+x.k+' '+x.id,
+      why:'货到了还没点数上架 —— 不入库，库存就是错的，出库也放不了行',h,p:'入库'});});
+  WHOUT.filter(outLate).forEach(o=>out.push({pj:o.pj,what:'提货没回执：'+o.id,
+    why:o.taker+' 超 '+whSet.ackH+' 小时没回 YES —— 没回执就没人认领这批货，出了事说不清',
+    h:outAckH(o),p:'出库'}));
+  /* ★一行一个具体项目：一个人可能同时压着几个工地的料，混成"公司级"就违反项目归属三态 */
+  WHOUT.filter(o=>outUnret(o)>0).forEach(o=>out.push({pj:o.pj,
+    what:'未退料 '+outUnret(o)+' 件在 '+o.taker+' 手里',
+    why:o.id+' · 出库 '+(-dayLeft(dOf(o.at.slice(0,10))))+' 天了还没退回来 —— 退不回来要按出库单价结进 S4',
+    h:(-dayLeft(dOf(o.at.slice(0,10))))*24,p:'物料在谁手里'}));
+  whLow().forEach(m=>out.push({pj:'',what:'低于红线：'+m.name+'（'+stockOf(m.code)+' / '+m.reorder+'）',
+    why:'C1 常备件低于补货红线 —— 该给采购下补货指令了（要不要买由库管定）',h:24,p:'库存流水'}));
+  WHREJ.filter(r=>r.st!=='已解决').forEach(r=>out.push({pj:'',what:'到货差异未了结：'+r.id,
+    why:r.kind+' '+(r.ordered-r.got)+' 件 · '+r.po+' —— 已交采购跟供应商，别自己抹平',h:48,p:'退库与拒收'}));
+  return out.sort((a,b)=>(b.h||0)-(a.h||0)); }
+
+/* ── 库管动作 ── */
+/* ① 入库点数：实收对不上就必须留痕并交采购，库管不许自己改成"刚好" */
+function whInOpen(k,id){ const x=whInPend().find(p=>p.k===k&&p.id===id); if(!x) return; pcDlg={m:'whIn',k,id};
+  pcShow('<div style="font-weight:600;margin-bottom:2px">点数入库 · '+id+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">'+x.k+' · '+suppOf(x.supp).name+
+     (x.pj?' ｜ 项目 '+pjNick(x.pj):' ｜ 集中采购')+' ｜ 到货 '+x.at+'</div>'+
+   '<table><thead><tr><th>物料</th><th style="text-align:right;width:90px">应收</th>'+
+     '<th style="text-align:right;width:110px">实收（点一遍）</th></tr></thead><tbody>'+
+   x.lines.map((l,i)=>'<tr><td><b>'+matOf(l.mat).name+'</b><div class="hint mono">'+l.mat+'</div></td>'+
+     '<td class="num">'+l.qty+'</td>'+
+     '<td class="num"><input id="wi-'+i+'" class="mono" style="width:80px;text-align:right" value="'+l.qty+'"></td></tr>').join('')+
+   '</tbody></table>'+
+   '<div class="field" style="margin-top:10px"><label>备注（点数有差异时必填 ≥4 字）</label>'+
+     '<input id="wi-note" style="width:100%" placeholder="如：外箱完好但内数不足 3 件，已拍照"></div>'+
+   '<div class="hint" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
+     '★实收和应收对不上，<b>按实收入库</b>，差额自动开一条「到货差异」交采购去跟供应商 ——'+
+     '<b>库管不许把数字改成刚好</b>，抹平了这批货就永远查不出去哪了。</div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="whInSave(\''+k+'\',\''+id+'\')">确认入库</button></div>'); }
+function whInSave(k,id){ const x=whInPend().find(p=>p.k===k&&p.id===id); if(!x) return;
+  const got=x.lines.map((l,i)=>parseInt(((document.getElementById('wi-'+i)||{}).value||'').trim(),10));
+  if(got.some(g=>!(g>=0))){ uiAlert('门禁：实收数量必须填非负整数 —— 一件都没到就填 0，别空着'); return; }
+  const note=((document.getElementById('wi-note')||{}).value||'').trim();
+  const diff=x.lines.filter((l,i)=>got[i]!==l.qty);
+  if(diff.length&&note.length<4){
+    uiAlert('门禁：点数有差异（'+diff.map((l,i)=>matOf(l.mat).name).join('、')+'），备注必填 ≥4 字 ——\n'+
+      '差多少、什么原因、有没有拍照，写清楚才好找供应商'); return; }
+  x.lines.forEach((l,i)=>{ if(got[i]>0) whMoveAdd('入库',l.mat,got[i],x.pj,id,x.k+(got[i]!==l.qty?'（应收 '+l.qty+'）':'')); });
+  const bad=[];
+  x.lines.forEach((l,i)=>{ if(got[i]!==l.qty){
+    const rj={id:'DF-'+nowTs().slice(0,4)+'-'+String(WHREJ.length+5).padStart(3,'0'),po:id,supp:x.supp,mat:l.mat,
+      ordered:l.qty,got:got[i],at:nowTs(),by:WHO[me].name,
+      kind:got[i]<l.qty?'少收':'多收',why:note,st:'已通知采购'};
+    WHREJ.unshift(rj); bad.push(rj); }});
+  x.src.whInAt=nowTs();
+  opLog(x.pj,'入库点数',id+' · '+x.k+' · '+x.lines.map((l,i)=>matOf(l.mat).name+' 应收 '+l.qty+' 实收 '+got[i]).join('；')+
+    (bad.length?' —— <b>有差异，已开到货差异单交采购</b>：'+bad.map(r=>r.id).join('、'):' —— 无差异')+
+    (note?'（'+note+'）':''),['wh','proc']);
+  if(bad.length) notifAdd(x.pj,'到货差异 '+bad.map(r=>r.id).join('、')+'：'+id+' 点数对不上',
+    [{who:'采购 老张',how:'待办',ok:false}]);
+  pcClose(); renderAll();
+  uiAlert('已入库 ✓ 库存立即现算更新'+(bad.length?'\n★点数有差异，已开 '+bad.length+' 条到货差异单交采购跟供应商':'')); }
+/* ② 出库：项目 + 提货人，两条线同时挂上 */
+function whOutOpen(){ pcDlg={m:'whOut'};
+  const live=PROJECTS.filter(p=>p.status==='施工中');
+  const opt=live.map(p=>{const o=whPjOut(p.code);
+    return '<option value="'+p.code+'"'+(o.s2===true?'':' disabled')+(pj>=0&&PROJECTS[pj]&&PROJECTS[pj].code===p.code&&o.s2===true?' selected':'')+'>'+
+      p.code+' · '+(p.nick||p.name)+(o.s2===true?'':'（S2 物料款未结清，不能出库放货）')+'</option>';}).join('');
+  const mats=MATS.filter(m=>m.active!==false);
+  const msel=i=>'<select id="wo-m'+i+'"><option value="">— 不出这行 —</option>'+
+    mats.map(m=>'<option value="'+m.code+'">'+m.name+'（可用 '+stockOf(m.code)+'）</option>').join('')+'</select>';
+  pcShow('<div style="font-weight:600;margin-bottom:10px">新建出库单</div>'+
+   '<div class="field"><label>项目（只列施工中；S2 物料款没结清的选不了）</label>'+
+     '<select id="wo-pj" onchange="whOutTaker()">'+(opt||'<option value="">没有可出库的项目</option>')+'</select></div>'+
+   '<div class="field"><label>提货人（只能是我方人员，或本项目立项时录的参建方）</label>'+
+     '<span id="wo-tk"></span><div class="hint">手机号自动带出并<b>定格在本单</b>，之后人员改号也不影响这张单</div></div>'+
+   '<div class="field"><label>物料明细</label>'+
+     '<table><thead><tr><th>物料</th><th style="text-align:right;width:110px">数量</th></tr></thead><tbody>'+
+     [0,1,2].map(i=>'<tr><td>'+msel(i)+'</td><td class="num"><input id="wo-q'+i+
+       '" class="mono" style="width:80px;text-align:right" placeholder="0"></td></tr>').join('')+
+     '</tbody></table></div>'+
+   '<div class="hint" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
+     '存下之后系统会发三样：①<b>提货清单短信</b>给提货人（要回 YES）②<b>物料发放告知</b>给 Builder'+
+     '（这不是通知，是<b>未退料的责任凭证</b>）③未退料进台账。出库单价<b>此刻定格</b>。</div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="whOutSave()">确认出库</button></div>');
+  whOutTaker(); }
+function whOutTaker(){ const el=document.getElementById('wo-tk'); if(!el) return;
+  const code=((document.getElementById('wo-pj')||{}).value||'');
+  const p=PROJECTS.find(x=>x.code===code)||{};
+  const list=STAFF.filter(s=>s.active).map(s=>[s.name,s.name+' · 我方工程人员']);
+  if(p.elec&&p.elec!=='—') list.push([p.elec.split(' · ')[0],p.elec+'（本项目参建方）']);
+  if(p.builder&&p.builder!=='—') list.push([p.builder.split(' · ')[0],p.builder+'（本项目参建方）']);
+  el.innerHTML='<select id="wo-taker">'+list.map(x=>'<option value="'+x[0]+'">'+x[1]+'</option>').join('')+'</select>'; }
+function whOutSave(){
+  const code=((document.getElementById('wo-pj')||{}).value||'').trim();
+  if(!code){ uiAlert('门禁：必须选项目 —— 物料就是在这一刻落到项目上的，不选项目这批货以后查不到去处'); return; }
+  const o=whPjOut(code);
+  if(o.s2!==true){ uiAlert('门禁：'+pjNick(code)+' 的 S2 物料款还没结清，不能出库放货 —— 这一步卡在财务，不在库管'); return; }
+  const taker=((document.getElementById('wo-taker')||{}).value||'').trim();
+  if(!taker){ uiAlert('门禁：必须选提货人 —— 物料既跟项目走，也跟提货人走，少一个就查不出货在谁手里'); return; }
+  const lines=[];
+  for(let i=0;i<3;i++){ const m=((document.getElementById('wo-m'+i)||{}).value||'').trim();
+    const q=parseInt(((document.getElementById('wo-q'+i)||{}).value||'').trim(),10);
+    if(!m) continue;
+    if(!(q>0)){ uiAlert('门禁：'+matOf(m).name+' 选了物料却没填数量'); return; }
+    if(q>stockOf(m)){ uiAlert('门禁：'+matOf(m).name+' 当前库存 '+stockOf(m)+'，出库 '+q+' 不足 ——\n'+
+      '不许先出后补，出成负库存之后账就再也对不上了'); return; }
+    lines.push({mat:m,qty:q,unit:matAud(matOf(m)),back:0}); }
+  if(!lines.length){ uiAlert('门禁：至少要出一行物料'); return; }
+  const p=PROJECTS.find(x=>x.code===code)||{};
+  const n=WHOUT.filter(x=>x.pj===code).length+1;
+  const id='OUT-'+code.slice(3,7)+'-'+code.slice(-4)+'-'+String(n).padStart(2,'0');
+  const st=STAFF.find(x=>x.name===taker);
+  WHOUT.unshift({id,pj:code,taker,role:st?'我方工程人员':'本项目参建方',phone:st?(st.phone||'—'):'—',
+    at:nowTs(),ack:false,ackAt:'',chase:[],lines});
+  lines.forEach(l=>whMoveAdd('出库',l.mat,-l.qty,code,id,'提货人 '+taker));
+  opLog(code,'物料出库',id+' · 提货人 '+taker+' · '+lines.map(l=>matOf(l.mat).name+' ×'+l.qty).join('；')+
+    ' · 出库单价已定格 · 未退料进台账',['wh','eng','fin']);
+  notifAdd(code,'提货清单 '+id+'（'+lines.reduce((x,l)=>x+l.qty,0)+' 件）→ '+taker+'，需回 YES 确认',
+    [{who:taker,how:'短信',ok:false},{who:'Builder '+(p.builder||'—'),how:'邮件',ok:true}]);
+  pcClose(); renderAll();
+  uiAlert('已出库 ✓ 库存立即扣减\n已发：提货清单短信给 '+taker+'（等回 YES）· 物料发放告知给 Builder（未退料责任凭证）'); }
+/* ③ 催提货确认 */
+function whAckChase(id){ const o=WHOUT.find(x=>x.id===id); if(!o) return;
+  if(o.ack){ uiAlert('这张单 '+o.ackAt+' 已经回过 YES 了'); return; }
+  (o.chase=o.chase||[]).push({at:nowTs(),by:WHO[me].name});
+  opLog(o.pj,'催提货确认',id+' · '+o.taker+' · 第 '+o.chase.length+' 次 · 已挂 '+outAckH(o)+' 小时 · 发件 '+fromTxt('wh','sms'),['wh']);
+  notifAdd(o.pj,'重发提货清单 '+id+' → '+o.taker+'（回 YES 确认）',[{who:o.taker,how:'短信',ok:false}]);
+  renderAll(); uiAlert('已重发提货清单短信 ✓ 第 '+o.chase.length+' 次'); }
+/* ④ 退库：工地退回来的好料，回库存 + 销未退台账 */
+function whRetOpen(id){ const o=WHOUT.find(x=>x.id===id); if(!o) return; pcDlg={m:'whRet',id};
+  const rows=o.lines.map((l,i)=>({l,i,left:l.stl?0:(l.qty-l.back)})).filter(r=>r.left>0);
+  if(!rows.length){ uiAlert('这张单已经没有未退的料了'); return; }
+  pcShow('<div style="font-weight:600;margin-bottom:2px">办理退库 · '+id+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">'+pjNick(o.pj)+' · 提货人 '+o.taker+' · 出库 '+o.at+'</div>'+
+   '<table><thead><tr><th>物料</th><th style="text-align:right;width:90px">还欠</th>'+
+     '<th style="text-align:right;width:110px">这次退回</th></tr></thead><tbody>'+
+   rows.map(r=>'<tr><td><b>'+matOf(r.l.mat).name+'</b><div class="hint mono">'+r.l.mat+'</div></td>'+
+     '<td class="num">'+r.left+'</td>'+
+     '<td class="num"><input id="wr-'+r.i+'" class="mono" style="width:80px;text-align:right" value="'+r.left+'"></td></tr>').join('')+
+   '</tbody></table>'+
+   '<div class="field" style="margin-top:10px"><label>退回物料的状态（必填 ≥4 字）</label>'+
+     '<input id="wr-note" style="width:100%" placeholder="如：外观完好可再用 / 有划痕降级用 / 已损坏报废"></div>'+
+   '<div class="hint">退回来的<b>直接回库存</b>；坏了的别混进来 —— 混进去就是拿坏件当好货再发一次出去。</div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="whRetSave(\''+id+'\')">确认退库</button></div>'); }
+function whRetSave(id){ const o=WHOUT.find(x=>x.id===id); if(!o) return;
+  const note=((document.getElementById('wr-note')||{}).value||'').trim();
+  if(note.length<4){ uiAlert('门禁：退回物料的状态必填（≥4 字）—— 好料坏料混着退，下次就是拿坏件当好货发出去'); return; }
+  const got=[]; let tot=0;
+  o.lines.forEach((l,i)=>{ const el=document.getElementById('wr-'+i); if(!el) return;
+    const q=parseInt((el.value||'').trim(),10); const left=l.stl?0:(l.qty-l.back);
+    if(!(q>=0)){ got.push(null); return; }
+    if(q>left){ got.push('over'); return; }
+    got.push(q); tot+=q; });
+  if(got.some(g=>g==='over')){ uiAlert('门禁：退回数量比还欠的还多 —— 数错了还是串单了？先查清楚'); return; }
+  if(!tot){ uiAlert('门禁：这次一件都没退，那就别存了'); return; }
+  const rid='RT-'+id.slice(4);
+  o.lines.forEach((l,i)=>{ const q=got[i]; if(!q) return;
+    l.back+=q; whMoveAdd('退库',l.mat,q,o.pj,rid,'退库人 '+o.taker+' · '+note); });
+  opLog(o.pj,'物料退库',rid+' ← '+id+' · '+o.taker+' 退回 '+tot+' 件 · '+note+
+    ' —— 已回库存，未退台账同步销账',['wh','fin','eng']);
+  pcClose(); renderAll();
+  uiAlert('已退库 ✓ 共 '+tot+' 件回到库存\n未退料台账同步销账，S4 结算那边跟着少一笔'); }
+/* ⑤ 盘点：账面数在提交那一刻定格，差异必须写原因 */
+function whCtOpen(){ pcDlg={m:'whCt'};
+  const ms=MATS.filter(m=>m.active!==false);
+  pcShow('<div style="font-weight:600;margin-bottom:2px">录入实盘数</div>'+
+   '<div class="hint" style="margin-bottom:10px">账面数是<b>现在这一刻</b>算出来的，提交时<b>连同实盘一起定格</b>——'+
+     '之后再有出入库都算下一轮的事</div>'+
+   '<table><thead><tr><th>物料</th><th style="text-align:right;width:90px">账面</th>'+
+     '<th style="text-align:right;width:110px">实盘</th></tr></thead><tbody>'+
+   ms.map((m,i)=>'<tr><td><b>'+m.name+'</b><div class="hint mono">'+m.code+'</div></td>'+
+     '<td class="num mono">'+stockOf(m.code)+'</td>'+
+     '<td class="num"><input id="wc-'+i+'" class="mono" style="width:80px;text-align:right" value="'+stockOf(m.code)+'"></td></tr>').join('')+
+   '</tbody></table>'+
+   '<div class="field" style="margin-top:10px"><label>差异原因（有差异时必填 ≥4 字）</label>'+
+     '<input id="wc-note" style="width:100%" placeholder="如：一箱网线破损报废 / 上月出库漏记"></div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="whCtSave()">提交盘点</button></div>'); }
+function whCtSave(){ const ms=MATS.filter(m=>m.active!==false);
+  const real=ms.map((m,i)=>parseInt(((document.getElementById('wc-'+i)||{}).value||'').trim(),10));
+  if(real.some(r=>!(r>=0))){ uiAlert('门禁：实盘数必须填非负整数 —— 没盘到的填 0，别空着'); return; }
+  const note=((document.getElementById('wc-note')||{}).value||'').trim();
+  const diff=ms.map((m,i)=>({m,book:stockOf(m.code),real:real[i],d:real[i]-stockOf(m.code)})).filter(x=>x.d!==0);
+  if(diff.length&&note.length<4){
+    uiAlert('门禁：有 '+diff.length+' 个物料对不上账（'+diff.map(x=>x.m.name).join('、')+'），差异原因必填 ≥4 字 ——\n'+
+      '不写原因就等于把差异抹平了，下次照样错'); return; }
+  const big=diff.filter(x=>x.book>0&&Math.abs(x.d)/x.book*100>whSet.ctDiffPct);
+  const cid='CT-'+nowTs().slice(0,7).replace('/','-');
+  diff.forEach(x=>whMoveAdd(x.d>0?'盘盈':'盘亏',x.m.code,x.d,'',cid,'盘点：账面 '+x.book+' 实盘 '+x.real+' · '+note));
+  opLog('','库存盘点',cid+' · 盘 '+ms.length+' 个物料 · '+
+    (diff.length?'<b>'+diff.length+' 项对不上</b>：'+diff.map(x=>x.m.name+'（账面 '+x.book+' 实盘 '+x.real+'）').join('；')+' · '+note
+      :'全部相符')+
+    (big.length?' —— ★其中 '+big.length+' 项差异超过 '+whSet.ctDiffPct+'% 提醒线：'+
+      big.map(x=>x.m.name).join('、')+'，这种量级多半是有一整笔出入库没记':'')+
+    ' —— 账面数已定格',['wh','proc','fin']);
+  pcClose(); renderAll();
+  uiAlert(diff.length?'盘点已提交 ✓ '+diff.length+' 项差异已按盘盈/盘亏进流水，原因已留痕'+
+      (big.length?'\n★'+big.length+' 项差异超过 '+whSet.ctDiffPct+'% 提醒线（'+big.map(x=>x.m.name).join('、')+
+        '）—— 这种量级多半是有一整笔出入库没记，建议翻库存流水查':'')
+    :'盘点已提交 ✓ 全部相符，库存干净'); }
+function whHoldChase(taker){ const h=whHolders().find(x=>x.taker===taker); if(!h) return;
+  const list=h.outs.filter(o=>outUnret(o)>0).map(o=>pjNick(o.pj)+'（'+o.id+'）：'+
+    o.lines.filter(l=>!l.stl&&l.qty>l.back).map(l=>matOf(l.mat).name+' ×'+(l.qty-l.back)).join('、')).join('\n');
+  uiConfirm('催 '+taker+' 退库？共 '+h.qty+' 件、涉及 '+h.pjs.length+' 个项目、最久 '+h.days+' 天：\n\n'+list+
+    '\n\n（一次把他手上所有项目的料都列出来 —— 一个人可能同时在几个工地，分开催准漏）',ok=>{ if(!ok) return;
+    opLog(h.pjs.length===1?h.pjs[0]:'','催退库',taker+' · '+h.qty+' 件 · '+h.pjs.length+' 个项目 · 最久 '+h.days+
+      ' 天 —— 退不回来要按出库单价结进 S4 · 发件 '+fromTxt('wh','sms'),['wh','fin','eng']);
+    notifAdd(h.pjs.length===1?h.pjs[0]:'','催退库：'+taker+' 手里还有 '+h.qty+' 件未退',
+      [{who:taker,how:'短信+App',ok:false}]);
+    renderAll(); uiAlert('已发出催退库 ✓ 短信+App 通知 '+taker+'\n退不回来的最终按出库单价结进 S4'); }); }
+function whSetVal(k,label,v){ const nv=parseInt(v,10);
+  if(!(nv>0)){ uiAlert('门禁：请填正整数 —— 填 0 等于把这条提醒关掉，系统不会再提醒你'); renderAll(); return; }
+  const old=whSet[k]; if(old===nv){ renderAll(); return; }
+  whSet[k]=nv; opLog('','修改库管设置','「'+label+'」'+old+' → '+nv,['wh']);
+  renderAll(); uiAlert('已保存：'+label+' '+old+' → '+nv); }
+/* 到货差异了结（采购跟供应商谈完，库管来销） */
+function whRejClose(id){ const r=WHREJ.find(x=>x.id===id); if(!r) return;
+  if(r.st==='已解决'){ uiAlert('这条已经了结了'); return; }
+  uiPrompt('了结到货差异 '+id+'，最后怎么处理的？（必填 ≥4 字）',v=>{ const w=(v||'').trim();
+    if(w.length<4){ uiAlert('门禁：处理结果必填（≥4 字）—— 补发了/退款了/算了，三个月后要说得清'); return; }
+    r.st='已解决'; r.close=w; r.closeAt=nowTs();
+    opLog('','了结到货差异',id+' · '+r.po+' · '+r.kind+' '+Math.abs(r.ordered-r.got)+' 件 → '+w,['wh','proc']);
+    renderAll(); uiAlert('已了结 ✓'); }); }
 
 /* ── 采购设置：阈值与下拉都可改 ── */
 let pcSet={etaWarnDays:3, fxStaleDays:7, reqSlaH:72, rmaChaseDays:5};
@@ -3904,7 +4226,7 @@ function switchWho(w){ me=w; tab=WHO[w].depts.includes(tab)?tab:(w==='admin'?'de
   if(tab==='decision'&&WHO[w].tier!==1) tab=WHO[w].depts[0];
   page=DEPT[tab].pages[0]; pjFilter=null; renderAll(); }
 function pickPj(i){ pj=+i; renderAll(); }
-function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; stFilter='全部'; statPeriod='month'; logQ=''; logDeptF='全部'; nodeF='全部'; finQ=''; renderAll(); }
+function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; stFilter='全部'; statPeriod='month'; logQ=''; logDeptF='全部'; nodeF='全部'; finQ=''; whQ=''; whKind='全部'; whFrom=''; renderAll(); }
 /* 去处理 → 直接过滤出该项目（二十九轮用户定：不要全列出来再让人找） */
 function goPj(t,p,code){ go(t,p);
   if(code&&code!=='?'){ finQ=code; pjQ=code; bigQ=code;
@@ -4644,73 +4966,6 @@ ${can('customer')?`
 </div>`,
 
 /* ───────── 库管 · 出库 ───────── */
-'wh/出库':()=>`
-<h2>物料出库</h2>
-<div class="page-sub">★ 物料在这一刻才落到具体项目</div>
-${ops([
- ['确认出库','项目 S2 未结清不可选 · 出库数超可用库存直接拒绝 · 提货人只能选我方人员或本项目参建方','①提货人收中英对照清单短信（回 YES 确认）②Builder 收发放告知（未退料责任凭证）③未退料入台账 · 出库单价此刻定格'],
-])}
-<div class="split">
-  <div class="panel">
-    <div class="panel-head">新建出库单</div>
-    <div class="panel-body">
-      <div class="field"><label>项目</label>
-        <select><option>KX-2026-0142 · Cherrybrook 王宅</option>
-          <option disabled>KX-2026-0143 · S2 未结清，不能出库放货</option></select>
-        <div class="hint">S2 物料款未结清的项目不出现在可选列表里</div></div>
-      <div class="field"><label>提货人</label>
-        <select><option>Tony · Spark电气 · 电工（本项目参建方）</option>
-          <option>小陈 · 我方工程人员</option></select>
-        <div class="hint">只能选我方人员或<b>本项目立项时录入的参建方</b>；手机号自动带出并定格在本单</div></div>
-      <div class="field"><label>物料明细</label>
-        <table style="margin-top:var(--sp-2)">
-          <thead><tr><th>物料</th><th style="text-align:right">数量</th>
-            <th style="text-align:right">可用库存</th><th style="text-align:right">单价</th></tr></thead>
-          <tbody>
-            <tr><td>KNX四联面板 (白)</td><td class="num">12</td><td class="num">38</td>
-              <td>${money('85.20','stock')}</td></tr>
-            <tr><td>KNX四联面板 (黑)</td><td class="num">6</td><td class="num">24</td>
-              <td>${money('85.20','stock')}</td></tr>
-          </tbody></table>
-        <div class="hint">显示名 = 物料名 + 规格，自动拼接 —— 白/黑两行的物料名完全相同，只靠小字区分会看串</div></div>
-      <div class="gate">门禁：出库数超过可用库存直接拒绝 ——「KNX四联面板 (白) 当前库存 38，出库 80 不足」</div>
-      <button class="btn btn-primary btn-block">确认出库</button>
-    </div>
-  </div>
-  <div>
-    <div class="panel">
-      <div class="panel-head">① 提货清单短信 → 提货人</div>
-      <div class="panel-body mono" style="font-size:var(--fs-sm);white-space:pre-line;color:var(--text-muted)">【KONNEXT】项目 KX-2026-0142 提货清单：
-KNX四联面板 (白) ×12
-KNX四联面板 (黑) ×6
-收到请回复 yes 确认。
-Please reply YES to confirm receipt.</div>
-    </div>
-    <div class="panel">
-      <div class="panel-head">② 物料发放告知 → Builder <span class="pill p-cyan">责任凭证</span></div>
-      <div class="panel-body mono" style="font-size:var(--fs-sm);white-space:pre-line;color:var(--text-muted)">致 Mike：
-项目 KX-2026-0142，我司已于 2026-07-30 16:40
-将以下物料交付给 Tony（+61422000222）：
-KNX四联面板 (白) ×12
-KNX四联面板 (黑) ×6
-未使用物料请于工程结束前办理退库。
-★ 逾期未退回的物料将计入本项目变更(Variation)结算。</div>
-      ${helpNote('②Builder 发放告知：没有这份告知，业主凭什么认未退料那笔账 —— 这不是通知，是凭证。')}
-    </div>
-    <div class="panel">
-      <div class="panel-head">③ 提货确认</div>
-      <div class="panel-body">
-        <table><tbody>
-          <tr><td>OUT-2026-0142-01</td><td>Tony</td>
-            <td><span class="pill p-amber">已出库 · 待确认</span></td></tr>
-          <tr><td>OUT-2026-0142-02</td><td>小陈</td>
-            <td><span class="pill p-green">已接收 · 短信回 YES</span></td></tr>
-        </tbody></table>
-      </div>
-    </div>
-  </div>
-</div>`,
-
 'eng/派工排班':()=>{
  schSeed();
  const days=weekDays(schOff); const mon=ymdS(days[0]);
@@ -7149,7 +7404,450 @@ ${helpNote(`<b>这页怎么用</b>：三个阈值——<b>到货预警</b>（还
 /* 五十七轮用户定：库管这边不是「项目列表」而是「项目出库状态」——
    采购的项目采购状态一到货就是办理入库；项目真正需要的是<b>出库</b>：
    把物料交到<b>指定提货人</b>手里。★物料既跟着项目走，也跟着提货人走。 */
-'wh/项目出库状态':()=>projectList('wh'),
+'wh/项目出库状态':()=>{
+ const live=PROJECTS.filter(p=>p.status==='施工中');
+ const rows=live.map(p=>({p,...whPjOut(p.code)}));
+ /* 施工期已过、货还在别人手里的 —— 不列出来等于把 S4 的钱悄悄丢了 */
+ const tail=PROJECTS.filter(p=>p.status!=='施工中')
+   .map(p=>({p,...whPjOut(p.code)})).filter(r=>r.unret>0||r.wait.length);
+ const canOut=rows.filter(r=>r.s2===true), waitS2=rows.filter(r=>r.s2!==true);
+ const lateAll=rows.concat(tail).reduce((x,r)=>x+r.late.length,0);
+ const step=r=>r.s2!==true?['等财务 S2 物料款结清','var(--breach)']
+   :(!r.pos.length&&!r.os.length?['等采购下单到货','var(--warning)']
+   :(r.late.length?['催提货确认（超 '+whSet.ackH+' 小时没回 YES）','var(--breach)']
+   :(!r.os.length?['货已到 · 可以出库','var(--healthy)']
+   :(r.unret?['施工中 · 有 '+r.unret+' 件在提货人手里','var(--text-muted)']
+   :['出库已完成 · 无未退料','var(--healthy)']))));
+ return `
+<h2>项目出库状态</h2>
+<div class="page-sub">只列<b>施工中</b>的项目 —— 项目物料的出库只发生在施工期，别的状态没有项目出库，不上屏</div>
+${ops([
+ ['去出库','点行尾「去出库」带着这个项目跳到出库页','出库单一开：提货人收清单短信回 YES · Builder 收发放告知 · 未退料进台账'],
+ ['催提货确认','超过 '+whSet.ackH+' 小时没回 YES 的标红','重发中英对照清单短信'],
+])}
+${helpNote(`<b>为什么只列施工中</b>：物料在「出库」这一刻才落到具体项目上，而项目出库<b>只发生在施工期</b>——
+  链条是 <b>财务 S2 物料款结清 → 采购到货 → 库管入库 → 库管出库给提货人 → 工程安装</b>。
+  接洽中/设计中根本没有物料可发；交付之后与维护期的领料走<b>维护单</b>，不走项目出库。
+  所以这页把别的状态全去掉了 —— 列出来只是噪音。`)}
+${helpNote(`★<b>唯一的例外在最下面那张小表</b>：施工期已经过去、货却还在提货人手里的项目。
+  它们不该混在"在施工的项目"里，但<b>更不能不显示</b>——那些料是要按出库单价结进 S4 的，
+  不列出来就等于<b>把钱悄悄丢了，而且不会报错</b>。`)}
+<div class="cards">
+ <div class="card"><div class="card-label">施工中的项目</div><div class="card-value">${live.length}</div>
+   <div class="card-foot">只有它们会发生项目出库</div></div>
+ <div class="card"><div class="card-label">可以出库（S2 已结清）</div>
+   <div class="card-value" style="color:var(--healthy)">${canOut.length}</div>
+   <div class="card-foot">物料款到账才放货 —— 这是硬门禁</div></div>
+ <div class="card"><div class="card-label">★卡在 S2 没结清</div>
+   <div class="card-value"${waitS2.length?' style="color:var(--breach)"':''}>${waitS2.length}</div>
+   <div class="card-foot">${waitS2.length?'卡点在财务，不在库管 —— 别去催工地':'都结清了 ✓'}</div></div>
+ <div class="card"><div class="card-label">★提货没回执</div>
+   <div class="card-value"${lateAll?' style="color:var(--breach)"':''}>${lateAll}</div>
+   <div class="card-foot">${lateAll?'超 '+whSet.ackH+' 小时没回 YES':'回执都齐了 ✓'}</div></div>
+</div>
+<div class="panel"><div class="panel-head">施工中 · 出库进度
+  <span class="muted" style="font-weight:400">${live.length} 个项目 · 全部现算</span></div>
+ <table>
+  <thead><tr><th style="width:118px">项目编号</th><th style="width:165px">项目 · 地址</th>
+    <th style="width:130px">S2 物料款</th><th style="width:105px">采购到货</th>
+    <th style="width:200px">已出库 · 提货确认</th><th style="width:165px">未退料（在谁手里）</th>
+    <th>下一步</th><th style="width:86px"></th></tr></thead>
+  <tbody>${rows.map(r=>{const i=PROJECTS.indexOf(r.p); const st=step(r);
+   return `<tr>
+    <td><b class="mono" style="color:var(--accent)">${r.p.code}</b></td>
+    <td><b>${r.p.nick||r.p.name}</b><div class="hint">📍 ${r.p.street}, ${r.p.suburb} ${r.p.state}</div></td>
+    <td>${r.s2===true?`<span class="pill p-green">已结清</span><div class="hint mono">${r.s2At||''}</div>`
+        :r.s2===false?'<span class="pill p-red">未结清 · 不能出库</span>'
+        :'<span class="pill p-grey">财务还没建收款计划</span>'}</td>
+    <td class="hint">${r.pos.length?`采购单 ${r.pos.length} 张<br>已到 <b>${r.arrived.length}</b> 张`
+        :'<span class="muted">还没下单</span>'}</td>
+    <td>${r.os.length?r.os.map(o=>`<div style="margin-bottom:4px"><span class="mono" style="font-size:11px">${o.id}</span>
+        ${o.ack?'<span class="pill p-green">已回 YES</span>'
+          :`<span class="pill ${outLate(o)?'p-red':'p-amber'}">待确认 ${outAckH(o)}h</span>`}
+        <div class="hint">${o.taker} · ${outQty(o)} 件 · ${o.at}</div></div>`).join('')
+        :'<span class="muted">还没出过库</span>'}</td>
+    <td>${r.unret?`<b style="color:var(--warning)">${r.unret} 件</b>
+        <div class="hint">${can('stock')?A$2(r.unretAmt):'— —'} · 在 <b>${r.holders.join('、')}</b> 手里</div>`
+        :(r.os.length?'<span class="pill p-green">已退清</span>':'<span class="muted">—</span>')}</td>
+    <td class="hint" style="color:${st[1]}">${st[0]}</td>
+    <td style="text-align:right">${r.s2===true
+      ?`<button class="btn" onclick="whGoOut(${i})">去出库</button>`
+      :`<button class="btn" disabled title="S2 物料款没结清，出库门禁不放行 —— 这一步卡在财务">去出库</button>`}</td>
+   </tr>`;}).join('')||'<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">现在没有施工中的项目 —— 没有项目出库要办 ✓</td></tr>'}</tbody></table>
+ <div class="panel-body hint">出库单价在<b>出库那一刻定格</b>，之后采购再涨价也不动它 ——
+   未退料要按这个价结进 S4，重新询价就成了两笔账。</div>
+</div>
+${tail.length?`<div class="panel"><div class="panel-head">⚠ 施工期已过、货还没回来
+  <span class="muted" style="font-weight:400">${tail.length} 个 · 不属于"在施工"，但必须盯着</span></div>
+ <table>
+  <thead><tr><th style="width:118px">项目编号</th><th style="width:165px">项目 · 地址</th>
+    <th style="width:110px">现在状态</th><th style="width:140px">未退料</th>
+    <th style="width:140px">在谁手里</th><th>为什么还列在这</th></tr></thead>
+  <tbody>${tail.map(r=>`<tr>
+    <td><b class="mono">${r.p.code}</b></td>
+    <td><b>${r.p.nick||r.p.name}</b><div class="hint">📍 ${r.p.street}, ${r.p.suburb} ${r.p.state}</div></td>
+    <td><span class="pill ${r.p.band}">${r.p.status}</span></td>
+    <td>${r.unret?`<b style="color:var(--breach)">${r.unret} 件</b><div class="hint">${can('stock')?A$2(r.unretAmt):'— —'}</div>`
+        :'<span class="muted">—</span>'}</td>
+    <td class="hint">${r.holders.length?'<b>'+r.holders.join('、')+'</b>'
+        :(r.wait.length?r.wait.map(o=>o.taker).join('、')+'（还没回执）':'—')}</td>
+    <td class="hint">${r.unret?'这批料要按<b>出库单价</b>结进 S4 —— 催退库，或让财务按未退料结算':''}
+      ${r.wait.length?(r.unret?'<br>':'')+'还有 '+r.wait.length+' 张出库单没回 YES —— 没回执就没人认领这批货':''}</td>
+   </tr>`).join('')}</tbody></table>
+ <div class="panel-body hint">这张表<b>空了才是正常</b> —— 有行就说明有货没归位。</div>
+</div>`:''}`;},
+
+'wh/入库':()=>{
+ const pend=whInPend();
+ const hist=WHMOVE.filter(m=>m.kind==='入库');
+ return `
+<h2>物料入库</h2>
+<div class="page-sub">货到了要<b>点一遍数</b>才算入库 —— 采购只负责把货追回来，点数、上架、记成本是库管的动作</div>
+${ops([
+ ['点数入库','实收必须一件一件点 · 有差异时备注必填 ≥4 字','按实收进库存 · 差额自动开「到货差异」交采购跟供应商'],
+])}
+${helpNote(`<b>待入库有两个来源</b>：①<b>采购到货</b>——采购在采购单上标了"已到货"，货就落到这里；
+  ②<b>退换换回</b>——坏件寄回供应商换新，采购标了"已接收"，换回来的新件也要入库点数上架。
+  两个来源都<b>不是库管自己填出来的</b>，是上游流过来的。`)}
+${helpNote(`★<b>点数对不上千万别抹平</b>：系统按<b>实收</b>入库，差额自动开一条「到货差异」交采购去跟供应商。
+  把数字改成"刚好"最省事，但这批货从此就查不出去哪了——<b>而且永远不会报错</b>。`)}
+<div class="panel"><div class="panel-head">待入库 <span class="muted" style="font-weight:400">${pend.length} 批</span></div>
+ <table>
+  <thead><tr><th style="width:110px">来源</th><th style="width:140px">单号</th><th style="width:150px">供应商</th>
+    <th style="width:150px">项目</th><th>物料 · 应收</th><th style="width:140px">到货时间</th><th style="width:110px"></th></tr></thead>
+  <tbody>${pend.map(x=>`<tr>
+    <td><span class="pill ${x.k==='采购到货'?'p-cyan':'p-amber'}">${x.k}</span></td>
+    <td><b class="mono">${x.id}</b></td>
+    <td>${suppOf(x.supp).name}</td>
+    <td>${x.pj?`<b>${pjNick(x.pj)}</b><div class="hint">📍 ${pjAddr(x.pj)}</div>`:'<span class="pill p-grey">集中采购 · 公司级</span>'}</td>
+    <td class="hint">${x.lines.map(l=>matOf(l.mat).name+' <b>×'+l.qty+'</b>').join('<br>')}</td>
+    <td class="mono" style="font-size:11px">${x.at}<div class="hint">已等 ${Math.max(0,-dayLeft(dOf(x.at.slice(0,10))))} 天</div></td>
+    <td><button class="btn btn-primary" onclick="whInOpen('${x.k}','${x.id}')">点数入库</button></td></tr>`).join('')
+   ||'<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">没有待入库的货 ✓</td></tr>'}</tbody></table>
+</div>
+<div class="panel"><div class="panel-head">已入库 <span class="muted" style="font-weight:400">最近 ${hist.length} 笔 · 来自库存流水</span></div>
+ <table>
+  <thead><tr><th style="width:150px">时间</th><th>物料</th><th style="width:90px;text-align:right">入库数</th>
+    <th style="width:90px;text-align:right">当前库存</th><th style="width:130px">单号</th><th>备注</th></tr></thead>
+  <tbody>${hist.map(m=>`<tr><td class="mono" style="font-size:11px">${m.at}</td>
+    <td><b>${matOf(m.mat).name}</b><div class="hint mono">${m.mat}</div></td>
+    <td class="num" style="color:var(--healthy)">+${m.qty}</td>
+    <td class="num mono">${stockOf(m.mat)}</td>
+    <td class="mono" style="font-size:11px">${m.ref}</td>
+    <td class="hint">${m.note}</td></tr>`).join('')
+   ||'<tr><td colspan="6" class="muted">还没有入库记录</td></tr>'}</tbody></table>
+</div>`;},
+
+'wh/出库':()=>{
+ const live=PROJECTS.filter(p=>p.status==='施工中');
+ const canOut=live.filter(p=>whPjOut(p.code).s2===true);
+ const cur=whFrom;
+ const os=WHOUT.slice().sort((a,b)=>a.at<b.at?1:-1);
+ return `
+<h2>物料出库 <span class="pill p-cyan">公司级 · 项目在单据里选</span></h2>
+<div class="page-sub">★ 物料在这一刻才落到具体项目上 —— <b>既跟着项目走，也跟着提货人走</b></div>
+${ops([
+ ['＋ 新建出库单','项目只列施工中且 S2 已结清 · 提货人只能是我方人员或本项目参建方 · 出库数超库存直接拒',
+  '①提货人收中英对照清单短信（回 YES 确认）②Builder 收发放告知（未退料责任凭证）③未退料进台账 · 出库单价此刻定格'],
+ ['催确认','超 '+whSet.ackH+' 小时没回 YES 的标红','重发提货清单短信并留痕第几次'],
+ ['办退库','工地退回来的好料','直接回库存 · 未退台账同步销账'],
+])}
+${helpNote(`<b>为什么这页没有"当前项目"</b>（用户 2026-08-04 提）：库管一天要给好几个项目发货，
+  在页顶挂一个"当前项目"没有意义，还容易发错。<b>项目在出库单里选</b>——一张单据一个项目，
+  单据存下的那一刻，这批货才和项目绑上。库管这条线<b>全部是公司级页面</b>，没有项目内页面。`)}
+${helpNote(`<b>两条硬门禁</b>：①<b>S2 物料款没结清不能出库放货</b>——这一步卡在财务，不在库管，别去催工地；
+  ②<b>出库数超过可用库存直接拒</b>——不许先出后补，出成负库存之后账就再也对不上了。`)}
+${helpNote(`<b>Builder 那份发放告知不是通知，是凭证</b>：没有它，业主凭什么认未退料那笔账。`)}
+<div class="cards">
+ <div class="card"><div class="card-label">可出库的项目</div><div class="card-value">${canOut.length} / ${live.length}</div>
+   <div class="card-foot">施工中 ${live.length} 个 · S2 已结清 ${canOut.length} 个</div></div>
+ <div class="card"><div class="card-label">出库单</div><div class="card-value">${WHOUT.length}</div>
+   <div class="card-foot">共 ${WHOUT.reduce((x,o)=>x+outQty(o),0)} 件发出去过</div></div>
+ <div class="card"><div class="card-label">★待提货确认</div>
+   <div class="card-value"${WHOUT.filter(o=>!o.ack).length?' style="color:var(--warning)"':''}>${WHOUT.filter(o=>!o.ack).length}</div>
+   <div class="card-foot">${WHOUT.filter(outLate).length?'<b style="color:var(--breach)">'+WHOUT.filter(outLate).length+' 单已超 '+whSet.ackH+' 小时</b>':'都在时限内'}</div></div>
+ <div class="card"><div class="card-label">未退料</div>
+   <div class="card-value">${WHOUT.reduce((x,o)=>x+outUnret(o),0)} 件</div>
+   <div class="card-foot">按提货人看去「物料在谁手里」</div></div>
+</div>
+<div class="panel"><div class="panel-head">出库单
+  <span class="muted" style="font-weight:400">按时间倒序${cur?' · 刚从项目出库状态带过来：'+pjNick(cur):''}</span>
+  <button class="btn btn-primary" style="margin-left:auto" onclick="whOutOpen()">＋ 新建出库单</button></div>
+ <table>
+  <thead><tr><th style="width:150px">出库单</th><th style="width:165px">项目 · 地址</th>
+    <th style="width:150px">提货人</th><th>物料明细</th>
+    <th style="width:130px">提货确认</th><th style="width:110px;text-align:right">未退</th>
+    <th style="width:150px"></th></tr></thead>
+  <tbody>${os.map(o=>{const un=outUnret(o); const hl=cur&&o.pj===cur;
+   return `<tr${hl?' style="background:rgba(37,99,235,.05)"':''}>
+    <td><b class="mono">${o.id}</b><div class="hint">${o.at}</div></td>
+    <td><b>${pjNick(o.pj)}</b><div class="hint">📍 ${pjAddr(o.pj)}</div></td>
+    <td><b>${o.taker}</b><div class="hint">${o.role}</div><div class="hint mono">🔒 ${o.phone}</div></td>
+    <td class="hint">${o.lines.map(l=>`${matOf(l.mat).name} <b>×${l.qty}</b>
+      ${l.back?`<span class="muted">（已退 ${l.back}）</span>`:''}${l.stl?'<span class="pill p-grey">已结进 S4</span>':''}
+      · 单价 🔒 ${can('stock')?A$2(l.unit):'— —'}`).join('<br>')}</td>
+    <td>${o.ack?`<span class="pill p-green">已回 YES</span><div class="hint mono">${o.ackAt}</div>`
+      :`<span class="pill ${outLate(o)?'p-red':'p-amber'}">待确认 ${outAckH(o)}h</span>
+        ${(o.chase&&o.chase.length)?`<div class="hint">已催 ${o.chase.length} 次</div>`:''}`}</td>
+    <td class="num">${un?`<b style="color:var(--warning)">${un} 件</b><div class="hint">${can('stock')?A$2(outUnretAmt(o)):'— —'}</div>`
+      :'<span class="pill p-green">已退清</span>'}</td>
+    <td style="white-space:nowrap">${o.ack?'':`<button class="btn" style="padding:3px 8px;font-size:11px" onclick="whAckChase('${o.id}')">催确认</button> `}
+      ${un?`<button class="btn" style="padding:3px 8px;font-size:11px" onclick="whRetOpen('${o.id}')">办退库</button>`:''}</td>
+   </tr>`;}).join('')||'<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">还没有出库单</td></tr>'}</tbody></table>
+ <div class="panel-body hint">提货人手机号与出库单价<b>在出库那一刻定格</b>（🔒）——
+   之后人员换号、采购涨价，都不动这张单。</div>
+</div>`;},
+
+'wh/退库与拒收':()=>{
+ const back=WHOUT.filter(o=>outUnret(o)>0).sort((a,b)=>outUnret(b)-outUnret(a));
+ const rets=WHMOVE.filter(m=>m.kind==='退库');
+ const open=WHREJ.filter(r=>r.st!=='已解决');
+ return `
+<h2>退库与拒收 <span class="pill p-cyan">公司级</span></h2>
+<div class="page-sub">两件事都是「货有问题或者货回来了」：<b>工地退料</b>回库存 · <b>到货点数对不上</b>交采购</div>
+${ops([
+ ['办退库','工地退回来的好料 · 退回状态必填 ≥4 字 · 退回数不能超过还欠的数','直接回库存 · 未退台账销账 · S4 那边跟着少一笔'],
+ ['了结到货差异','采购跟供应商谈完了才来销 · 处理结果必填 ≥4 字','留痕在操作日志，采购侧同步可见'],
+])}
+${helpNote(`<b>为什么这页也没有"当前项目"</b>：退库是按<b>出库单</b>办的（一张出库单一个项目），
+  而到货拒收多数是<b>集中采购</b>——根本不属于任何项目。挂个"当前项目"只会误导。`)}
+${helpNote(`★<b>好料坏料别混着退</b>：退回来的直接回库存，坏了的走「报废」不能进库存 ——
+  混进去就是拿坏件当好货再发一次出去，现场装上才发现，两头返工。`)}
+${helpNote(`★<b>到货数对不上，库管不许自己抹平</b>：系统按实收入库，差额开一条「到货差异」交采购去跟供应商。
+  改成"刚好"最省事，但这批货从此查不出去哪了，<b>而且永远不报错</b>。`)}
+<div class="panel"><div class="panel-head">工地未退料 <span class="muted" style="font-weight:400">${back.length} 张单还有料在外面</span></div>
+ <table>
+  <thead><tr><th style="width:150px">出库单</th><th style="width:165px">项目 · 地址</th>
+    <th style="width:140px">提货人</th><th>还欠什么</th>
+    <th style="width:110px;text-align:right">未退合计</th><th style="width:90px">在外多久</th><th style="width:90px"></th></tr></thead>
+  <tbody>${back.map(o=>`<tr>
+    <td><b class="mono">${o.id}</b><div class="hint">${o.at}</div></td>
+    <td><b>${pjNick(o.pj)}</b><div class="hint">📍 ${pjAddr(o.pj)}</div></td>
+    <td><b>${o.taker}</b><div class="hint mono">${o.phone}</div></td>
+    <td class="hint">${o.lines.filter(l=>!l.stl&&l.qty>l.back).map(l=>
+      `${matOf(l.mat).name}：出 ${l.qty} · 已退 ${l.back} · <b style="color:var(--warning)">还欠 ${l.qty-l.back}</b>`).join('<br>')}</td>
+    <td class="num"><b>${outUnret(o)} 件</b><div class="hint">${can('stock')?A$2(outUnretAmt(o)):'— —'}</div></td>
+    <td class="num">${-dayLeft(dOf(o.at.slice(0,10)))} 天</td>
+    <td><button class="btn btn-primary" style="padding:3px 9px;font-size:11px" onclick="whRetOpen('${o.id}')">办退库</button></td>
+   </tr>`).join('')||'<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">没有未退料 ✓ 货都回来了</td></tr>'}</tbody></table>
+ <div class="panel-body hint">退不回来的最终按<b>出库单价</b>结进 S4 变更（财务那边点「结算未退料」）——
+   注意：<b>结算掉不等于货退回来了</b>，这里会标成「已结进 S4」，两回事别混。</div>
+</div>
+<div class="panel"><div class="panel-head">到货差异（拒收 / 少收 / 多收）
+  <span class="muted" style="font-weight:400">${open.length} 条没了结 · 共 ${WHREJ.length} 条</span></div>
+ <table>
+  <thead><tr><th style="width:130px">差异单</th><th style="width:130px">采购单</th><th style="width:150px">供应商</th>
+    <th>物料</th><th style="width:130px;text-align:right">应收 / 实收</th>
+    <th style="width:100px">状态</th><th>说明</th><th style="width:90px"></th></tr></thead>
+  <tbody>${WHREJ.map(r=>`<tr>
+    <td><b class="mono">${r.id}</b><div class="hint">${r.at}</div></td>
+    <td class="mono">${r.po}</td>
+    <td>${suppOf(r.supp).name}</td>
+    <td><b>${matOf(r.mat).name}</b><div class="hint mono">${r.mat}</div></td>
+    <td class="num">${r.ordered} / <b style="color:var(--breach)">${r.got}</b>
+      <div class="hint">${r.kind} ${Math.abs(r.ordered-r.got)} 件</div></td>
+    <td><span class="pill ${r.st==='已解决'?'p-green':'p-amber'}">${r.st}</span></td>
+    <td class="hint">${r.why}${r.close?'<br><b>了结：</b>'+r.close:''}</td>
+    <td>${r.st==='已解决'?'':`<button class="btn" style="padding:3px 8px;font-size:11px" onclick="whRejClose('${r.id}')">了结</button>`}</td>
+   </tr>`).join('')||'<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">没有到货差异 ✓ 每一批都点对了</td></tr>'}</tbody></table>
+</div>
+<div class="panel"><div class="panel-head">退库记录 <span class="muted" style="font-weight:400">最近 ${rets.length} 笔 · 来自库存流水</span></div>
+ <table>
+  <thead><tr><th style="width:150px">时间</th><th>物料</th><th style="width:90px;text-align:right">退回</th>
+    <th style="width:165px">项目</th><th style="width:130px">单号</th><th>状态说明</th></tr></thead>
+  <tbody>${rets.map(m=>`<tr><td class="mono" style="font-size:11px">${m.at}</td>
+    <td><b>${matOf(m.mat).name}</b></td>
+    <td class="num" style="color:var(--healthy)">+${m.qty}</td>
+    <td class="hint">${m.pj?pjNick(m.pj):'—'}</td>
+    <td class="mono" style="font-size:11px">${m.ref}</td>
+    <td class="hint">${m.note}</td></tr>`).join('')
+   ||'<tr><td colspan="6" class="muted">还没有退库记录</td></tr>'}</tbody></table>
+</div>`;},
+
+'wh/盘点':()=>{
+ const ms=MATS.filter(m=>m.active!==false);
+ const cts=WHMOVE.filter(m=>m.kind==='盘盈'||m.kind==='盘亏');
+ const last=cts.length?cts[0]:null;
+ return `
+<h2>库存盘点</h2>
+<div class="page-sub">账面 vs 实盘 —— 账面数是<b>现算</b>的，提交那一刻<b>连同实盘一起定格</b></div>
+${ops([
+ ['录入实盘数','有差异时原因必填 ≥4 字','差异按盘盈/盘亏进库存流水 · 账面数定格 · 采购与财务同步可见'],
+ ['期初导入','只在上线那一次用','导入后所有库存都从流水现算，再也不用手填'],
+])}
+${helpNote(`<b>为什么账面数不能写死</b>：库存在这套系统里是<b>期初 + 全部流水</b>现算出来的。
+  盘点就是拿这个现算的数去和仓库里真实的数对 —— 对不上，说明有一笔出入库没记，
+  <b>把差异抹平最省事，但下次照样错</b>，所以差异必须写原因、必须进流水。`)}
+${helpNote(`<b>定格</b>（CLAUDE.md「定格 vs 现算」）：盘点<b>账面数</b>是定格的历史事实，提交之后不能改；
+  当前库存则永远现算。两个数不是一回事——盘完之后又出了一次库，当前库存就和盘点账面数不一样了，这很正常。`)}
+<div class="cards">
+ <div class="card"><div class="card-label">在用物料</div><div class="card-value">${ms.length}</div>
+   <div class="card-foot">停用的不参与盘点</div></div>
+ <div class="card"><div class="card-label">库存总件数</div>
+   <div class="card-value">${ms.reduce((x,m)=>x+stockOf(m.code),0)}</div>
+   <div class="card-foot">期初 + 流水现算</div></div>
+ <div class="card"><div class="card-label">上次盘点</div>
+   <div class="card-value" style="font-size:var(--fs-lg)">${last?last.at.slice(0,10):'还没盘过'}</div>
+   <div class="card-foot">${last?last.ref+' · 有 '+cts.filter(c=>c.ref===last.ref).length+' 项对不上':'建议每月盘一次'}</div></div>
+ <div class="card"><div class="card-label">历史差异笔数</div>
+   <div class="card-value"${cts.length?' style="color:var(--warning)"':''}>${cts.length}</div>
+   <div class="card-foot">${cts.length?'每一笔都有原因可查':'从没盘出过差异 ✓'}</div></div>
+</div>
+<div class="panel"><div class="panel-head">当前账面 <span class="muted" style="font-weight:400">现算 · 点右边开始盘</span>
+  <button class="btn btn-primary" style="margin-left:auto" onclick="whCtOpen()">录入实盘数</button></div>
+ <table>
+  <thead><tr><th>物料</th><th style="width:110px">类别</th><th style="width:110px;text-align:right">账面（现算）</th>
+    <th style="width:110px;text-align:right">补货红线</th><th style="width:130px">状态</th>
+    <th style="width:130px;text-align:right">库存成本</th></tr></thead>
+  <tbody>${ms.map(m=>{const q=stockOf(m.code); const low=m.cls==='C1'&&m.reorder>0&&q<m.reorder;
+   return `<tr><td><b>${m.name}</b><div class="hint mono">${m.code}</div></td>
+    <td><span class="pill ${m.cls==='C1'?'p-cyan':'p-grey'}">${m.cls}</span></td>
+    <td class="num mono"${q<0?' style="color:var(--breach)"':''}>${q}</td>
+    <td class="num">${m.reorder||'<span class="muted">—</span>'}</td>
+    <td>${q<0?'<span class="pill p-red">负库存 · 有账没记</span>'
+      :low?'<span class="pill p-amber">低于红线</span>':'<span class="pill p-green">正常</span>'}</td>
+    <td class="num">${can('stock')?A$2(Math.round(q*matAud(m)*100)/100):'— —'}</td></tr>`;}).join('')}</tbody></table>
+</div>
+<div class="panel"><div class="panel-head">盘点差异历史 <span class="muted" style="font-weight:400">只增不改</span></div>
+ <table>
+  <thead><tr><th style="width:150px">时间</th><th style="width:130px">盘点单</th><th>物料</th>
+    <th style="width:90px;text-align:right">差异</th><th>原因</th></tr></thead>
+  <tbody>${cts.map(c=>`<tr><td class="mono" style="font-size:11px">${c.at}</td>
+    <td class="mono">${c.ref}</td>
+    <td><b>${matOf(c.mat).name}</b></td>
+    <td class="num" style="color:${c.qty>0?'var(--healthy)':'var(--breach)'}">${c.qty>0?'+':''}${c.qty}</td>
+    <td class="hint">${c.note}</td></tr>`).join('')
+   ||'<tr><td colspan="5" class="muted">还没有盘点差异 ✓</td></tr>'}</tbody></table>
+</div>
+<div class="panel"><div class="panel-head">期初导入 <span class="pill p-grey">上线时一次性</span></div>
+ <div class="panel-body">
+  <div class="hint" style="line-height:1.9">上线那天把仓库盘一遍，把结果导进来当<b>期初库存</b>——
+   之后所有库存都从「期初 + 流水」现算，<b>再也不用手填任何一个库存数字</b>。<br>
+   模板与导入脚本在仓库里：<b class="mono">db/tools/期初库存_填写模板.csv</b> ·
+   <b class="mono">db/tools/导入期初库存.py</b>。<br>
+   ★这一步只做一次。做完之后这块就只是个说明 —— 所以原来那个「期初移库」单独一页已经<b>删掉了</b>。</div>
+  <div class="hint" style="margin-top:var(--sp-3)"><b>当前期初：</b>${
+    Object.keys(WH_OPEN).map(c=>matOf(c).name+' '+WH_OPEN[c]).join(' · ')}</div>
+ </div>
+</div>`;},
+
+'wh/物料在谁手里':()=>{
+ const hs=whHolders();
+ const tot=hs.reduce((x,h)=>x+h.qty,0), amt=Math.round(hs.reduce((x,h)=>x+h.amt,0)*100)/100;
+ return `
+<h2>物料在谁手里 <span class="pill p-cyan">公司级 · 按提货人</span></h2>
+<div class="page-sub">同一批货的另一个看法 —— 「项目出库状态」按<b>项目</b>看，这页按<b>提货人</b>看</div>
+${ops([
+ ['催退库','按人催，一次把他手上所有项目的料都列出来','短信+App 提醒本人 · 留痕'],
+ ['办退库','点进某张出库单办','回库存 · 未退台账销账'],
+])}
+${helpNote(`<b>为什么要两个看法</b>（用户 2026-08-04 定）：物料<b>既跟着项目走，也跟着提货人走</b>。
+  按项目看回答的是"这个工地还欠多少料、S4 能不能结"；按人看回答的是<b>"这批货现在到底在谁手上"</b>——
+  一个人可能同时在三个工地干活，只按项目看永远拼不出他手里到底压了多少。`)}
+${helpNote(`退不回来的最终按<b>出库单价</b>结进 S4 变更。所以这页数字变大 = 公司在往外漏钱，
+  只是漏得<b>很安静</b>，不会有任何报错。`)}
+<div class="cards">
+ <div class="card"><div class="card-label">压在外面的物料</div>
+   <div class="card-value"${tot?' style="color:var(--warning)"':''}>${tot} 件</div>
+   <div class="card-foot">${can('stock')?A$2(amt):'— —'} · 按出库单价（🔒 定格）算</div></div>
+ <div class="card"><div class="card-label">涉及多少人</div><div class="card-value">${hs.length}</div>
+   <div class="card-foot">${hs.length?hs.map(h=>h.taker).join('、'):'没人压着货 ✓'}</div></div>
+ <div class="card"><div class="card-label">最久的一批</div>
+   <div class="card-value">${hs.length?Math.max(...hs.map(h=>h.days)):0} 天</div>
+   <div class="card-foot">${hs.length?'出库到现在还没退回来':'—'}</div></div>
+</div>
+<div class="panel"><div class="panel-head">按提货人 <span class="muted" style="font-weight:400">压得最多的排前面</span></div>
+ <table>
+  <thead><tr><th style="width:150px">提货人</th><th style="width:120px;text-align:right">未退合计</th>
+    <th style="width:110px;text-align:right">金额</th><th style="width:90px;text-align:right">最久</th>
+    <th>压在哪些项目 · 哪些料</th><th style="width:90px"></th></tr></thead>
+  <tbody>${hs.map(h=>`<tr>
+    <td><b>${h.taker}</b><div class="hint">${h.role}</div><div class="hint mono">${h.phone}</div></td>
+    <td class="num"><b style="color:var(--warning)">${h.qty} 件</b></td>
+    <td class="num">${can('stock')?A$2(h.amt):'— —'}</td>
+    <td class="num"${h.days>30?' style="color:var(--breach)"':''}>${h.days} 天</td>
+    <td class="hint">${h.outs.filter(o=>outUnret(o)>0).map(o=>
+      `<div style="margin-bottom:3px"><b class="mono">${o.pj}</b> ${pjNick(o.pj)} · <span class="mono">${o.id}</span>
+       <br>${o.lines.filter(l=>!l.stl&&l.qty>l.back).map(l=>matOf(l.mat).name+' ×'+(l.qty-l.back)).join('、')}
+       <a style="color:var(--accent);cursor:pointer;margin-left:4px" onclick="whRetOpen('${o.id}')">办退库 →</a></div>`).join('')}</td>
+    <td><button class="btn" style="padding:3px 8px;font-size:11px" onclick="whHoldChase('${h.taker}')">催退库</button></td>
+   </tr>`).join('')||'<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">没有压在外面的物料 ✓ 每一件都归位了</td></tr>'}</tbody></table>
+ <div class="panel-body hint">这张表<b>空了才是正常</b>。有行不一定是坏事（施工中当然有料在工地），
+   但<b>「最久」超过 30 天标红</b> —— 那多半是活早干完了，料忘了退。</div>
+</div>`;},
+
+'wh/库存流水':()=>{
+ const q=(whQ||'').trim().toLowerCase();
+ const kinds=['全部','入库','出库','退库','盘盈','盘亏'];
+ const rows=WHMOVE.filter(m=>(whKind==='全部'||m.kind===whKind)
+   &&(!q||`${m.mat} ${matOf(m.mat).name} ${m.ref} ${m.pj} ${m.note} ${m.by}`.toLowerCase().includes(q)));
+ const ms=MATS.filter(m=>m.active!==false);
+ return `
+<h2>库存流水 <span class="pill p-cyan">一切进出，一本账</span></h2>
+<div class="page-sub">★库存<b>不落库</b> —— 当前库存 ＝ 期初 + 这张表全部加起来，永远现算</div>
+${ops([['筛选','按类型 / 搜物料·单号·项目·备注','只影响显示，不改数据']])}
+${helpNote(`<b>为什么库存要现算</b>：写死一个库存数最省事，但只要有一笔出入库忘了记，
+  那个数就<b>永远错下去，而且不会报错</b>。改成"期初 + 流水"之后，
+  数不对一定是<b>某一笔流水记错了</b>，翻这张表就能找出来是哪一笔。`)}
+${helpNote(`每一笔流水都有<b>单号</b>（采购单 / 出库单 / 退库单 / 盘点单）和<b>经手人</b>——
+  没有单号的流水不该存在，那等于货凭空多了或少了。`)}
+<div class="panel"><div class="panel-head">当前库存 <span class="muted" style="font-weight:400">期初 + 流水现算</span></div>
+ <table>
+  <thead><tr>${ms.map(m=>`<th style="text-align:right">${m.name}</th>`).join('')}</tr></thead>
+  <tbody><tr>${ms.map(m=>{const q2=stockOf(m.code); const low=m.cls==='C1'&&m.reorder>0&&q2<m.reorder;
+    return `<td class="num mono"${low?' style="color:var(--warning);font-weight:600"':''}>${q2}${
+      low?'<div class="hint" style="color:var(--warning)">低于红线 '+m.reorder+'</div>':''}</td>`;}).join('')}</tr></tbody></table>
+ <div class="panel-body hint">期初：${Object.keys(WH_OPEN).map(c=>matOf(c).name+' '+WH_OPEN[c]).join(' · ')}</div>
+</div>
+<div class="panel">
+ <div class="panel-head" style="gap:var(--sp-2);flex-wrap:wrap">
+  ${kinds.map(k=>`<button class="btn${whKind===k?' btn-primary':''}" onclick="whKind='${k}';renderAll()">${k}</button>`).join('')}
+  <span class="muted" style="font-weight:400">显示 ${rows.length} / ${WHMOVE.length} 笔</span>
+  <input id="whq" class="search" placeholder="🔍 搜物料 / 单号 / 项目 / 备注…" value="${whQ}"
+    style="width:220px;margin-left:auto;padding:5px var(--sp-2)" oninput="whQ=this.value;keepFocus('whq')"></div>
+ <table>
+  <thead><tr><th style="width:150px">时间</th><th style="width:80px">类型</th><th>物料</th>
+    <th style="width:80px;text-align:right">数量</th><th style="width:165px">项目</th>
+    <th style="width:140px">单号</th><th style="width:80px">经手人</th><th>备注</th></tr></thead>
+  <tbody>${rows.map(m=>`<tr>
+    <td class="mono" style="font-size:11px">${m.at}</td>
+    <td><span class="pill ${m.qty>0?'p-green':'p-amber'}">${m.kind}</span></td>
+    <td><b>${matOf(m.mat).name}</b><div class="hint mono">${m.mat}</div></td>
+    <td class="num" style="color:${m.qty>0?'var(--healthy)':'var(--breach)'};font-weight:600">${m.qty>0?'+':''}${m.qty}</td>
+    <td>${m.pj?`<b class="mono" style="font-size:11px">${m.pj}</b><div class="hint">${pjNick(m.pj)}</div>`
+      :'<span class="pill p-grey">公司级</span>'}</td>
+    <td class="mono" style="font-size:11px">${m.ref}</td>
+    <td>${m.by}</td><td class="hint">${m.note}</td></tr>`).join('')
+   ||'<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">这个筛选下没有流水</td></tr>'}</tbody></table>
+</div>`;},
+
+'wh/设置':()=>`
+<h2>库管设置</h2>
+<div class="page-sub">阈值可改 · 改完立即生效 · 每次改动进操作日志</div>
+${ops([['改阈值','只能填正整数（填 0 等于把提醒关掉）','总览与各页的红黄标立即按新阈值现算']])}
+${helpNote(`两个阈值：<b>提货回执超时</b>——出库单发出去多久没回 YES 就算异常（<b>没回执＝没人认领这批货</b>，
+  将来现场丢了料谁也说不清）；<b>盘点差异提醒</b>——差异超过这个百分比就在盘点页标出来。`)}
+<div class="split">
+ <div class="panel" style="max-width:520px"><div class="panel-head">阈值</div>
+  <div class="panel-body">
+   <div class="field"><label>提货回执超时（小时）</label>
+     <input class="mono" style="width:90px" value="${whSet.ackH}" onchange="whSetVal('ackH','提货回执超时小时',this.value)">
+     <div class="hint">当前 ${WHOUT.filter(outLate).length} 张出库单已超时</div></div>
+   <div class="field"><label>盘点差异提醒（%）</label>
+     <input class="mono" style="width:90px" value="${whSet.ctDiffPct}" onchange="whSetVal('ctDiffPct','盘点差异提醒百分比',this.value)">
+     <div class="hint">提交盘点时差异超过这个比例会单独提醒，并在操作日志里标出来</div></div>
+  </div></div>
+ <div class="panel" style="max-width:600px"><div class="panel-head">这些不在库管这儿改</div>
+  <div class="panel-body">
+   <table><tbody>
+    <tr><td><b>补货红线 / 采购类别 C1·C2</b></td><td class="hint">在采购「物料主表」——红线决定什么时候出补货建议</td></tr>
+    <tr><td><b>采购价 / 汇率 / 供应商</b></td><td class="hint">在采购那条线 —— 库管只读</td></tr>
+    <tr><td><b>S2 物料款是否结清</b></td><td class="hint">在财务「项目收款 S1-S3」—— 它决定能不能出库放货</td></tr>
+    <tr><td><b>人员（提货人候选）</b></td><td class="hint">在财务「工资数据」建立 —— 全公司一份人员表</td></tr>
+   </tbody></table>
+   <div class="hint" style="margin-top:var(--sp-3)">写在这儿是为了少走冤枉路：找不到的设置多半在上游部门。</div>
+  </div></div>
+</div>`,
 'fin/财务节点':()=>{
  const sent=FINPAY.flatMap(f=>f.ms.filter(m=>m.inv&&!m.settled).map(m=>({f,m})));
  const owing=sent.reduce((a,x)=>a+msDue(x.f,x.m)-msPaid(x.m),0);
@@ -8025,12 +8723,48 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
   ['待估价变更','3 条','','S4 开票前必须估完'],
   ['本月工资待封账','21 日','','2 天挂起待补录'],
 ]),
-'wh/总览':()=>overview('库管',[
-  ['库存品项','86','','其中 5 项低于红线'],
-  ['在途','12 项','','最早预计 8/03 到货'],
-  ['待出库','4 单','','2 单等 S2 结清'],
-  ['已划掉但仍有存货','1 项','','旧款三联面板 ×12，请出清'],
-]),
+'wh/总览':()=>{
+ const pend=whInPend(), low=whLow(), hold=whHolders();
+ const late=WHOUT.filter(outLate);
+ const live=PROJECTS.filter(p=>p.status==='施工中');
+ const canOut=live.filter(p=>whPjOut(p.code).s2===true);
+ const unret=hold.reduce((x,h)=>x+h.qty,0), unretAmt=Math.round(hold.reduce((x,h)=>x+h.amt,0)*100)/100;
+ const rows=whStuckRows();
+ return `<h2>库管总览</h2>
+ <div class="page-sub">货此刻在哪、缺什么、谁手里还压着 —— 五块全部现算，「去处理 →」直达</div>
+ ${ops([['去处理 →','—','跳到对应页面并只显示这一条']])}
+ ${helpNote(`<b>库管这条线在干什么</b>：货进来（入库）· 货出去（出库）· 货回来（退库）· 数对不对（盘点）。
+   四件事背后只有一个目标——<b>账上的数就是仓库里的数</b>。所以库存在这套系统里<b>不落库</b>，
+   永远是「期初 + 全部流水」现算出来的：写死一个数，出库忘了扣、退库忘了加，
+   数字会<b>悄悄错，而且永远不报错</b>。`)}
+ ${helpNote(`★<b>要不要采购，指令由库管下给采购</b>（用户定）——C1 常备件低于红线是系统现算的补货建议，
+   项目料是 S2 结清后按方案提的。采购只是执行者，它自己决定不了买什么。`)}
+ <div class="cards">
+  <div class="card"><div class="card-label">★待入库</div>
+    <div class="card-value"${pend.length?' style="color:var(--warning)"':''}>${pend.length}</div>
+    <div class="card-foot">${pend.length?'货到了还没点数上架 —— 不入库库存就是错的':'都上架了 ✓'}</div></div>
+  <div class="card"><div class="card-label">低于红线</div>
+    <div class="card-value"${low.length?' style="color:var(--warning)"':''}>${low.length}</div>
+    <div class="card-foot">${low.length?low.map(m=>m.name).slice(0,2).join('、')+(low.length>2?' 等':''):'C1 常备件都够 ✓'}<br>该给采购下补货指令</div></div>
+  <div class="card"><div class="card-label">可出库的项目</div><div class="card-value">${canOut.length} / ${live.length}</div>
+    <div class="card-foot">施工中 ${live.length} 个 · S2 已结清 ${canOut.length} 个<br>没结清的卡在财务，不在库管</div></div>
+  <div class="card"><div class="card-label">★提货没回执</div>
+    <div class="card-value"${late.length?' style="color:var(--breach)"':''}>${late.length}</div>
+    <div class="card-foot">${late.length?'超 '+whSet.ackH+' 小时没回 YES —— 没回执就没人认领':'回执都齐了 ✓'}</div></div>
+  <div class="card"><div class="card-label">未退料</div>
+    <div class="card-value"${unret?' style="color:var(--warning)"':''}>${unret} 件</div>
+    <div class="card-foot">${unret?(can('stock')?A$2(unretAmt):'— —')+' · 在 '+hold.length+' 个人手里<br>退不回来要结进 S4':'都退清了 ✓'}</div></div>
+ </div>
+ <div class="panel"><div class="panel-head">卡点与异常 <span class="muted" style="font-weight:400">按卡了多久排 · 全部现算</span></div>
+  <table><thead><tr><th>项目编号</th><th>项目 · 地址</th><th>卡点</th><th>卡在哪 / 影响什么</th><th style="text-align:right">卡了多久</th><th></th></tr></thead>
+  <tbody>${rows.map(r=>`<tr>
+    <td>${r.pj?`<b class="mono" style="color:var(--accent)">${r.pj}</b>`:'<span class="pill p-grey">公司级</span>'}</td>
+    <td>${r.pj?`<b>${pjNick(r.pj)}</b><div class="hint">📍 ${pjAddr(r.pj)}</div>`:'<span class="hint">不属于单个项目</span>'}</td>
+    <td><b>${r.what}</b></td><td class="hint">${r.why}</td>
+    <td class="num">${r.h>=48?Math.round(r.h/24)+' 天':r.h+' 小时'}</td>
+    <td><button class="btn" onclick="go('wh','${r.p}')">去处理 →</button></td></tr>`).join('')
+    ||'<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">此刻没有卡点 ✓</td></tr>'}</tbody></table>
+ </div>`;},
 'proc/总览':()=>overview('采购',[
   ['低于红线','5 项','','C1 定期备货，纳入下次集中采购'],
   ['待到货','12 项','','PO-0087 等 3 张单'],

@@ -400,6 +400,8 @@ const { chromium } = require('playwright');
     // 还原
     f.ms[3].inv=undefined; f.ms[3].ver=0; f.ms[3].firstInv=undefined;
     f.vars=f.vars.filter(v=>v.src!=='未退料'); f.unret=2013.83;
+    /* 六十一轮：结算未退料会同步销库管台账（标 stl），还原时两边都要退回去 */
+    outOf('KX-2026-0142').forEach(o=>o.lines.forEach(l=>{ delete l.stl; }));
     f.vars.forEach(v=>{if([4,5,6].includes(v.id)){v.amt=null;v.by=undefined;v.at=undefined;v.note=undefined;}});
     renderAll(); return JSON.stringify(r);});
   const s4=JSON.parse(s4Chk);
@@ -2187,6 +2189,132 @@ const { chromium } = require('playwright');
   ok(S60B.noMore,'已走完的退换单竟还能往前推（应拦）');
   ok(S60B.stuck,'跟踪中的退换单没进采购卡点表');
   ok(S60B.restored,'RMA 退换测试后演示态未还原');
+
+  // ═══ 六十一轮：库管线重做 ═══
+  const whR=await page.evaluate(()=>{ const R={};
+    const l0=OPLOG.length, n0=NOTIF.length;
+    const mv0=JSON.parse(JSON.stringify(WHMOVE)), ou0=JSON.parse(JSON.stringify(WHOUT));
+    const rj0=JSON.parse(JSON.stringify(WHREJ)), po0=PCPO.map(p=>p.whInAt||''), rm0=PCRMA.map(r=>r.whInAt||'');
+    loginAs('warehouse');
+    // ① 页面清单：删了「期初移库」「RMA登记」，加了「设置」
+    R.nav=!DEPT.wh.pages.includes('期初移库')&&!DEPT.wh.pages.includes('RMA登记')
+      &&DEPT.wh.pages.includes('设置');
+    // ② 库管全部是公司级页面（项目在单据里选，不在页顶挂）
+    R.company=DEPT.wh.pages.every(p=>p==='操作日志'||COMPANY_PAGES.has('wh/'+p));
+    // ③ 库存＝期初＋流水现算，且和原来写死的数一致
+    R.calc=stockOf('M-KNX-P4W')===12&&stockOf('M-KNX-DIM4')===4&&stockOf('M-CBL-CAT6')===3
+      &&stockOf('M-CB-SW6')===22&&stockOf('M-SEN-PIR')===9&&stockOf('M-CBL-KNX')===14;
+    // ④ 项目出库状态只列施工中；施工期已过还有未退料的进"尾巴表"
+    go('wh','项目出库状态');
+    let h=document.getElementById('main').innerHTML;
+    const live=PROJECTS.filter(p=>p.status==='施工中');
+    R.onlyLive=live.every(p=>h.includes(p.code))
+      &&PROJECTS.filter(p=>['接洽当中','已流失','已烂尾'].includes(p.status)).every(p=>!h.includes(p.code));
+    R.tail=h.includes('施工期已过、货还没回来')&&h.includes('KX-2026-0142');   // 维护中但还有 13 件未退
+    R.s2gate=h.includes('未结清 · 不能出库');
+    // ⑤ 未退料两个视角要对得上（按项目 vs 按提货人）
+    const byPj=PROJECTS.reduce((x,p)=>x+whPjOut(p.code).unret,0);
+    const byMan=whHolders().reduce((x,q)=>x+q.qty,0);
+    R.sameSum=byPj===byMan&&byPj===44;
+    R.unretAmt=Math.abs(whPjOut('KX-2026-0142').unretAmt-2013.83)<0.01;   // 与财务 f.unret 一致
+    // ⑥ 入库点数：差异不写备注要拦；按实收入库并自动开到货差异单
+    go('wh','入库');
+    const pend0=whInPend().length; R.pend=pend0===2;                      // PO-030 + RMA 换回件
+    const s0=stockOf('M-CBL-CAT6'), rj0n=WHREJ.length;
+    whInOpen('采购到货','PO-2026-030');
+    document.getElementById('wi-0').value='18';                            // 应收 20，少收 2
+    whInSave('采购到货','PO-2026-030');
+    R.gDiffNote=stockOf('M-CBL-CAT6')===s0;                                // 没备注 → 拦住，库存没动
+    document.getElementById('wi-note').value='外箱破损，少收 2 箱已拍照';
+    whInSave('采购到货','PO-2026-030');
+    R.inDone=stockOf('M-CBL-CAT6')===s0+18&&WHREJ.length===rj0n+1
+      &&WHREJ[0].kind==='少收'&&OPLOG.some(l=>l.action==='入库点数');
+    R.inGone=whInPend().length===pend0-1;
+    // ⑦ 出库门禁：S2 未结清的项目不许出、超库存不许出、没提货人不许出
+    go('wh','出库');
+    const on0=WHOUT.length;
+    whOutOpen();
+    document.getElementById('wo-pj').value='KX-2026-0203';                  // S2 未结清
+    whOutSave(); R.gS2=WHOUT.length===on0;
+    document.getElementById('wo-pj').value='KX-2026-0188';
+    whOutTaker();
+    document.getElementById('wo-m0').value='M-KNX-P4W';
+    document.getElementById('wo-q0').value='999';
+    whOutSave(); R.gStock=WHOUT.length===on0;
+    document.getElementById('wo-q0').value='2';
+    whOutSave();
+    const nw=WHOUT[0];
+    R.outDone=WHOUT.length===on0+1&&nw.pj==='KX-2026-0188'&&nw.lines[0].qty===2
+      &&nw.ack===false&&stockOf('M-KNX-P4W')===12-2
+      &&WHMOVE[0].kind==='出库'&&WHMOVE[0].qty===-2
+      &&OPLOG.some(l=>l.action==='物料出库')
+      &&NOTIF[0].to.some(t=>t.how==='短信')&&NOTIF[0].to.some(t=>t.how==='邮件');   // 提货人短信 + Builder 告知
+    R.frozen=Math.abs(nw.lines[0].unit-matAud(matOf('M-KNX-P4W')))<0.01;   // 出库单价定格
+    // ⑧ 催提货确认
+    whAckChase(nw.id); R.chase=nw.chase.length===1&&OPLOG[0].action==='催提货确认';
+    // ⑨ 退库：状态必填、退回数不能超过还欠的
+    const s1=stockOf('M-KNX-P4W');
+    whRetOpen(nw.id);
+    document.getElementById('wr-0').value='2';
+    whRetSave(nw.id); R.gRetNote=stockOf('M-KNX-P4W')===s1;                // 没写状态 → 拦
+    document.getElementById('wr-note').value='外观完好可再用';
+    document.getElementById('wr-0').value='9';
+    whRetSave(nw.id); R.gRetOver=stockOf('M-KNX-P4W')===s1;                // 退得比欠的多 → 拦
+    document.getElementById('wr-0').value='2';
+    whRetSave(nw.id);
+    R.retDone=stockOf('M-KNX-P4W')===s1+2&&outUnret(nw)===0&&OPLOG.some(l=>l.action==='物料退库');
+    // ⑩ 盘点：差异必须写原因，差异按盘盈/盘亏进流水
+    go('wh','盘点');
+    const mv1=WHMOVE.length, sp=stockOf('M-SEN-PIR');
+    whCtOpen();
+    const idx=MATS.filter(m=>m.active!==false).findIndex(m=>m.code==='M-SEN-PIR');
+    document.getElementById('wc-'+idx).value=String(sp-3);
+    whCtSave(); R.gCtNote=WHMOVE.length===mv1;                             // 没写原因 → 拦
+    document.getElementById('wc-note').value='上月出库漏记一笔，已核对';
+    whCtSave();
+    R.ctDone=stockOf('M-SEN-PIR')===sp-3&&WHMOVE[0].kind==='盘亏'
+      &&OPLOG.some(l=>l.action==='库存盘点');
+    // ⑪ 财务结算未退料 → 库管台账同步销账（结算掉≠退回来了）
+    const f=finOf('KX-2026-0142');
+    const before=whPjOut('KX-2026-0142').unret;
+    finSettleUnret('KX-2026-0142');
+    R.settleSync=before>0&&whPjOut('KX-2026-0142').unret===0
+      &&WHOUT.some(o=>o.pj==='KX-2026-0142'&&o.lines.some(l=>l.stl));
+    // 还原
+    WHMOVE.length=0; mv0.forEach(x=>WHMOVE.push(x));
+    WHOUT.length=0; ou0.forEach(x=>WHOUT.push(x));
+    WHREJ.length=0; rj0.forEach(x=>WHREJ.push(x));
+    PCPO.forEach((p,i)=>{ if(po0[i]) p.whInAt=po0[i]; else delete p.whInAt; });
+    PCRMA.forEach((r,i)=>{ if(rm0[i]) r.whInAt=rm0[i]; else delete r.whInAt; });
+    f.unret=2013.83; f.vars=f.vars.filter(v=>v.src!=='未退料'); s4Open['KX-2026-0142']=false;
+    OPLOG.splice(0,OPLOG.length-l0); NOTIF.splice(0,NOTIF.length-n0); renderAll();
+    R.restored=stockOf('M-KNX-P4W')===12&&WHOUT.length===ou0.length&&whPjOut('KX-2026-0142').unret===13;
+    return JSON.stringify(R);});
+  const S61=JSON.parse(whR);
+  ok(S61.nav,'库管页面清单没按六十一轮改（应删 期初移库/RMA登记，加 设置）');
+  ok(S61.company,'库管还有项目内页面（应全部公司级 —— 项目在单据里选）');
+  ok(S61.calc,'库存不是「期初 + 流水」现算，或算出来的数与原口径对不上');
+  ok(S61.onlyLive,'项目出库状态没有只列施工中');
+  ok(S61.tail,'施工期已过但还有未退料的项目被静默丢掉了（这等于把 S4 的钱丢了）');
+  ok(S61.s2gate,'S2 未结清的项目没标"不能出库"');
+  ok(S61.sameSum,'未退料按项目看与按提货人看对不上（同一批货两个视角必须相等）');
+  ok(S61.unretAmt,'库管现算的未退料金额与财务 f.unret 对不上');
+  ok(S61.pend,'待入库来源不对（应是 采购到货 + 退换换回 两批）');
+  ok(S61.gDiffNote,'入库点数有差异却没写备注竟能存（应拦）');
+  ok(S61.inDone,'入库未按实收进库存 / 未自动开到货差异单 / 未留痕');
+  ok(S61.inGone,'入库之后这批货还留在待入库里');
+  ok(S61.gS2,'S2 未结清的项目竟能出库（应拦）');
+  ok(S61.gStock,'出库数超过库存竟能出（应拦 —— 出成负库存账就再也对不上）');
+  ok(S61.outDone,'出库未扣库存 / 未进流水 / 未发提货短信与 Builder 告知');
+  ok(S61.frozen,'出库单价没有在出库那一刻定格');
+  ok(S61.chase,'催提货确认未留痕');
+  ok(S61.gRetNote,'退库不写物料状态竟能存（应拦 —— 好料坏料混着退）');
+  ok(S61.gRetOver,'退回数比还欠的多竟能存（应拦）');
+  ok(S61.retDone,'退库未回库存 / 未销未退台账 / 未留痕');
+  ok(S61.gCtNote,'盘点有差异不写原因竟能提交（应拦）');
+  ok(S61.ctDone,'盘点差异没按盘盈/盘亏进流水');
+  ok(S61.settleSync,'财务结算未退料后库管台账没同步销账（两页各说各话且不报错）');
+  ok(S61.restored,'库管测试后演示态未还原');
 
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
