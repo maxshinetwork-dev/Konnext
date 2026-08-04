@@ -1253,7 +1253,7 @@ const { chromium } = require('playwright');
     instO('KX-2026-0195');
     const opened=!!document.getElementById('in-d');
     const preFill=document.getElementById('in-note').value.includes('地暖联动剩 3 处未调');
-    const d=new Date(); d.setDate(d.getDate()+3); const ds=ymdS(d);
+    const ds=ymdS(weekDays(1)[3]);   // 下周四：种子里没人排班，避开重叠门禁（今天+3 会撞上周五的倒休）
     document.getElementById('in-d').value=ds.replace(/\//g,'-');
     document.getElementById('in-st').value='08:00';
     document.getElementById('in-et').value='16:30';
@@ -1823,6 +1823,135 @@ const { chromium } = require('playwright');
   await page.evaluate(()=>{secLock(true);});
   await page.screenshot({path:__dirname+'/shot_锁屏.png'});
   await page.evaluate(()=>{SEC.locked=false;document.getElementById('seclock').style.display='none';});
+
+  // ═══ 五十四轮：运维线（受理 / 派工 / 三样齐 / 维保双钟 / 订阅 / 设置）═══
+  const mt=await page.evaluate(()=>{ const R={}; const l0=OPLOG.length, n0=NOTIF.length, m0=MCASES.length, s0=SCH.length;
+    loginAs('maintenance');
+    R.pages=DEPT.mt.pages.length===9&&DEPT.mt.pages.includes('设置')&&DEPT.mt.pages.includes('维保状态');
+    // 总览：五卡 + 卡点现算
+    go('mt','总览'); let h=document.getElementById('main').innerHTML;
+    R.ov=h.includes('未结案维护单')&&h.includes('已受理未派工')&&h.includes('上门完 · 三样不齐')
+      &&h.includes('免责维保将到期')&&h.includes('订阅要处理')&&h.includes('卡点与异常');
+    R.ovStuck=mtStuckRows().length>0;
+    // 报修受理：门禁 + 未知报修时间
+    go('mt','报修受理'); h=document.getElementById('main').innerHTML;
+    R.repUnknown=h.includes('【未知】')&&h.includes('不统计');
+    mtNewOpen();
+    document.getElementById('mt-pj').value='';
+    document.getElementById('mt-note').value='坏了';
+    mtNewSave(); R.gPj=MCASES.length===m0;                       // 没选项目 → 拦
+    document.getElementById('mt-pjq').value='Cherrybrook'; mtPjFilter();
+    R.pjAuto=document.getElementById('mt-pj').value==='KX-2026-0142';   // 筛到唯一自动选中
+    mtNewSave(); R.gNote=MCASES.length===m0;                     // 原话<5字 → 拦
+    document.getElementById('mt-note').value='业主说二楼面板按下去没反应，昨天开始的';
+    mtNewSave();
+    const nc=MCASES[0];
+    R.newOk=MCASES.length===m0+1&&nc.st==='已受理'&&nc.rep.at===null
+      &&OPLOG[0].action==='受理报修'&&OPLOG[0].detail.includes('【未知】');
+    R.noResp=mtResp(nc).h===null;                                // 报修时间未知 → 不参与响应统计
+    // 派工：过去日期 / 重叠 拦；成功写进排班表
+    go('mt','派工与上门');
+    mtDispOpen(nc.id);
+    document.getElementById('mt-d').value='2020-01-01'; mtDispSave();
+    R.gPast=!nc.job;
+    const ds=ymdS(weekDays(1)[3]);
+    document.getElementById('mt-who').value='小周';
+    document.getElementById('mt-d').value=ds.replace(/\//g,'-');
+    document.getElementById('mt-st').value='09:00';
+    document.getElementById('mt-et').value='11:00';
+    mtDispSave();
+    const made=SCH.filter(x=>x.d===ds&&x.type==='维护'&&x.pj==='KX-2026-0142');
+    R.disp=!!nc.job&&made.length===1&&made[0].ack===false
+      &&OPLOG[0].action==='维护派工'&&NOTIF[0].what.includes('维护派工');
+    // 三样齐：缺一样 → 拦并标红
+    mtSiteOpen(nc.id);
+    document.getElementById('mt-cause').value='human';
+    document.getElementById('mt-sum').value='更换面板并测试';
+    document.getElementById('mt-sign').value='';
+    mtSiteSave();
+    R.gThree=nc.st==='已受理'&&mtStage(nc).k==='上门完 · 三样不齐';
+    R.stuckShows=mtStuckRows().some(r=>r.what.includes(nc.id)&&r.why.includes('客户签字'));
+    mtSiteOpen(nc.id);
+    document.getElementById('mt-cause').value='human';
+    document.getElementById('mt-sum').value='更换面板并测试全部回路正常';
+    document.getElementById('mt-sign').value='王先生';
+    mtSiteSave();
+    R.threeOk=nc.st==='待定价'&&nc.free===false&&nc.causeCn==='人为损坏'
+      &&OPLOG[0].detail.includes('人为损坏')&&NOTIF[0].what.includes('待定价');
+    // 免责判定：同项目若换成产品缺陷 → 免责期内全免
+    R.freeJudge=freeJudge('KX-2026-0142','product_defect').ok===true
+      &&freeJudge('KX-2026-0142','human').ok===false;
+    // 维保双钟
+    go('mt','维保状态'); h=document.getElementById('main').innerHTML;
+    R.war=h.includes('免责维保（决定收不收客户钱）')&&h.includes('物料保修（决定能不能找供应商赔）')
+      &&h.includes('起点＝交付日')&&h.includes('起点＝S2 结清');
+    const w=warOf('KX-2026-0142');
+    R.warCalc=w.freeM===12&&w.partM===24&&w.fEnd.getFullYear()===2027;
+    // 订阅
+    go('mt','业主订阅'); h=document.getElementById('main').innerHTML;
+    R.sub=h.includes('生效中')&&h.includes('年化订阅费')&&h.includes('不计入项目利润率');
+    const x=subOf('KX-2026-0121'); const st=subState(x);
+    R.subOverdue=st.k==='已逾期';                                  // 2026/06/01 到期 → 已逾期
+    const fee0=subOf('KX-2026-0142').fee;
+    subTier('KX-2026-0142','5');
+    R.tier5=subOf('KX-2026-0142').fee===0&&subOf('KX-2026-0142').to==='';
+    subRenew('KX-2026-0142'); R.gT5Renew=subOf('KX-2026-0142').to==='';   // 第5档不能续
+    subTier('KX-2026-0142','2'); subOf('KX-2026-0142').fee=fee0;
+    subOf('KX-2026-0142').from='2026/05/31'; subOf('KX-2026-0142').to='2027/05/31';
+    // 设置
+    go('mt','设置'); h=document.getElementById('main').innerHTML;
+    R.setUI=h.includes('响应 SLA')&&h.includes('订阅五档年费标准')&&h.includes('报修渠道')
+      &&h.includes('常见故障现象')&&h.includes('故障归因四类')&&h.includes('内建不可改');
+    mtSetVal('slaH','响应 SLA 小时',0); R.gZero=mtSet.slaH===24;
+    mtSetVal('slaH','响应 SLA 小时',12); R.setOk=mtSet.slaH===12; mtSet.slaH=24;
+    mtFeeVal(2,1500); R.feeOk=mtSet.tier2===1500&&OPLOG[0].action==='修改订阅年费标准';
+    const c0=MT_CH.length;
+    document.getElementById('mtopt-ch').value='电话'; mtOptAdd('ch'); R.gDupOpt=MT_CH.length===c0;
+    mtOptDel('ch',MT_CH.indexOf('其他')); R.gOther=MT_CH.includes('其他');
+    mtOptDel('ch',MT_CH.indexOf('微信')); R.gUsedOpt=MT_CH.includes('微信');   // 已被维护单用过
+    document.getElementById('mtopt-ch').value='物业转达'; mtOptAdd('ch');
+    R.addOpt=MT_CH.includes('物业转达');
+    MT_CH.splice(MT_CH.indexOf('物业转达'),1); delete mtSet.tier2;
+    // 还原演示态
+    MCASES.splice(0,MCASES.length-m0); SCH.splice(s0);
+    OPLOG.splice(0,OPLOG.length-l0); NOTIF.splice(0,NOTIF.length-n0); renderAll();
+    R.restored=MCASES.length===m0&&SCH.length===s0;
+    return JSON.stringify(R);});
+  const M54=JSON.parse(mt);
+  ok(M54.pages,'运维应 9 页（含设置 / 维保状态）');
+  ok(M54.ov&&M54.ovStuck,'运维总览缺五块 / 卡点表未现算');
+  ok(M54.repUnknown,'报修受理未体现【未知】报修时间与"不统计"');
+  ok(M54.gPj,'没选项目竟能建维护单（应拦：只受理已交付项目）');
+  ok(M54.pjAuto,'受理弹窗项目搜索筛到唯一未自动选中');
+  ok(M54.gNote,'客户原话不足 5 字竟能建单（应拦）');
+  ok(M54.newOk,'受理建单未生效 / 未留痕【未知】报修时间');
+  ok(M54.noResp,'报修时间未知的单不该参与响应时长统计');
+  ok(M54.gPast,'派工到过去的日期竟成功（应拦）');
+  ok(M54.disp,'派工未写进派工排班表（维护）/ 未留痕通知');
+  ok(M54.gThree,'三样不齐竟算完成（应拦并标红）');
+  ok(M54.stuckShows,'三样不齐未进总览卡点（且要说清缺哪样）');
+  ok(M54.threeOk,'三样齐未转待定价 / 未定免责 / 未通知财务');
+  ok(M54.freeJudge,'免责判定错（免责期内产品缺陷应全免、人为应计费）');
+  ok(M54.war&&M54.warCalc,'维保状态未把两套钟分开（起点/期限/到期）');
+  ok(M54.sub&&M54.subOverdue,'业主订阅缺生效/年化/不计利润率说明，或逾期未判出');
+  ok(M54.tier5,'改第 5 档未清空年费与期间');
+  ok(M54.gT5Renew,'第 5 档竟能续费（应拦）');
+  ok(M54.setUI,'运维设置缺阈值 / 五档年费 / 两个下拉 / 归因四类');
+  ok(M54.gZero,'阈值填 0 未被拦');
+  ok(M54.setOk&&M54.feeOk,'改阈值 / 改年费未生效或未留痕');
+  ok(M54.gDupOpt&&M54.gOther&&M54.gUsedOpt,'选项门禁失效（重复 / 其他 / 已被用过）');
+  ok(M54.addOpt,'新增报修渠道未生效');
+  ok(M54.restored,'运维测试后演示态未还原');
+  await page.evaluate(()=>{loginAs('maintenance');go('mt','总览');});
+  await page.screenshot({path:__dirname+'/shot_运维总览.png'});
+  await page.evaluate(()=>go('mt','报修受理'));
+  await page.screenshot({path:__dirname+'/shot_报修受理.png'});
+  await page.evaluate(()=>go('mt','维保状态'));
+  await page.screenshot({path:__dirname+'/shot_维保状态.png'});
+  await page.evaluate(()=>{mtSel='MT-0180-03';go('mt','维护单跟踪');});
+  await page.screenshot({path:__dirname+'/shot_维护单跟踪.png'});
+  await page.evaluate(()=>{mtSel=null;go('mt','业主订阅');});
+  await page.screenshot({path:__dirname+'/shot_业主订阅.png'});
 
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
