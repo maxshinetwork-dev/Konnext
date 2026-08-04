@@ -13,7 +13,7 @@ INSERT INTO project(id,code,build_stage,step6_signed_at,contract_price,handover_
 
 \echo ''
 \echo '=========== 未交付项目报修 → 不予受理 ==========='
-INSERT INTO maintenance_case(project_id,title,quote_amount)
+INSERT INTO maintenance_case(project_id,title,estimate_amount)
 VALUES('aaaaaaaa-0000-0000-0000-00000000000a','客户说客厅灯不亮',0);
 \echo '--- 连派工也一起卡住 ---'
 INSERT INTO maintenance_job(project_id,staff_id,scheduled_date,no_case_reason)
@@ -25,7 +25,7 @@ SELECT p.code, i.title AS 走剩余项处理, i.status FROM install_item i JOIN 
 
 \echo ''
 \echo '=========== 已交付项目报修 → 正常受理 ==========='
-INSERT INTO maintenance_case(id,project_id,title,quote_amount,labor_cost,material_cost)
+INSERT INTO maintenance_case(id,project_id,title,estimate_amount,labor_cost,material_cost)
 VALUES('cccccccc-0000-0000-0000-00000000000c','bbbbbbbb-0000-0000-0000-00000000000b','客厅面板失灵',0,320,150);
 INSERT INTO maintenance_job(project_id,case_id,staff_id,scheduled_date,planned_minutes)
 VALUES('bbbbbbbb-0000-0000-0000-00000000000b','cccccccc-0000-0000-0000-00000000000c',

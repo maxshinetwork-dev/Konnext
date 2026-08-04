@@ -1916,3 +1916,87 @@ proc_setting 三键 + 采购原因选项表。
 - **售前大表与全公司项目表基本是两套**：7 个在建/交付/维护项目在售前大表里没有来源行。
   但**引用完整性是干净的**（各部门引用的项目号全部真实存在）。正式系统只有一张 `project` 表，不会出现。
 - **昵称重名**：周宅＝0195/0186 · 吴宅＝0199/0210。现实中确实会重名，UI 一直按「编号 + 地址」区分，不影响判断。
+
+
+---
+
+## §22 契约 v0.36（2026-08-04 收工 · 用户「那就开始吧」）
+
+全面回归查出的欠账，这一轮清完。分两步走。
+
+### ① 补 RLS：20 张表一条策略都没有
+
+跑 `db/deploy/10_app_role.sql` 建出降权角色之后一查：`konnext_app` 对这 20 张表有完整
+`SELECT/INSERT/UPDATE/DELETE`，而它们**一条 RLS 策略都没有**。补法分四类：
+
+| 类 | 表 | 怎么管 |
+|---|---|---|
+| **谁都不许碰** | `auth_otp` | 开 RLS 且**不建任何策略**（行级全拒）＋ `REVOKE ALL`（表级收权）。只留 `/api/auth/*` 的 owner 连接。两道都关才叫纵深 |
+| **只增不改的留痕** | `audit_log` · `handoff_log` · `account_reset_log` | 只建 SELECT 与 INSERT 策略，**故意不建 UPDATE/DELETE** —— 能改的留痕不叫留痕，决策管理员也只能看 |
+| **只有决策管理员能写** | `account_department` · `assertion_def` · `money_visibility` · `project_scope_registry` · `table_ownership` · `status_stall_threshold` · `dept_handoff_rule` | 能改 `account_department` 就能给自己加部门＝**提权**；能删 `assertion_def` 就能把**系统自检悄悄关掉** |
+| **读全部、写本部门** | `fx_rate` · `job_checklist` · `public_holiday` · `sm_template` · `procurement` · `travel_estimate` · `dept_handoff` · `notification` · `staff_daily_commitment` | 套通用模板，并补齐 `table_ownership` 登记；`staff_daily_commitment` 带日薪覆盖价，读按薪酬口径限 |
+
+**为什么以前一路全绿**：`INV-SEC-07` 叫「关键表必须开启 RLS」，但它 `WHERE relname IN (…)` **只列了 10 张**。
+已用自动扫全库的 `INV-SEC-09` 兜底，INV-SEC-07 保留但不再是唯一防线。
+
+**29 号回归**把手工验证过的七刀固化：以「售前负责人」身份试探——读别人的验证码（表级 permission denied）·
+删审计日志（DELETE 0）· 改自己的部门（UPDATE 0）· 删改系统自检（0 行）· 塞后门断言 ·
+越权写汇率 / 表归属 / 金额可见口径 / 停留阈值（全部 RLS 拒）。同时验证**该放行的照常放行**（写留痕 INSERT 1）。
+
+### ② 采购与库管落库
+
+契约里 `stock_out` / `stock_return` / `stocktake` / `v_material_stock` / `v_material_custody` /
+`v_stock_ledger` 早就有了，**不重复造**。真正缺的是七件：
+
+1. **`supplier`** —— 原来供应商只是一串 text，删不掉也管不住。现在：名称唯一 · **交期不许填 0**
+   （填 0 → ETA 全算成下单当天 → 从此没有任何一单超期，准时率永远 100% 而且不报错）·
+   **被引用的删不掉**（触发器给中文原句，指路"改用停用"）· **有在途未到单不许停用**
+2. **`material_price_log`** —— 调价「为什么」原来没地方存（`v_material_price_history` 是从
+   `audit_log` 推的，推不出原因）。现在 **原因必填 ≥4 字**、**同价不许记**、**只增不改**
+3. **采购单定格汇率 + 采购原因 + `purchase_order_chase`** —— 汇率一旦定格改不了（触发器）；
+   **已到货不许再改预计到货**（准时率靠它算）
+4. **`purchase_req`** —— ★用户定的核心口径落库：`source` 只有 `warehouse_restock` /
+   `project_demand` 两档，**故意没有 'procurement'**，采购只能「退回库管」且**必须写原因 ≥4 字**
+5. **`rma_case` 四态 + `rma_track` + `rma_chase`** —— 已退回 → 对方已收 → 已发货 → 已接收；
+   **只能往前推、不许跳级、每步必填凭据 ≥4 字**；标已接收**必须填实收数量且不能多于寄回数**
+6. **`goods_receipt_diff`** —— 到货点数对不上：原因必填、没差异不许开单、了结必须写处理结果
+7. **阈值与选项并入既有的 `eng_setting`**（不新建设置表 —— 架构不要过载）：
+   `proc_eta_warn_days` / `proc_fx_stale_days` / `proc_req_sla_hours` / `proc_rma_chase_days` /
+   `wh_ack_hours` / `wh_count_diff_pct` / `proc_reasons`
+
+配套四条断言 `INV-PC-01/02/03` 与 `INV-WH-01`，四个新视图
+（`v_supplier_perf` 准时率现算 · `v_material_price_trend` 每料最近一次 · `v_rma_tracking` · `v_purchase_req_open`）。
+
+### ③ 这一轮撞出来的两个真问题
+
+**★真 bug：集中采购根本标不了到货。**
+`trg_notify_po` 在采购单转「已到货」时发部门交接。集中采购**天然没有项目**（物料是在**出库**那一刻
+才落到项目上的），而 `dept_handoff_rule.po_arrived` 的 `default_scope` 是 `'project'` ——
+于是交接行 `project_id IS NULL` 且 `scope='project'`，被项目归属三态门禁直接拒掉。
+**整条集中采购流程走不通**，而集中采购是采购的大头。已把 `po_arrived` 标成 `company`，
+并在 `fn_notify_dept` 里加了一句说得清的报错（规则要求挂项目却没传项目时，直接告诉你去改哪儿）。
+
+**★更要紧的：这个 bug 一直在把假拦截混进回归计数。**
+到货被拒 → 库存永远是 0 → 后面的出库报「库存 0」、退库报「Tony 名下只有…」——
+**每一条都被 `run_all.sh` 记成"拦截成功"**。18 号、22 号、15 号三个文件实际上什么都没测到，
+测试却一直是绿的。这正是 CLAUDE.md 开头写的那句话在测试台上的翻版：
+> 「报数字前先看报错内容，不只数条数 —— 拦截次数会骗人」
+
+**已把测试台修好**：`run_all.sh` 现在按 **门禁（中文原句）/ 约束权限 / ★其他** 三类分开数，
+**「★其他」不是 0 就把原文逐条打出来**。修完这一刀又顺手查出三个测试文件在引用
+**早就不存在的列**（`maintenance_case.quote_amount` / `cost_bucket`）——那 6 次也是假拦截。
+
+### ④ 三步规矩（v0.36 终值）
+
+| 步 | 结果 |
+|---|---|
+| ① 干净建库 | 零报错 |
+| ② 回归套件 | 31 个文件 · **155 次拦截 ＝ 门禁 110 ＋ 约束/权限 45 ＋ ★其他 0** |
+| ③ 断言 | **81 条全过**（建号后） |
+
+对象数：**70 表 / 90 视图 / 226 策略 / 63 乐观锁触发器**；
+**没开 RLS 的表 0 张 · 非 security_invoker 视图 0 个**。
+
+**新增的一条硬规矩**：新增视图之后调 `SELECT fn_apply_view_conventions();` ——
+一次做完 `security_invoker` 与 `pj_label` 两件事。这一轮我自己就漏了 4 个视图，
+被 `INV-SEC-01` 与 `INV-UI-01` 当场抓出来；靠"记得回去重跑中段那两个 DO 块"迟早还会漏。

@@ -4862,6 +4862,8 @@ BEGIN
          || CASE WHEN r.sla_hours IS NOT NULL
                  THEN E'\n建议 ' || r.sla_hours || ' 小时内处理。' ELSE '' END;
 
+    -- 注：这份 fn_notify_dept 在后面被重定义（按 dept_handoff_rule.default_scope 定 scope），
+    --     真正生效的是那一份，改动请改那边
     INSERT INTO dept_handoff(project_id, event_key, ref_kind, ref_id,
                              from_dept, to_dept, message)
     VALUES (p_project_id, p_event_key, p_ref_kind, p_ref_id,
@@ -7377,7 +7379,11 @@ CREATE TRIGGER hlog_scope BEFORE INSERT OR UPDATE ON handoff_log
 -- 交接规则表标明哪些事件天然是公司级
 ALTER TABLE dept_handoff_rule ADD COLUMN default_scope project_scope NOT NULL DEFAULT 'project';
 UPDATE dept_handoff_rule SET default_scope='company'
- WHERE event_key IN ('stocktake_pending','reorder_alert');
+ WHERE event_key IN ('stocktake_pending','reorder_alert',
+ -- ★v0.36 修（30 号回归撞出来的真 bug）：集中采购到货天然没有项目
+ --   （物料是在【出库】那一刻才落到项目上的）。原来 po_arrived 是 'project'，
+ --   于是集中采购一标到货就被项目归属三态门禁拒掉 —— 整条集中采购流程走不通。
+                      'po_arrived');
 
 -- fn_notify_dept 按规则定态
 CREATE OR REPLACE FUNCTION fn_notify_dept(
@@ -7391,6 +7397,12 @@ BEGIN
     IF r.id IS NULL THEN RETURN NULL; END IF;
     sc := CASE WHEN p_project_id IS NOT NULL THEN 'project'::project_scope
                ELSE r.default_scope END;
+    -- 规则说这事必须挂项目，调用方却没给 —— 与其让通用门禁报一句看不懂的话，不如在这儿说清楚
+    IF p_project_id IS NULL AND sc = 'project' THEN
+        RAISE EXCEPTION '门禁：交接事件「%」按规则必须挂具体项目，但调用时没有项目。'
+                        '如果这类事件本来就可能没有项目（如集中采购），'
+                        '请在 dept_handoff_rule 里把它的 default_scope 改成 company', r.event_label;
+    END IF;
     SELECT code INTO pcode FROM project WHERE id = p_project_id;
 
     body := '【KONNEXT】'
@@ -8192,6 +8204,479 @@ UPDATE assertion_def
                      AND NOT relrowsecurity$q$,
        hint  = '手列清单一定会漏 —— 真正兜底的是 INV-SEC-09（自动扫全库）'
  WHERE code = 'INV-SEC-07';
+
+
+-- =====================================================================
+--  v0.36 ② 采购与库管落库 —— 把 2026-08-04 五十七~六十一轮 UI 定下来的口径写进契约
+--
+--  只补【真的没有】的：契约里 stock_out / stock_return / stocktake / v_material_stock
+--  / v_material_custody / v_stock_ledger 早就有了，不重复造。缺的是这七件：
+--    ① supplier 表          —— 原来供应商只是一串 text，删不掉也管不住
+--    ② material_price_log   —— 调价「为什么」没地方存（audit_log 推导不出原因）
+--    ③ 采购单定格汇率+原因  —— 落地成本＝(单价+运费)×【下单那一刻】的汇率
+--    ④ purchase_req         —— ★要不要采购的指令由库管下达，采购不能自己决定
+--    ⑤ rma 四态跟踪         —— 已退回 → 对方已收 → 已发货 → 已接收
+--    ⑥ goods_receipt_diff   —— 到货点数对不上，按实收入库、差额交采购（不许抹平）
+--    ⑦ 阈值与选项           —— 并入既有的 eng_setting 键值表，不新建设置表
+-- =====================================================================
+
+-- ── ① 供应商（用户：采购里非常重要的是供应商信息）───────────────────
+CREATE TABLE supplier (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         text UNIQUE NOT NULL,
+    contact      text,
+    phone        text,
+    email        text,
+    currency     text NOT NULL DEFAULT 'AUD' CHECK (currency IN ('AUD','USD','CNY')),
+    -- ★交期不许填 0：填 0 → ETA 全算成下单当天 → 从此没有任何一单「超期」，
+    --   准时率永远 100%，而且不会报错
+    lead_days    integer NOT NULL CHECK (lead_days > 0),
+    terms        text,                              -- 结算条件：月结 30 / 预付 30% …
+    address      text,
+    -- ★备注存的是经验：「春节前后要提前两周下单」这种话不写下来，
+    --   就只在一个人脑子里，他一休假就断了
+    note         text,
+    active       boolean NOT NULL DEFAULT true,
+    created_by   text,
+    created_at   timestamptz NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE supplier IS
+  '供应商。★删除受引用保护：被物料挂过 / 开过采购单 / 报过退换的删不掉，只能停用（active=false）——'
+  '真删了历史就成孤儿：物料查不到供应商、采购单查不到是谁家的货，而且不会报错';
+
+-- 物料与采购单挂上供应商（原来的 text 列保留，老数据照旧可读）
+ALTER TABLE material       ADD COLUMN IF NOT EXISTS supplier_id uuid REFERENCES supplier(id);
+ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS supplier_id uuid REFERENCES supplier(id);
+
+CREATE OR REPLACE FUNCTION trg_supplier_guard() RETURNS trigger AS $$
+DECLARE n_mat int; n_po int; n_rma int; n_open int;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        SELECT count(*) INTO n_mat FROM material       WHERE supplier_id = OLD.id;
+        SELECT count(*) INTO n_po  FROM purchase_order WHERE supplier_id = OLD.id;
+        SELECT count(*) INTO n_rma FROM rma_case r JOIN material m ON m.id = r.material_id
+          WHERE m.supplier_id = OLD.id;
+        IF n_mat + n_po + n_rma > 0 THEN
+            RAISE EXCEPTION '门禁：供应商「%」删不掉 —— 还被 % 种物料、% 张采购单、% 条退换引用着。'
+                            '删了这些记录就成孤儿（采购单查不到是谁家的货）。不想再用它请改「停用」，'
+                            '停用的不出现在新下单与新建物料的选项里，历史照旧可查',
+                            OLD.name, n_mat, n_po, n_rma;
+        END IF;
+        RETURN OLD;
+    END IF;
+    -- 停用门禁：还有在途未到的单，停了就没人盯着催货
+    IF TG_OP = 'UPDATE' AND OLD.active AND NOT NEW.active THEN
+        SELECT count(*) INTO n_open FROM purchase_order
+         WHERE supplier_id = NEW.id AND arrived_at IS NULL AND status NOT IN ('cancelled','draft');
+        IF n_open > 0 THEN
+            RAISE EXCEPTION '门禁：供应商「%」还有 % 张在途未到的采购单 —— 停用了就没人盯着催货了。'
+                            '先把货收完或取消采购单，再停用', NEW.name, n_open;
+        END IF;
+    END IF;
+    RETURN NEW;
+END $$ LANGUAGE plpgsql;
+CREATE TRIGGER supplier_guard BEFORE UPDATE OR DELETE ON supplier
+    FOR EACH ROW EXECUTE FUNCTION trg_supplier_guard();
+
+-- ── ② 调价流水：★「为什么」是必填，而且只增不改 ────────────────────
+CREATE TABLE material_price_log (
+    id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    material_id  uuid NOT NULL REFERENCES material(id) ON DELETE CASCADE,
+    currency     text NOT NULL CHECK (currency IN ('AUD','USD','CNY')),
+    price_from   numeric(12,2) NOT NULL CHECK (price_from >= 0),
+    price_to     numeric(12,2) NOT NULL CHECK (price_to  >  0),
+    -- ★同价不许记：没改就别记一笔，调价历史要干净
+    CONSTRAINT ck_price_changed CHECK (price_to <> price_from),
+    -- ★原因必填 ≥4 字：采购价直接决定毛利率。三个月后有人问「这个料怎么贵了 5 块」，
+    --   没有原因就只能猜
+    reason       text NOT NULL CHECK (length(btrim(reason)) >= 4),
+    changed_by   text NOT NULL,
+    changed_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_price_log_mat ON material_price_log(material_id, changed_at DESC);
+COMMENT ON TABLE material_price_log IS
+  '调价流水，只增不改（没有 UPDATE/DELETE 策略）。'
+  '★「距今多久没调过」比「调了多少」更危险：供应商早涨了而我们还按老价算成本，毛利率是假的且不报错';
+
+-- ── ③ 采购单：下单即定格汇率 + 采购原因 + 催货留痕 ──────────────────
+ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS currency  text
+    CHECK (currency IN ('AUD','USD','CNY'));
+-- ★定格：以后汇率再涨再跌这单不动。否则上月买的东西这月成本自己变，账永远对不上
+ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS fx_rate_frozen numeric(12,6)
+    CHECK (fx_rate_frozen > 0);
+ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS reason text;   -- 为什么买（下拉，见 ⑦）
+
+CREATE TABLE purchase_order_chase (
+    id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    po_id        uuid NOT NULL REFERENCES purchase_order(id) ON DELETE CASCADE,
+    chased_at    timestamptz NOT NULL DEFAULT now(),
+    chased_by    text NOT NULL,
+    old_eta      date,
+    new_eta      date,          -- ★只有对方给了新日期才填；没给就留空，ETA 不动
+    note         text
+);
+COMMENT ON TABLE purchase_order_chase IS
+  '催货留痕。★不许随手改 ETA：改了超期天数永远归零，再也看不出哪家总拖 —— 供应商准时率就是这么算的';
+
+CREATE OR REPLACE FUNCTION trg_po_freeze_guard() RETURNS trigger AS $$
+BEGIN
+    -- 汇率一旦定格就不许改（改了历史成本会跟着变）
+    IF OLD.fx_rate_frozen IS NOT NULL
+       AND NEW.fx_rate_frozen IS DISTINCT FROM OLD.fx_rate_frozen THEN
+        RAISE EXCEPTION '门禁：采购单 % 的汇率在下单那一刻已定格（%），不能再改 —— '
+                        '改了这单的落地成本就跟着变，上月买的东西这月成本自己变，账永远对不上',
+                        OLD.po_no, OLD.fx_rate_frozen;
+    END IF;
+    -- 已到货的单不许再改预计到货（准时率靠这个数算）
+    IF OLD.arrived_at IS NOT NULL AND NEW.expected_at IS DISTINCT FROM OLD.expected_at THEN
+        RAISE EXCEPTION '门禁：采购单 % 已于 % 到货，预计到货日不能再改 —— '
+                        '准时率＝到货日 ≤ 预计到货，改了这个数就废了',
+                        OLD.po_no, to_char(OLD.arrived_at,'YYYY-MM-DD');
+    END IF;
+    RETURN NEW;
+END $$ LANGUAGE plpgsql;
+CREATE TRIGGER po_freeze_guard BEFORE UPDATE ON purchase_order
+    FOR EACH ROW EXECUTE FUNCTION trg_po_freeze_guard();
+
+-- ── ④ 采购需求：★指令由库管下达，采购不能自己决定 ──────────────────
+CREATE TABLE purchase_req (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    req_no       text UNIQUE NOT NULL,
+    -- ★来源只有两个，都是"别人给的指令"。故意没有 'procurement' 这一档：
+    --   warehouse_restock = C1 常备件低于红线（系统现算的补货建议）
+    --   project_demand    = 项目 S2 物料款结清后，库管按方案 BOM 提的料
+    source       text NOT NULL CHECK (source IN ('warehouse_restock','project_demand')),
+    project_id   uuid REFERENCES project(id),      -- 补货是公司级，可空
+    material_id  uuid NOT NULL REFERENCES material(id),
+    qty          numeric(12,2) NOT NULL CHECK (qty > 0),
+    why          text NOT NULL,                    -- 为什么要这批货
+    status       text NOT NULL DEFAULT 'pending' CHECK (status IN
+                   ('pending','ordered','returned','cancelled')),
+    po_id        uuid REFERENCES purchase_order(id),
+    -- ★退回库管：采购不能删需求，只能退回并写清楚为什么
+    returned_reason text,
+    qty_changed_reason text,                       -- 改了库管要的数量也必须写原因
+    raised_by    text NOT NULL,
+    raised_at    timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_req_project CHECK (source <> 'project_demand' OR project_id IS NOT NULL),
+    CONSTRAINT ck_req_returned CHECK (status <> 'returned'
+                                      OR length(btrim(COALESCE(returned_reason,''))) >= 4)
+);
+COMMENT ON TABLE purchase_req IS
+  '采购需求。★用户 2026-08-04 定：要不要采购的指令一定由库管下达给采购，采购不能自己决定。'
+  '所以 source 只有 warehouse_restock / project_demand 两档，采购只能「退回库管」并写明原因';
+
+-- ── ⑤ RMA 退换：四步跟踪（用户 2026-08-04 定：这页不是要钱，是跟货）─────
+ALTER TABLE rma_case ADD COLUMN IF NOT EXISTS track_status text
+    NOT NULL DEFAULT 'returned'
+    CHECK (track_status IN ('returned','supplier_received','supplier_shipped','received_back'));
+ALTER TABLE rma_case ADD COLUMN IF NOT EXISTS received_qty numeric(12,2)
+    CHECK (received_qty >= 0);
+ALTER TABLE rma_case ADD COLUMN IF NOT EXISTS received_back_at timestamptz;
+ALTER TABLE rma_case ADD COLUMN IF NOT EXISTS wh_inbound_at    timestamptz;  -- 库管点数上架
+COMMENT ON COLUMN rma_case.track_status IS
+  '四步：returned 已退回 → supplier_received 对方已收 → supplier_shipped 已发货 → received_back 已接收。'
+  '★只能一步一步往前，不许跳级、不许回退；中间两步在等对方，超期要定期短信催';
+
+CREATE TABLE rma_track (
+    id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    rma_id       uuid NOT NULL REFERENCES rma_case(id) ON DELETE CASCADE,
+    to_status    text NOT NULL CHECK (to_status IN
+                   ('returned','supplier_received','supplier_shipped','received_back')),
+    -- ★凭据必填 ≥4 字：口头的「对方说收到了」三个月后翻不出来
+    evidence     text NOT NULL CHECK (length(btrim(evidence)) >= 4),
+    moved_by     text NOT NULL,
+    moved_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE rma_chase (
+    id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    rma_id       uuid NOT NULL REFERENCES rma_case(id) ON DELETE CASCADE,
+    at_status    text NOT NULL,                    -- 在哪一步催的
+    ask          text NOT NULL,                    -- 问的是什么（是否收到 / 是否已发 / 单号）
+    channel      text NOT NULL DEFAULT 'sms' CHECK (channel IN ('sms','email','both')),
+    chased_by    text NOT NULL,
+    chased_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE OR REPLACE FUNCTION trg_rma_track_guard() RETURNS trigger AS $$
+DECLARE ord int; old_ord int; q numeric;
+BEGIN
+    ord     := array_position(ARRAY['returned','supplier_received','supplier_shipped','received_back'],
+                              NEW.track_status);
+    old_ord := array_position(ARRAY['returned','supplier_received','supplier_shipped','received_back'],
+                              OLD.track_status);
+    IF ord IS DISTINCT FROM old_ord THEN
+        IF ord < old_ord THEN
+            RAISE EXCEPTION '门禁：退换单 % 的状态只能往前推，不能退回去 —— 记错了请新开一条并写明原因',
+                            OLD.rma_no;
+        END IF;
+        IF ord > old_ord + 1 THEN
+            RAISE EXCEPTION '门禁：退换单 % 不能跳级 —— 一步一步来（已退回 → 对方已收 → 已发货 → 已接收），'
+                            '中间那步没有凭据，将来对方说没收到就说不清了', OLD.rma_no;
+        END IF;
+        -- 每一步都要有凭据（同事务里先写 rma_track 再改状态，或反过来都行）
+        IF NOT EXISTS (SELECT 1 FROM rma_track t
+                        WHERE t.rma_id = NEW.id AND t.to_status = NEW.track_status) THEN
+            RAISE EXCEPTION '门禁：退换单 % 推进到「%」必须同时写下凭据（对方邮件 / 快递签收 / 发货单号，≥4 字）',
+                            OLD.rma_no, NEW.track_status;
+        END IF;
+    END IF;
+    -- 已接收：必须填实收数量，且不能比寄回去的还多
+    IF NEW.track_status = 'received_back' THEN
+        IF NEW.received_qty IS NULL THEN
+            RAISE EXCEPTION '门禁：退换单 % 标「已接收」必须填实际收到数量 —— 少收了要留痕，别自己抹平',
+                            OLD.rma_no;
+        END IF;
+        IF NEW.received_qty > NEW.qty THEN
+            RAISE EXCEPTION '门禁：退换单 % 收到 % 件，比寄回去的 % 件还多 —— 数错了还是串单了？先查清楚',
+                            OLD.rma_no, NEW.received_qty, NEW.qty;
+        END IF;
+    END IF;
+    RETURN NEW;
+END $$ LANGUAGE plpgsql;
+CREATE TRIGGER rma_track_guard BEFORE UPDATE ON rma_case
+    FOR EACH ROW EXECUTE FUNCTION trg_rma_track_guard();
+
+-- ── ⑥ 到货差异：★按实收入库，差额交采购，库管不许抹平 ───────────────
+CREATE TABLE goods_receipt_diff (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    diff_no      text UNIQUE NOT NULL,
+    po_line_id   uuid NOT NULL REFERENCES purchase_order_line(id) ON DELETE CASCADE,
+    qty_ordered  numeric(12,2) NOT NULL CHECK (qty_ordered > 0),
+    qty_received numeric(12,2) NOT NULL CHECK (qty_received >= 0),
+    kind         text GENERATED ALWAYS AS (
+                   CASE WHEN qty_received < qty_ordered THEN 'short'
+                        WHEN qty_received > qty_ordered THEN 'over'
+                        ELSE 'match' END) STORED,
+    -- ★原因必填 ≥4 字：差多少、什么原因、有没有拍照，写清楚才好找供应商
+    reason       text NOT NULL CHECK (length(btrim(reason)) >= 4),
+    status       text NOT NULL DEFAULT 'notified' CHECK (status IN ('notified','closed')),
+    closed_note  text,
+    closed_at    timestamptz,
+    raised_by    text NOT NULL,
+    raised_at    timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_grd_diff   CHECK (qty_received <> qty_ordered),   -- 没差异就别开单
+    CONSTRAINT ck_grd_closed CHECK (status <> 'closed'
+                                    OR length(btrim(COALESCE(closed_note,''))) >= 4)
+);
+COMMENT ON TABLE goods_receipt_diff IS
+  '到货点数对不上就开一条，交采购去跟供应商。★库管不许把数字改成"刚好"——'
+  '抹平了这批货从此查不出去哪了，而且永远不会报错';
+
+-- ── ⑦ 阈值与选项：并入既有的 eng_setting，不新建设置表（架构不要过载）──
+INSERT INTO eng_setting(key, value_num, note, write_depts) VALUES
+ ('proc_eta_warn_days',   3,  '到货预警：还剩几天到就提醒', ARRAY['procurement']),
+ ('proc_fx_stale_days',   7,  '汇率过期提醒：多少天没更新（拿旧汇率算成本没人敢信）', ARRAY['procurement']),
+ ('proc_req_sla_hours',  72,  '需求 SLA：库管提了多久还没下单算超时', ARRAY['procurement']),
+ ('proc_rma_chase_days',  5,  '退换催确认：一个状态停多久没动静就提醒去催', ARRAY['procurement']),
+ ('wh_ack_hours',        72,  '提货回执超时：出库单多久没回 YES 算异常（没回执＝没人认领这批货）', ARRAY['warehouse']),
+ ('wh_count_diff_pct',    2,  '盘点差异提醒：差异超过这个百分比单独标出来', ARRAY['warehouse'])
+ON CONFLICT (key) DO NOTHING;
+INSERT INTO eng_setting(key, value_text, note, write_depts) VALUES
+ ('proc_reasons',
+  '["集中采购 · 常备件补货","项目采购 · 按方案 BOM","项目采购 · 现场变更追加","急件补料","样品/测试","其他"]',
+  '采购原因下拉：三个月后你得说得清当初为什么买', ARRAY['procurement'])
+ON CONFLICT (key) DO NOTHING;
+
+-- ── 登记：写入归属 + 项目归属（不登记会被 INV-PJ-10 抓）────────────────
+INSERT INTO table_ownership(table_name, write_dept, note) VALUES
+ ('supplier',            ARRAY['procurement'], 'v0.36：采购建立/修改/停用，删除受引用保护'),
+ ('material_price_log',  ARRAY['procurement'], 'v0.36：调价流水，只增不改'),
+ ('purchase_order_chase',ARRAY['procurement'], 'v0.36：催货留痕'),
+ ('purchase_req',        ARRAY['warehouse','procurement'],
+   'v0.36：★库管下指令；采购只能退回并写原因，不能自己新建'),
+ ('rma_track',           ARRAY['procurement'], 'v0.36：退换四步推进留痕'),
+ ('rma_chase',           ARRAY['procurement'], 'v0.36：退换催确认留痕'),
+ ('goods_receipt_diff',  ARRAY['warehouse','procurement'],
+   'v0.36：库管开单，采购跟供应商，最后库管来销')
+ON CONFLICT (table_name) DO NOTHING;
+
+INSERT INTO project_scope_registry(table_name, kind, kind_cn, trace_path, note) VALUES
+ ('supplier',            'company_level','公司级','—','供应商不属于任何单个项目'),
+ ('material_price_log',  'company_level','公司级','—','调价是全公司口径'),
+ ('purchase_order_chase','via_parent','随父单','purchase_order.ref_project_id',NULL),
+ ('purchase_req',        'project_or_scope','项目或公司级','project_id 为空＝集中补货',
+   '★补货是公司级，项目提料必须有项目'),
+ ('rma_track',           'via_parent','随父单','rma_case.project_id',NULL),
+ ('rma_chase',           'via_parent','随父单','rma_case.project_id',NULL),
+ ('goods_receipt_diff',  'via_parent','随父单','purchase_order_line → purchase_order.ref_project_id',
+   '集中采购的差异不属于任何项目')
+ON CONFLICT (table_name) DO NOTHING;
+
+-- ── RLS：新表一律「读全部、写本部门」；两张只增不改的留痕表不给 UPDATE/DELETE ──
+DO $$
+DECLARE t text;
+BEGIN
+    FOREACH t IN ARRAY ARRAY['supplier','purchase_order_chase','purchase_req',
+                             'rma_chase','goods_receipt_diff'] LOOP
+        EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+        EXECUTE format($f$CREATE POLICY %1$s_read ON %1$I FOR SELECT
+            USING (NOT fn_is_field() OR fn_is_admin())$f$, t);
+        EXECUTE format($f$CREATE POLICY %1$s_ins ON %1$I FOR INSERT
+            WITH CHECK (fn_can_write(%1$L))$f$, t);
+        EXECUTE format($f$CREATE POLICY %1$s_upd ON %1$I FOR UPDATE
+            USING (fn_can_write(%1$L)) WITH CHECK (fn_can_write(%1$L))$f$, t);
+        EXECUTE format($f$CREATE POLICY %1$s_del ON %1$I FOR DELETE
+            USING (fn_is_admin())$f$, t);
+    END LOOP;
+    -- 只增不改：调价流水与退换推进留痕，改了就失去意义
+    FOREACH t IN ARRAY ARRAY['material_price_log','rma_track'] LOOP
+        EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+        EXECUTE format($f$CREATE POLICY %1$s_read ON %1$I FOR SELECT
+            USING (NOT fn_is_field() OR fn_is_admin())$f$, t);
+        EXECUTE format($f$CREATE POLICY %1$s_ins ON %1$I FOR INSERT
+            WITH CHECK (fn_can_write(%1$L))$f$, t);
+    END LOOP;
+END $$;
+
+-- ── 视图：采购与库管两条线各自的"看板数据源"（只查视图，不查基表）──────
+CREATE VIEW v_supplier_perf AS
+SELECT s.id, s.name, s.contact, s.phone, s.email, s.currency, s.lead_days, s.terms,
+       s.note, s.active,
+       (SELECT count(*) FROM material m       WHERE m.supplier_id = s.id AND m.active) AS mat_n,
+       (SELECT count(*) FROM purchase_order p WHERE p.supplier_id = s.id
+                                                AND p.arrived_at IS NULL
+                                                AND p.status NOT IN ('cancelled','draft')) AS on_way_n,
+       -- 准时率现算：到货日 ≤ 预计到货就算准时
+       (SELECT count(*) FROM purchase_order p WHERE p.supplier_id = s.id AND p.arrived_at IS NOT NULL) AS done_n,
+       (SELECT count(*) FROM purchase_order p WHERE p.supplier_id = s.id AND p.arrived_at IS NOT NULL
+                                                AND p.arrived_at::date <= p.expected_at) AS ontime_n
+  FROM supplier s;
+COMMENT ON VIEW v_supplier_perf IS '供应商台账 + 准时率现算（到货日 ≤ 预计到货）';
+
+CREATE VIEW v_material_price_trend AS
+-- ★每个物料一行：最近一次调的是什么、涨还是跌、多久没动了 —— 看整体在往哪走。
+--   「距今」越大越危险：供应商早涨了而我们还按老价算成本，毛利率是假的且不报错
+SELECT m.id AS material_id, m.code, m.display_name, m.active,
+       s.name AS supplier_name,
+       CASE WHEN fn_can_see_purchase_price() THEN m.price_aud END AS price_now_aud,
+       l.changed_at AS last_at,
+       CASE WHEN fn_can_see_purchase_price() THEN l.price_from END AS last_from,
+       CASE WHEN fn_can_see_purchase_price() THEN l.price_to   END AS last_to,
+       CASE WHEN fn_can_see_purchase_price() AND l.price_from > 0
+            THEN round((l.price_to - l.price_from) / l.price_from * 100, 1) END AS last_pct,
+       CASE WHEN l.changed_at IS NOT NULL
+            THEN (current_date - l.changed_at::date) END AS days_since,
+       (SELECT count(*) FROM material_price_log x WHERE x.material_id = m.id) AS change_n,
+       l.reason AS last_reason, l.changed_by AS last_by
+  FROM material m
+  LEFT JOIN supplier s ON s.id = m.supplier_id
+  LEFT JOIN LATERAL (SELECT * FROM material_price_log p
+                      WHERE p.material_id = m.id ORDER BY p.changed_at DESC LIMIT 1) l ON true;
+
+CREATE VIEW v_rma_tracking AS
+SELECT r.id, r.rma_no, r.project_id, r.material_id, m.display_name, r.qty,
+       r.track_status, r.received_qty, r.received_back_at, r.wh_inbound_at,
+       s.name AS supplier_name,
+       (SELECT max(moved_at) FROM rma_track t WHERE t.rma_id = r.id) AS last_move_at,
+       (SELECT count(*)      FROM rma_chase c WHERE c.rma_id = r.id) AS chase_n,
+       (SELECT max(chased_at)FROM rma_chase c WHERE c.rma_id = r.id) AS last_chase_at,
+       -- 这一步停了多久（推进或催问，取最近的一次）
+       (current_date - GREATEST(
+          COALESCE((SELECT max(moved_at)  FROM rma_track t WHERE t.rma_id = r.id), r.returned_at),
+          COALESCE((SELECT max(chased_at) FROM rma_chase c WHERE c.rma_id = r.id), r.returned_at)
+        )::date) AS stuck_days
+  FROM rma_case r
+  JOIN material m ON m.id = r.material_id
+  LEFT JOIN supplier s ON s.id = m.supplier_id;
+COMMENT ON VIEW v_rma_tracking IS
+  '退换四步跟踪。stuck_days 超过 proc_rma_chase_days 就该催 —— 不催，货就在海上飘着没人问';
+
+CREATE VIEW v_purchase_req_open AS
+SELECT q.id, q.req_no, q.source, q.project_id, q.material_id, m.display_name,
+       q.qty, q.why, q.status, q.raised_by, q.raised_at,
+       round(EXTRACT(epoch FROM (now() - q.raised_at)) / 3600) AS waiting_hours
+  FROM purchase_req q JOIN material m ON m.id = q.material_id
+ WHERE q.status = 'pending';
+COMMENT ON VIEW v_purchase_req_open IS
+  '待下单需求。★两个来源都是库管给的指令，采购是执行者不是需求方';
+
+-- ── 新增视图的两条硬规矩：security_invoker + 项目标识 ────────────────
+--    以前这两件事是 DDL 中段两个 DO 块干的，新视图写在它们后面就漏掉了
+--    （这一轮我自己就漏了 4 个，被 INV-SEC-01 与 INV-UI-01 当场抓出来）。
+--    收成一个函数：以后任何一轮加完视图，末尾调一次就行，不必记住去哪儿重跑。
+CREATE OR REPLACE FUNCTION fn_apply_view_conventions() RETURNS void AS $conv$
+DECLARE vw record; r record; def text; join_on text; pid_col text; n1 int := 0; n2 int := 0;
+BEGIN
+    -- ① 视图默认按【视图所有者】执行 → RLS 整个被绕过。必须逐个设 security_invoker
+    FOR vw IN SELECT c.relname FROM pg_class c
+              WHERE c.relkind='v' AND c.relnamespace='public'::regnamespace
+                AND (c.reloptions IS NULL OR NOT ('security_invoker=true' = ANY(c.reloptions)))
+    LOOP
+        EXECUTE format('ALTER VIEW %I SET (security_invoker = true)', vw.relname);
+        n1 := n1 + 1;
+    END LOOP;
+    -- ② 带项目列的视图必须带得出【编号 + 地址】——每个部门都管全公司项目
+    FOR r IN
+        SELECT v.table_name AS vname,
+               (SELECT c.column_name FROM information_schema.columns c
+                 WHERE c.table_schema='public' AND c.table_name=v.table_name
+                   AND c.column_name='project_id' LIMIT 1) AS by_id,
+               (SELECT c.column_name FROM information_schema.columns c
+                 WHERE c.table_schema='public' AND c.table_name=v.table_name
+                   AND c.column_name IN ('project_code','code') LIMIT 1) AS by_code
+          FROM information_schema.views v
+         WHERE v.table_schema='public'
+           AND v.table_name <> 'v_project_label'
+           AND NOT EXISTS(SELECT 1 FROM information_schema.columns c
+                           WHERE c.table_schema='public' AND c.table_name=v.table_name
+                             AND c.column_name='pj_label')
+           AND EXISTS(SELECT 1 FROM information_schema.columns c
+                       WHERE c.table_schema='public' AND c.table_name=v.table_name
+                         AND c.column_name IN ('project_id','project_code'))
+         ORDER BY v.table_name
+    LOOP
+        IF r.by_id IS NOT NULL THEN
+            pid_col := r.by_id; join_on := 'lb.project_id = _v.'||quote_ident(pid_col);
+        ELSE
+            pid_col := r.by_code; join_on := 'lb.code = _v.'||quote_ident(pid_col);
+        END IF;
+        def := rtrim(rtrim(pg_get_viewdef(r.vname::regclass, true)), ';');
+        BEGIN
+            EXECUTE format(
+              'CREATE OR REPLACE VIEW %I AS SELECT _v.*, '
+              'lb.display_label AS pj_label, lb.code AS pj_code, '
+              'lb.addr_suburb AS pj_suburb, lb.addr_full AS pj_addr, '
+              'lb.owner_name AS pj_owner '
+              'FROM (%s) _v LEFT JOIN v_project_label lb ON %s', r.vname, def, join_on);
+            n2 := n2 + 1;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE '★ 视图 % 未能自动追加项目标识：%', r.vname, SQLERRM;
+        END;
+    END LOOP;
+    -- 包装之后可能又多出没设 invoker 的视图，再扫一遍
+    FOR vw IN SELECT c.relname FROM pg_class c
+              WHERE c.relkind='v' AND c.relnamespace='public'::regnamespace
+                AND (c.reloptions IS NULL OR NOT ('security_invoker=true' = ANY(c.reloptions)))
+    LOOP EXECUTE format('ALTER VIEW %I SET (security_invoker = true)', vw.relname); END LOOP;
+    RAISE NOTICE 'v0.36 视图规矩：补 security_invoker % 个 · 补项目标识 % 个', n1, n2;
+END $conv$ LANGUAGE plpgsql;
+COMMENT ON FUNCTION fn_apply_view_conventions IS
+  '★新增视图之后调一次。两件事：security_invoker=true（不设＝RLS 被整个绕过）'
+  '与 pj_label 项目标识（编号+地址）。手工去记「重跑 DDL 中段那个 DO 块」一定会漏';
+
+SELECT fn_apply_view_conventions();
+
+-- ── 断言 +4（77 → 81）────────────────────────────────────────────────
+INSERT INTO assertion_def(code,label,severity,query,hint) VALUES
+('INV-PC-01','调价流水必须写原因且新旧价不同','critical',
+ $q$SELECT id, material_id FROM material_price_log
+     WHERE length(btrim(COALESCE(reason,''))) < 4 OR price_to = price_from$q$,
+ '原因门禁被绕过——三个月后没人说得清这个料为什么贵了'),
+('INV-PC-02','采购需求的来源只能是库管补货或项目提料','critical',
+ $q$SELECT req_no, source FROM purchase_req
+     WHERE source NOT IN ('warehouse_restock','project_demand')$q$,
+ '★要不要采购的指令由库管下达，采购不能自己决定'),
+('INV-PC-03','已到货的采购单必须有定格汇率（外币单）','high',
+ $q$SELECT po_no, currency FROM purchase_order
+     WHERE arrived_at IS NOT NULL AND currency IS NOT NULL AND currency <> 'AUD'
+       AND fx_rate_frozen IS NULL$q$,
+ '没定格汇率 → 落地成本会随今天的汇率浮动，上月买的东西这月成本自己变'),
+('INV-WH-01','标了已接收的退换必须有实收数量且不超过寄回数','critical',
+ $q$SELECT rma_no, qty, received_qty FROM rma_case
+     WHERE track_status = 'received_back'
+       AND (received_qty IS NULL OR received_qty > qty)$q$,
+ '实收多于寄回＝数错或串单；实收为空＝少收被悄悄抹平了');
 
 
 -- =====================================================================

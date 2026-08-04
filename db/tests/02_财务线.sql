@@ -80,7 +80,7 @@ SELECT supplier, warranty_months AS 保修月, expires_at::date AS 到期, still
 
 \echo ''
 \echo '=========== 维护：免责单走同一套应收表（$0 Invoice） ==========='
-INSERT INTO maintenance_case(id,project_id,title,quote_amount,labor_cost,material_cost)
+INSERT INTO maintenance_case(id,project_id,title,estimate_amount,labor_cost,material_cost)
 VALUES('f0000000-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-000000000001','客厅面板失灵',0,320,150);
 INSERT INTO payment_milestone(id,project_id,kind,case_id,amount_due,invoice_no,invoice_sent_at)
 VALUES('e0000000-0000-0000-0000-000000000009','aaaaaaaa-0000-0000-0000-000000000001','maintenance',
@@ -89,7 +89,7 @@ VALUES('e0000000-0000-0000-0000-000000000009','aaaaaaaa-0000-0000-0000-000000000
 UPDATE maintenance_case SET status='paid_closed' WHERE id='f0000000-0000-0000-0000-000000000001';
 \echo '--- 填产品缺陷 → 通过，自动判定为免责维保覆盖 ---'
 UPDATE maintenance_case SET fault_cause='product_defect', status='paid_closed' WHERE id='f0000000-0000-0000-0000-000000000001';
-SELECT title, fault_cause AS 归因, is_free_warranty AS 免责覆盖, cost_bucket AS 成本归属 FROM maintenance_case;
+SELECT title, fault_cause AS 归因, is_free_warranty AS 免责覆盖 FROM maintenance_case;
 UPDATE payment_milestone SET status='settled' WHERE id='e0000000-0000-0000-0000-000000000009';
 
 \echo ''

@@ -98,10 +98,10 @@ VALUES('aaaaaaaa-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111
 \echo ''
 \echo '=========== 检查 6：维护单只受理已交付项目 ==========='
 \echo '--- 未交付项目建维护单 → 应拒 ---'
-INSERT INTO maintenance_case(project_id,title,quote_amount)
+INSERT INTO maintenance_case(project_id,title,estimate_amount)
 VALUES('aaaaaaaa-0000-0000-0000-000000000002','施工期客户报修(项目未交付)',800);
 \echo '--- 已交付项目 → 通过 ---'
-INSERT INTO maintenance_case(project_id,title,quote_amount)
+INSERT INTO maintenance_case(project_id,title,estimate_amount)
 VALUES('aaaaaaaa-0000-0000-0000-000000000001','交付后客户报修',800);
 SELECT p.code, m.title FROM maintenance_case m JOIN project p ON p.id=m.project_id;
 
