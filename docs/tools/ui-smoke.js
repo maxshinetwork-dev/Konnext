@@ -54,11 +54,8 @@ const { chromium } = require('playwright');
     const x=document.querySelectorAll('#main tbody tr').length;pjFilter=null;return x;});
   ok(n===11,`财务点「全部」应 11 行（读全部原则），实际 ${n}`);
   await page.screenshot({path:__dirname+'/shot_项目列表.png'});
-  // 运维默认筛选 = 项目维护中
-  await page.evaluate(()=>loginAs('maintenance'));
-  await page.evaluate(()=>go('mt','项目列表'));
-  n=await page.evaluate(()=>document.querySelectorAll('#main tbody tr').length);
-  ok(n===2,`运维默认「项目维护中」应 2 行，实际 ${n}`);
+  // 运维没有「项目列表」页（五十四轮用户定：运维的入口是维护单，不是项目；
+  // 项目信息每张单上都带着，「维保状态」本身就是运维视角的项目清单）
 
   // 4) 悬而未决：升级看板，10 行
   await page.evaluate(()=>loginAs('admin'));
@@ -1827,7 +1824,8 @@ const { chromium } = require('playwright');
   // ═══ 五十四轮：运维线（受理 / 派工 / 三样齐 / 维保双钟 / 订阅 / 设置）═══
   const mt=await page.evaluate(()=>{ const R={}; const l0=OPLOG.length, n0=NOTIF.length, m0=MCASES.length, s0=SCH.length;
     loginAs('maintenance');
-    R.pages=DEPT.mt.pages.length===9&&DEPT.mt.pages.includes('设置')&&DEPT.mt.pages.includes('维保状态');
+    R.pages=DEPT.mt.pages.length===8&&DEPT.mt.pages.includes('设置')&&DEPT.mt.pages.includes('维保状态')
+      &&!DEPT.mt.pages.includes('项目列表');   // 运维没有项目列表页（入口是维护单，不是项目）
     // 总览：五卡 + 卡点现算
     go('mt','总览'); let h=document.getElementById('main').innerHTML;
     R.ov=h.includes('未结案维护单')&&h.includes('已受理未派工')&&h.includes('上门完 · 三样不齐')
@@ -1918,7 +1916,7 @@ const { chromium } = require('playwright');
     R.restored=MCASES.length===m0&&SCH.length===s0;
     return JSON.stringify(R);});
   const M54=JSON.parse(mt);
-  ok(M54.pages,'运维应 9 页（含设置 / 维保状态）');
+  ok(M54.pages,'运维应 8 页（含设置 / 维保状态，且不含项目列表）');
   ok(M54.ov&&M54.ovStuck,'运维总览缺五块 / 卡点表未现算');
   ok(M54.repUnknown,'报修受理未体现【未知】报修时间与"不统计"');
   ok(M54.gPj,'没选项目竟能建维护单（应拦：只受理已交付项目）');
