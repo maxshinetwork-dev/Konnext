@@ -410,8 +410,8 @@ const WHO = {
 const DEPT = {
   presales:{label:'售前', pages:['项目列表','项目状态表','操作日志','设置']},  /* 用户定：大表=项目列表；状态表=比例图+走向图+状态过滤 */
   eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','Site Meeting','安装调试','交付','工程流水账','每日工时管理','文档库','操作日志','设置']},
-  proc:    {label:'采购', pages:['总览','项目列表','物料主表','汇率','采购单','补货建议','调价历史','RMA索赔','操作日志']},
-  wh:      {label:'库管', pages:['总览','项目列表','入库','出库','退库与拒收','RMA登记','盘点','物料在谁手里','库存流水','期初移库','操作日志']},
+  proc:    {label:'采购', pages:['总览','采购需求','采购单','供应商','项目采购状态','物料主表','汇率','调价历史','RMA索赔','操作日志','设置']},
+  wh:      {label:'库管', pages:['总览','项目出库状态','入库','出库','退库与拒收','RMA登记','盘点','物料在谁手里','库存流水','期初移库','操作日志']},
   fin:     {label:'财务', pages:['财务节点','项目列表','项目收款S1-S3','尾款结算S4与Var','运维财务支持','催账和停服','工资数据','项目报销','成本与利润率','操作日志','设置']},
   mt:      {label:'运维', pages:['总览','报修受理','运维派工状态','维护单跟踪','维保状态','业主订阅','操作日志','设置']},
   decision:{label:'决策页', pages:['决策看板','风险看板','悬而未决','账号与权限','系统健康','审计日志','全局参数']},
@@ -481,14 +481,15 @@ function senderMail(k,v){ const nv=(v||'').trim().toLowerCase();
 /* ★ 公司级页面（不属于任何项目）—— 其余一律是项目内页面
    混在一起做全局项目选择器，会让人误以为库存也是分项目的 */
 const COMPANY_PAGES=new Set([
-  'proc/总览','proc/物料主表','proc/汇率','proc/采购单','proc/补货建议','proc/调价历史','proc/RMA索赔',
+  'proc/总览','proc/物料主表','proc/汇率','proc/采购单','proc/采购需求','proc/供应商','proc/调价历史',
+  'proc/RMA索赔','proc/项目采购状态','proc/设置',
   'wh/总览','wh/入库','wh/盘点','wh/库存流水','wh/期初移库','wh/RMA登记',
   'eng/总览','eng/派工排班','eng/每日工时管理','eng/文档库','eng/设置','eng/Site Meeting','eng/安装调试','eng/交付',
   'fin/财务节点','fin/项目收款S1-S3','fin/尾款结算S4与Var','fin/运维财务支持','fin/催账和停服',
   'fin/工资数据','fin/项目报销','fin/成本与利润率','fin/设置','fin/总览','fin/工资','presales/总览','presales/项目列表','presales/项目状态表','presales/设置','mt/总览',
   'presales/操作日志','eng/操作日志','proc/操作日志','wh/操作日志','fin/操作日志','mt/操作日志',
   'mt/报修受理','mt/运维派工状态','mt/维护单跟踪','mt/维保状态','mt/业主订阅','mt/设置',
-  'presales/项目列表','eng/项目列表','proc/项目列表','wh/项目列表','fin/项目列表',
+  'presales/项目列表','eng/项目列表','wh/项目出库状态','fin/项目列表',
   'decision/决策看板','decision/风险看板','decision/悬而未决','decision/账号与权限',
   'decision/系统健康','decision/审计日志','decision/全局参数',
 ]);
@@ -552,7 +553,7 @@ const TODOS=[
  {dept:'fin', ev:'SM3 登记了变更',     from:'工程管理', act:'安排变更估价',            h:31, sla:48, pj:'KX-2026-0142',p:'尾款结算S4与Var'},
  {dept:'fin', ev:'维护上门服务完成',   from:'运维',     act:'按现场归因与工时定价开票', h:6,  sla:24, pj:'KX-2026-0180',p:'运维财务支持'},
  {dept:'proc',ev:'S2 物料款已结清',    from:'财务',     act:'可以下单采购',            h:30, sla:24, pj:'KX-2026-0142',p:'采购单'},
- {dept:'proc',ev:'库存低于红线',       from:'库管',     act:'纳入下次集中采购',        h:12, sla:72, pj:'',p:'补货建议'},
+ {dept:'proc',ev:'库存低于红线',       from:'库管',     act:'纳入下次集中采购',        h:12, sla:72, pj:'',p:'采购需求'},
  {dept:'wh',  ev:'S2 物料款已结清',    from:'财务',     act:'准备收货与出库',          h:30, sla:48, pj:'KX-2026-0142',p:'入库'},
  {dept:'wh',  ev:'有未退料待结算',     from:'库管',     act:'结算未退料并计入 S4 变更', h:52, sla:48, pj:'KX-2026-0142',p:'物料在谁手里'},
  {dept:'eng', ev:'S1 定金已结清',      from:'财务',     act:'安排 SM1 进场',           h:9,  sla:24, pj:'KX-2026-0155',p:'Site Meeting'},
@@ -1101,6 +1102,370 @@ const MCASES=[
   siteRec:{cause:'product_defect',summary:'',signBy:'',signAt:'',photos:3},
   tech:'小陈',site:2,travel:0.5,costHr:34.9,parts:[]},
 ];
+/* ═══ 五十七轮：采购线（用户 2026-08-04 定 · 见决策记录 §19）═══
+   ★这条线是什么（用户原话口径）：
+     · 采购分两块 —— <b>集中采购</b>（公司备货）与 <b>项目采购</b>（某个项目专用）
+     · 采购要回答的就几个问题：<b>什么时候、什么原因、采购什么货、什么汇率、多少钱、多少货</b>，
+       以及 <b>货到了没、什么时候能到</b>
+     · <b>补货建议来自库管</b> —— 采购更像是<b>库管需求指令的执行者</b>
+     · <b>真正的采购在线下进行</b>；这个平台是为了让采购<b>方便决策、执行正确的采购指令</b>
+   所以：本线不做"在线下单"，做的是<b>需求 → 决策 → 指令留痕 → 到货跟踪</b>。 */
+
+/* ── 采购动作（真正的采购在线下做，这里只记指令与跟踪）── */
+let pcQ='', pcF='全部', pcSel=null, pcPick={}, pcDlg=null;
+function pcShow(html){ const b=document.getElementById('dcbox'); b.innerHTML=html;
+  document.getElementById('dcback').style.display='block'; b.style.display='block'; }
+function pcClose(){ pcDlg=null; document.getElementById('dcback').style.display='none';
+  const b=document.getElementById('dcbox'); b.style.display='none'; b.innerHTML=''; }
+/* 勾需求 → 生成采购单（同一供应商的才能合成一张单） */
+function pcPickTog(id){ pcPick[id]=!pcPick[id]; renderAll(); }
+function pcPicked(){ return [...PCREQ,...pcRestock()].filter(r=>pcPick[r.id]&&r.st==='待下单'); }
+function pcPoOpen(){ const sel=pcPicked();
+  if(!sel.length){ uiAlert('先勾要下单的需求 —— 一张采购单只能给<b>一个供应商</b>，勾的物料要来自同一家'); return; }
+  const supps=[...new Set(sel.map(r=>matOf(r.mat).supp))];
+  if(supps.length>1){ uiAlert('门禁：勾中的物料来自 '+supps.length+' 个供应商（'+
+    supps.map(x=>suppOf(x).name).join('、')+'）——\n一张采购单只能开给一家，请分开下单'); return; }
+  const sp=suppOf(supps[0]);
+  const eta=new Date(); eta.setDate(eta.getDate()+(sp.leadDays||14));
+  pcDlg={m:'po',reqs:sel.map(r=>r.id)};
+  const rows=sel.map(r=>{const m=matOf(r.mat);
+    return '<tr><td>'+m.name+'<div class="hint mono">'+m.code+' · '+(m.model||'')+'</div></td>'+
+      '<td class="num"><input class="mono pc-q" data-mat="'+r.mat+'" data-want="'+r.qty+'" style="width:70px" value="'+r.qty+'">'+
+        '<div class="hint">库管要 '+r.qty+'</div></td>'+
+      '<td class="num"><input class="mono pc-u" data-mat="'+r.mat+'" style="width:86px" value="'+m.price+'"></td>'+
+      '<td class="hint">'+(r.src==='项目需求'?'项目 '+pjNick(r.pj):'集中备货')+'</td></tr>';}).join('');
+  pcShow('<div style="font-weight:600;margin-bottom:2px">生成采购单 · '+sp.name+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">★<b>真正的采购在线下做</b>（打电话/发邮件给供应商）——'+
+     '这里只把<b>指令记下来</b>：什么时候、什么原因、买什么、多少、什么汇率、多少钱，然后<b>跟踪什么时候到</b></div>'+
+   '<div class="hint" style="background:var(--bg-elevated);border-radius:6px;padding:7px 10px;margin-bottom:10px">'+
+     '供应商：<b>'+sp.name+'</b>（'+sp.contact+' · '+sp.phone+' · '+sp.email+'）<br>'+
+     '结算：'+sp.terms+' ｜ 币种 <b>'+sp.cur+'</b> ｜ 标准交期 <b>'+sp.leadDays+' 天</b>'+
+     ((x=>x?' ｜ 历史准时率 <b>'+x.pct+'%</b>（'+x.ok+'/'+x.n+'）':'')(suppOnTime(sp.id)))+'</div>'+
+   '<div class="field"><label>采购原因（必选 —— 三个月后你得说得清当初为什么买）</label>'+
+     '<select id="pc-why">'+PC_REASON.map(x=>'<option>'+x+'</option>').join('')+'</select></div>'+
+   '<table><thead><tr><th>物料</th><th style="width:80px;text-align:right">数量</th>'+
+     '<th style="width:96px;text-align:right">单价（'+sp.cur+'）</th><th style="width:110px">来自</th></tr></thead>'+
+     '<tbody>'+rows+'</tbody></table>'+
+   '<div class="split" style="gap:10px;margin-top:10px">'+
+     '<div class="field"><label>汇率（'+sp.cur+' → AUD · <b>下单即定格</b>，以后汇率再变这单不动）</label>'+
+       '<input id="pc-fx" class="mono" style="width:110px" value="'+fxOf(sp.cur).toFixed(4)+'">'+
+       '<div class="hint">当前牌价 '+FXR.at+'（'+FXR.src+'）'+
+         (fxStaleDays()>pcSet.fxStaleDays?' · <b style="color:#b45309">已 '+fxStaleDays()+' 天没更新</b>':'')+'</div></div>'+
+     '<div class="field"><label>预计到货（按标准交期 '+sp.leadDays+' 天带出，可改）</label>'+
+       '<input id="pc-eta" type="date" style="width:100%" value="'+ymd(eta).replace(/\//g,'-')+'"></div></div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="pcPoSave(\''+sp.id+'\')">生成采购单（线下去下单）</button></div>'); }
+function pcPoSave(suppId){ const sp=suppOf(suppId);
+  const v=id=>((document.getElementById(id)||{}).value||'').trim();
+  const fx=parseFloat(v('pc-fx')), eta=v('pc-eta');
+  if(!(fx>0)){ uiAlert('门禁：汇率必须是正数 —— 汇率填错，这单的成本从头错到尾，而且不会报错'); return; }
+  if(!eta){ uiAlert('门禁：必须填预计到货日 —— 不填就没法跟踪"什么时候能到"，工地在等的话更要填'); return; }
+  const lines=[...document.querySelectorAll('.pc-q')].map(q=>{
+    const mat=q.dataset.mat;
+    const u=[...document.querySelectorAll('.pc-u')].find(x=>x.dataset.mat===mat);
+    return {mat,qty:parseFloat(q.value)||0,unit:parseFloat(u&&u.value)||0,
+      want:parseFloat(q.dataset.want)||0};}).filter(l=>l.qty>0);
+  if(!lines.length){ uiAlert('门禁：数量都是 0 —— 没有要买的东西'); return; }
+  /* 改了库管要的数量 → 必须说明（起订量、整箱规格这些现实约束是有的，但不能悄悄改） */
+  const diff=lines.filter(l=>l.qty!==l.want);
+  if(diff.length&&!pcDlg.qtyWhy){
+    uiPrompt('你把库管要的数量改了（'+diff.map(l=>matOf(l.mat).name+' '+l.want+'→'+l.qty).join('、')+
+      '）。为什么？（必填 ≥4 字 · 会告知库管）',w=>{ const why=(w||'').trim();
+      if(why.length<4){ uiAlert('门禁：改了库管要的数量必须说明原因 —— 最小起订量、整箱规格都是正当理由，\n'+
+        '但悄悄改数量，到货点数时对不上就成了谁也说不清的账'); return; }
+      pcDlg.qtyWhy=why; pcPoSave(suppId); });
+    return; }
+  const id='PO-2026-'+String(30+PCPO.length+1);
+  const pj=[...new Set(pcDlg.reqs.map(rid=>(PCREQ.find(r=>r.id===rid)||{}).pj).filter(Boolean))];
+  PCPO.unshift({id,supp:suppId,cur:sp.cur,fx,at:nowTs(),by:WHO[me].name,
+    reason:v('pc-why'),pj:pj.length===1?pj[0]:'',lines,eta:eta.replace(/-/g,'/'),arrivedAt:null,st:'在途'});
+  pcDlg.reqs.forEach(rid=>{const r=PCREQ.find(x=>x.id===rid); if(r){ r.st='已下单'; r.po=id; }});
+  pcPick={};
+  const p=PCPO[0];
+  opLog(p.pj,'生成采购单',id+' · '+sp.name+' · '+v('pc-why')+' · '+poQty(p)+' 件 · '+
+    sp.cur+' '+poAmt(p).toLocaleString()+'（汇率 '+fx+' 定格 → '+A$(poAud(p))+'）· 预计 '+p.eta+' 到'+
+    (pcDlg.qtyWhy?'　★改了库管要的数量：'+pcDlg.qtyWhy:''),['proc','wh']);
+  notifAdd(p.pj,'采购单 '+id+' 已生成（'+sp.name+'）· 预计 '+p.eta+' 到货',
+    [{who:'库管 老张',how:'待办',ok:false}]);
+  pcClose(); renderAll();
+  uiAlert('已生成 '+id+' ✓ 汇率 '+fx+' 已定格\n★ 接下来<b>线下去跟供应商下单</b>；到货由库管入库，这里只跟踪 ETA'); }
+/* ★退回库管：采购不能自己删需求，只能退回，由库管定夺（用户 2026-08-04 定） */
+function pcReqBack(id){ const r=PCREQ.find(x=>x.id===id); if(!r) return;
+  uiPrompt('把这条需求退回库管，为什么？（必填 ≥4 字 —— 库管要照着这句话决定改数量还是撤销）',v=>{
+    const why=(v||'').trim();
+    if(why.length<4){ uiAlert('门禁：退回原因必须写清楚 —— 光退回不说为什么，库管只能再猜一遍'); return; }
+    r.st='已退回'; r.backWhy=why; r.backAt=nowTs(); r.backBy=WHO[me].name;
+    opLog(r.pj,'退回采购需求',id+'（'+matOf(r.mat).name+' ×'+r.qty+'）—— '+why+
+      '　★要不要买是库管的指令，采购不自行增删，只能退回',['proc','wh']);
+    notifAdd(r.pj,'采购退回需求：'+matOf(r.mat).name+' ×'+r.qty+' —— '+why,
+      [{who:'库管 老张',how:'待办',ok:false}]);
+    renderAll(); uiAlert('已退回库管 ✓ 已通知老张 —— 改数量还是撤销由库管定，采购这边不动'); }); }
+/* 到货：采购这边记"到了"，真正入库是库管的动作 */
+function pcArrive(id){ const p=PCPO.find(x=>x.id===id); if(!p) return;
+  if(p.arrivedAt){ uiAlert('这单已于 '+p.arrivedAt+' 标记到货'); return; }
+  uiConfirm('标记 '+id+' 已到货？\n（采购这边只记"到了"；<b>真正入库、点数、记成本是库管的动作</b>）',ok=>{ if(!ok) return;
+    p.arrivedAt=nowTs(); p.st='已到货';
+    opLog(p.pj,'采购单到货',id+' · '+suppOf(p.supp).name+' · 预计 '+p.eta+' → 实际 '+p.arrivedAt.slice(0,10)+
+      (dOf(p.arrivedAt.slice(0,10))>dOf(p.eta)?'（迟 '+(-dayLeft(dOf(p.eta)))+' 天）':'（准时）')+
+      ' —— 等库管入库点数',['proc','wh']);
+    notifAdd(p.pj,'采购单 '+id+' 已到货 · 待库管入库点数',[{who:'库管 老张',how:'待办',ok:false}]);
+    renderAll(); uiAlert('已标记到货 ✓ 已通知库管入库点数'); }); }
+function pcChase(id){ const p=PCPO.find(x=>x.id===id); if(!p) return; const sp=suppOf(p.supp);
+  const late=-dayLeft(dOf(p.eta));
+  pcShow('<div style="font-weight:600;margin-bottom:2px">催货 · '+id+'</div>'+
+   '<div class="hint" style="margin-bottom:8px">'+sp.name+' · 预计 '+p.eta+' 到，已<b style="color:#dc2626">超期 '+late+' 天</b>'+
+     (p.pj?' ｜ 这单是<b>项目采购</b>（'+pjNick(p.pj)+'），工地在等':'')+'</div>'+
+   fromBar('proc','both')+
+   '<div class="field"><label>发给谁</label><div class="hint mono">'+sp.contact+' · '+sp.phone+' · '+sp.email+'</div></div>'+
+   '<div class="field"><label>内容</label><textarea id="pc-msg" style="width:100%;min-height:90px;font-size:12px">'+
+     'Hi '+sp.contact+',\n\nFollowing up on PO '+id+' (ETA '+p.eta+'), which is now '+late+
+     ' day(s) overdue.\nCould you confirm the current status and a revised delivery date?\n\nThanks,\n'+
+     WHO[me].name+' · KONNEXT</textarea></div>'+
+   '<div class="field"><label>新的预计到货（对方给了新日期就改这里）</label>'+
+     '<input id="pc-neweta" type="date" style="width:180px"></div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="pcChaseSend(\''+id+'\')">发出催货</button></div>'); }
+function pcChaseSend(id){ const p=PCPO.find(x=>x.id===id); if(!p) return;
+  const ne=((document.getElementById('pc-neweta')||{}).value||'').trim();
+  const old=p.eta;
+  if(ne) p.eta=ne.replace(/-/g,'/');
+  (p.chase=p.chase||[]).push({at:nowTs(),by:WHO[me].name,oldEta:old,newEta:p.eta});
+  opLog(p.pj,'催货',id+' · '+suppOf(p.supp).name+' · 第 '+p.chase.length+' 次'+
+    (ne?' · 预计到货 '+old+' → '+p.eta+'（对方给的新日期）':'（对方还没给新日期，ETA 不动）')+
+    ' · 发件 '+fromTxt('proc','both'),['proc']);
+  notifAdd(p.pj,'催货：'+id+' → '+suppOf(p.supp).name,
+    [{who:suppOf(p.supp).contact,how:'邮件',ok:true}]);
+  pcClose(); renderAll();
+  uiAlert('已发出催货 ✓'+(ne?'\n预计到货已更新为 '+p.eta+'（改的是对方给的新日期，原日期留在日志里）'
+    :'\n对方还没给新日期，ETA 不动 —— 不许拿"大概还要几天"去改 ETA，那样超期天数永远归零')); }
+function pcPoCancel(id){ const p=PCPO.find(x=>x.id===id); if(!p) return;
+  if(p.arrivedAt){ uiAlert('门禁：已到货的采购单不能取消 —— 货都到了，要退走退货流程（库管拒收/退库）'); return; }
+  uiPrompt('取消采购单 '+id+'，原因（必填 ≥4 字）：',r=>{ const why=(r||'').trim();
+    if(why.length<4){ uiAlert('门禁：取消原因必须写清楚 —— 单据凭空消失以后没人说得清'); return; }
+    p.st='已取消'; p.cancelWhy=why;
+    PCREQ.filter(x=>x.po===id).forEach(x=>{ x.st='待下单'; x.po=null; });
+    opLog(p.pj,'取消采购单',id+' —— '+why+'（相关需求已退回「待下单」）',['proc','wh']);
+    renderAll(); uiAlert('已取消 '+id+'；相关需求已退回「待下单」，可以重新安排'); }); }
+/* 汇率更新（下单时定格用的是当时这个数） */
+function fxSave(){ const v=id=>parseFloat(((document.getElementById(id)||{}).value||'').trim());
+  const c=v('fx-cny'), u=v('fx-usd');
+  if(!(c>0)||!(u>0)){ uiAlert('门禁：汇率必须是正数 —— 填错了采购成本从头错到尾，而且不会报错'); return; }
+  const oc=FXR.cny, ou=FXR.usd;
+  FXR.cny=c; FXR.usd=u; FXR.at=nowTs(); FXR.src='手工更新（'+WHO[me].name+'）';
+  opLog('','更新汇率','CNY→AUD '+oc+' → '+c+' ｜ USD→AUD '+ou+' → '+u+
+    '（只影响<b>之后</b>新下的单；已下单的汇率已定格不动）',['proc','fin']);
+  renderAll(); uiAlert('汇率已更新 ✓ 只影响之后新下的单 —— 已下单的那些汇率是定格的，不会跟着变'); }
+/* 物料主表：改价必须写原因（调价直接改毛利率） */
+function matPrice(code){ const m=matOf(code);
+  uiPrompt('「'+m.name+'」新单价（'+m.cur+'，当前 '+m.price+'）：',v=>{ const nv=parseFloat(v);
+    if(!(nv>0)){ uiAlert('门禁：单价必须是正数'); return; }
+    if(nv===m.price){ return; }
+    uiPrompt('为什么调价？（必填 ≥4 字，进调价历史）',why=>{ const w=(why||'').trim();
+      if(w.length<4){ uiAlert('门禁：调价原因必须写清楚 —— 采购价直接决定毛利率，改了没人知道为什么最要命'); return; }
+      PCPRICE.unshift({at:todayS(),mat:code,cur:m.cur,from:m.price,to:nv,by:WHO[me].name,why:w});
+      const old=m.price; m.price=nv;
+      opLog('','调整采购价','「'+m.name+'」'+m.cur+' '+old+' → '+nv+
+        '（落地 '+A$(matAud(m))+'）—— '+w,['proc','fin']);
+      renderAll(); uiAlert('已调价并记入调价历史 ✓ '+m.cur+' '+old+' → '+nv); }); }); }
+function pcSetVal(k,label,v){ const nv=parseInt(v,10);
+  if(!(nv>0)){ uiAlert('门禁：请填正整数 —— 填 0 等于把这条提醒关掉，系统不会再提醒你'); renderAll(); return; }
+  const old=pcSet[k]; if(old===nv){ renderAll(); return; }
+  pcSet[k]=nv; opLog('','修改采购设置','「'+label+'」'+old+' → '+nv,['proc']);
+  renderAll(); uiAlert('已保存：'+label+' '+old+' → '+nv); }
+function pcReasonAdd(){ const el=document.getElementById('pc-reason-new'); const v=((el&&el.value)||'').trim();
+  if(!v){ renderAll(); return; }
+  if(PC_REASON.includes(v)){ uiAlert('门禁：「'+v+'」已经在采购原因里了'); return; }
+  PC_REASON.push(v); opLog('','新增采购原因选项','「'+v+'」',['proc']);
+  renderAll(); uiAlert('已新增：'+v); }
+function pcReasonDel(i){ const v=PC_REASON[i];
+  if(v==='其他'){ uiAlert('门禁：「其他」是兜底项，删不得'); return; }
+  if(PCPO.some(p=>p.reason===v)){ uiAlert('门禁：已经有采购单用了「'+v+'」—— 删掉历史记录就成孤儿'); return; }
+  uiConfirm('删除采购原因「'+v+'」？',ok=>{ if(!ok) return;
+    PC_REASON.splice(i,1); opLog('','删除采购原因选项','「'+v+'」',['proc']);
+    renderAll(); uiAlert('已删除：'+v); }); }
+/* 供应商维护 */
+function suppEdit(id){ const x=suppOf(id);
+  pcDlg={m:'supp',id};
+  pcShow('<div style="font-weight:600;margin-bottom:10px">供应商 · '+x.name+'</div>'+
+   '<div class="split" style="gap:10px">'+
+   '<div class="field"><label>联系人</label><input id="sp-c" value="'+(x.contact||'')+'" style="width:100%"></div>'+
+   '<div class="field"><label>电话</label><input id="sp-p" value="'+(x.phone||'')+'" style="width:100%"></div></div>'+
+   '<div class="field"><label>邮箱（催货、对账都发这里）</label><input id="sp-e" value="'+(x.email||'')+'" style="width:100%"></div>'+
+   '<div class="split" style="gap:10px">'+
+   '<div class="field"><label>结算币种</label><select id="sp-cur">'+
+     ['AUD','USD','CNY'].map(c=>'<option'+(x.cur===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>'+
+   '<div class="field"><label>标准交期（天 —— 下单时按它带出预计到货）</label>'+
+     '<input id="sp-l" class="mono" value="'+(x.leadDays||'')+'" style="width:100%"></div></div>'+
+   '<div class="field"><label>结算条件</label><input id="sp-t" value="'+(x.terms||'')+'" style="width:100%"></div>'+
+   '<div class="field"><label>备注（交期脾气、议价空间、旺季提前量…—— 这些经验不写下来就只在一个人脑子里）</label>'+
+     '<textarea id="sp-n" style="width:100%;min-height:70px;font-size:12px">'+(x.note||'')+'</textarea></div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="suppSave(\''+id+'\')">保存</button></div>'); }
+function suppSave(id){ const x=suppOf(id); const v=i=>((document.getElementById(i)||{}).value||'').trim();
+  const em=v('sp-e');
+  if(em&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){
+    uiAlert('门禁：邮箱格式不对 —— 催货和对账都发这个地址，填错了发出去石沉大海，系统不会报错'); return; }
+  const ld=parseInt(v('sp-l'),10);
+  if(!(ld>0)){ uiAlert('门禁：标准交期必须是正整数天 —— 下单时的预计到货按它算'); return; }
+  const before=x.contact+'/'+x.phone+'/'+x.email+'/'+x.cur+'/'+x.leadDays;
+  Object.assign(x,{contact:v('sp-c'),phone:v('sp-p'),email:em,cur:v('sp-cur'),leadDays:ld,
+    terms:v('sp-t'),note:v('sp-n')});
+  opLog('','修改供应商信息','「'+x.name+'」'+before+' → '+
+    x.contact+'/'+x.phone+'/'+x.email+'/'+x.cur+'/'+x.leadDays+' 天',['proc']);
+  pcClose(); renderAll(); uiAlert('已保存供应商信息 ✓'); }
+
+/* ── 供应商（用户 2026-08-04 补：采购里非常重要的是供应商信息）── */
+let SUPP=[
+ {id:'S-KNX',name:'KNX Asia Trading',contact:'Alex Chan',phone:'+852 9123 4567',email:'alex@knxasia.com',
+  cur:'USD',terms:'预付 30% / 发货前结清',leadDays:28,addr:'Hong Kong',
+  note:'KNX 主线品牌总代，交期稳；春节前后要提前两周下单',active:true},
+ {id:'S-CBUS',name:'Clipsal / Schneider AU',contact:'Megan Lee',phone:'02 9876 5432',email:'orders@clipsal.com.au',
+  cur:'AUD',terms:'月结 30 天',leadDays:10,addr:'Sydney NSW',
+  note:'本地代理，AUD 直结无汇率风险；急件可加急 3 天',active:true},
+ {id:'S-CN',name:'深圳智联电子',contact:'王经理',phone:'+86 138 0000 1111',email:'wang@zhilian.cn',
+  cur:'CNY',terms:'全额预付',leadDays:35,addr:'深圳',
+  note:'性价比高但交期波动大；走海运约 25 天，空运贵 3 倍',active:true},
+ {id:'S-GEN',name:'Local Cable Supplies',contact:'Tom',phone:'02 9000 1234',email:'sales@localcable.com.au',
+  cur:'AUD',terms:'货到付款',leadDays:3,addr:'Sydney NSW',note:'线材耗材，随叫随到',active:true},
+];
+const suppOf=id=>SUPP.find(x=>x.id===id)||{};
+
+/* ── 汇率（下单那一刻定格进采购单；这里是"当前牌价"）── */
+let FXR={cny:0.2100, usd:1.5200, at:'2026/08/03 08:00', src:'Google Finance'};
+const fxOf=cur=>cur==='CNY'?FXR.cny:cur==='USD'?FXR.usd:1;
+const fxStaleDays=()=>Math.floor((new Date()-dOf(FXR.at.slice(0,10)))/864e5);
+
+/* ── 物料主表（采购维护：品类/协议/供应商/三币种价/保修/C1C2/红线）── */
+let MATS=[
+ {code:'M-KNX-P4W',name:'KNX 四联面板（白）',cat:'panel',proto:'knx',supp:'S-KNX',model:'BE-TA5504.G1',
+  cls:'C1',reorder:20,cur:'USD',price:86.00,freight:4.20,marginPct:0.35,warrantyM:24,active:true},
+ {code:'M-KNX-DIM4',name:'KNX 调光模块 4 路',cat:'module',proto:'knx',supp:'S-KNX',model:'DIM-4',
+  cls:'C1',reorder:10,cur:'USD',price:142.00,freight:6.00,marginPct:0.35,warrantyM:24,active:true},
+ {code:'M-KNX-GW',name:'KNX IP 网关',cat:'gateway',proto:'knx',supp:'S-KNX',model:'GW-200',
+  cls:'C2',reorder:null,cur:'USD',price:310.00,freight:8.00,marginPct:0.30,warrantyM:24,active:true},
+ {code:'M-CB-SW6',name:'C-Bus 六键开关',cat:'panel',proto:'cbus',supp:'S-CBUS',model:'5086NL',
+  cls:'C1',reorder:15,cur:'AUD',price:198.00,freight:0,marginPct:0.28,warrantyM:24,active:true},
+ {code:'M-SEN-PIR',name:'红外感应器（吸顶）',cat:'sensor',proto:'knx',supp:'S-CN',model:'ZL-PIR-C',
+  cls:'C1',reorder:30,cur:'CNY',price:168.00,freight:12.00,marginPct:0.45,warrantyM:12,active:true},
+ {code:'M-CBL-CAT6',name:'网线 CAT6（305m/箱）',cat:'cable',proto:'none',supp:'S-GEN',model:'CAT6-305',
+  cls:'C1',reorder:8,cur:'AUD',price:210.00,freight:0,marginPct:0.20,warrantyM:0,active:true},
+ {code:'M-CBL-KNX',name:'KNX 总线（100m/卷）',cat:'cable',proto:'knx',supp:'S-GEN',model:'KNX-BUS-100',
+  cls:'C1',reorder:12,cur:'AUD',price:96.00,freight:0,marginPct:0.22,warrantyM:0,active:true},
+];
+const matOf=code=>MATS.find(x=>x.code===code)||{};
+/* 落地成本（AUD）＝（单价 + 运费）× 汇率 —— 采购价与毛利率只有采购与管理层能看 */
+const matAud=m=>Math.round(((m.price||0)+(m.freight||0))*fxOf(m.cur)*100)/100;
+
+/* ── 库存（库管的数，采购只读）——补货建议就是从这儿来的 ── */
+const STOCKQ={'M-KNX-P4W':12,'M-KNX-DIM4':4,'M-KNX-GW':3,'M-CB-SW6':22,
+  'M-SEN-PIR':9,'M-CBL-CAT6':3,'M-CBL-KNX':14};
+const stockOf=c=>STOCKQ[c]==null?0:STOCKQ[c];
+
+/* ── 采购需求：两个来源都是"别人给的指令"，采购是执行者 ──
+   ①库管补货建议：C1 类库存低于红线，自动现算出来（不用人填）
+   ②项目物料需求：项目 S2 物料款结清后，按方案 BOM 提出 */
+let PCREQ=[
+ {id:'RQ-0142-01',src:'项目需求',pj:'KX-2026-0142',mat:'M-KNX-P4W',qty:24,
+  why:'S2 物料款已结清 · 按方案 BOM 提料',at:'2026/07/30 10:40',by:'库管 老张',st:'待下单'},
+ {id:'RQ-0142-02',src:'项目需求',pj:'KX-2026-0142',mat:'M-KNX-DIM4',qty:6,
+  why:'S2 物料款已结清 · 按方案 BOM 提料',at:'2026/07/30 10:40',by:'库管 老张',st:'待下单'},
+ {id:'RQ-0188-01',src:'项目需求',pj:'KX-2026-0188',mat:'M-CB-SW6',qty:18,
+  why:'SM3 现场变更加 4 路灯控 · 追加提料',at:'2026/08/02 09:15',by:'库管 老张',st:'待下单'},
+];
+/* 库管补货建议＝现算（C1 且低于红线），不写死也不用人维护 */
+function pcRestock(){ return MATS.filter(m=>m.active&&m.cls==='C1'&&m.reorder!=null&&stockOf(m.code)<m.reorder)
+  .map(m=>({id:'RS-'+m.code,src:'库管补货',pj:'',mat:m.code,
+    qty:Math.max(m.reorder*2-stockOf(m.code),m.reorder),
+    why:'库存 '+stockOf(m.code)+' 低于红线 '+m.reorder+'（C1 常备件）—— 库管建议补到 '+(m.reorder*2),
+    at:'现算',by:'库管（系统现算）',
+    st:PCPO.some(p=>p.lines.some(l=>l.mat===m.code)&&p.st!=='已取消'&&!p.arrivedAt)?'已下单':'待下单'})); }
+/* 待办口径：待下单的需求（两个来源合起来） */
+const pcReqAll=()=>[...PCREQ.filter(r=>r.st==='待下单'),...pcRestock().filter(r=>r.st==='待下单')];
+
+/* ── 采购单：指令留痕 + 到货跟踪（真正的采购在线下做）──
+   下单那一刻把<汇率>定格进单子：以后汇率再变，这单的成本不动 */
+let PCPO=[
+ {id:'PO-2026-031',supp:'S-KNX',cur:'USD',fx:1.5180,at:'2026/07/12 15:20',by:'老张',
+  reason:'集中采购 · KNX 常备件补货（面板/调光模块低于红线）',pj:'',
+  lines:[{mat:'M-KNX-P4W',qty:40,unit:86.00},{mat:'M-KNX-DIM4',qty:20,unit:142.00}],
+  eta:'2026/08/09',arrivedAt:null,st:'在途'},
+ {id:'PO-2026-032',supp:'S-CN',cur:'CNY',fx:0.2085,at:'2026/06/28 11:05',by:'老张',
+  reason:'集中采购 · 感应器备货（海运 35 天）',pj:'',
+  lines:[{mat:'M-SEN-PIR',qty:60,unit:168.00}],
+  eta:'2026/08/01',arrivedAt:null,st:'在途'},
+ {id:'PO-2026-033',supp:'S-CBUS',cur:'AUD',fx:1,at:'2026/07/25 09:40',by:'老张',
+  reason:'项目采购 · 林宅 SM3 变更追加 4 路灯控',pj:'KX-2026-0188',
+  lines:[{mat:'M-CB-SW6',qty:18,unit:198.00}],
+  eta:'2026/08/05',arrivedAt:null,st:'在途'},
+ {id:'PO-2026-030',supp:'S-GEN',cur:'AUD',fx:1,at:'2026/07/08 14:00',by:'老张',
+  reason:'集中采购 · 线材耗材常备',pj:'',
+  lines:[{mat:'M-CBL-CAT6',qty:20,unit:210.00},{mat:'M-CBL-KNX',qty:30,unit:96.00}],
+  eta:'2026/07/11',arrivedAt:'2026/07/11 10:20',st:'已到货'},
+];
+const poAmt=p=>p.lines.reduce((a,l)=>a+l.qty*l.unit,0);
+const poAud=p=>Math.round(poAmt(p)*p.fx*100)/100;
+const poQty=p=>p.lines.reduce((a,l)=>a+l.qty,0);
+/* 到货状态：已到 / 在途（还剩几天）/ ★超期未到（ETA 过了还没来）—— 超期是要催的 */
+function poEta(p){ if(p.arrivedAt) return {k:'已到货',cls:'p-green',d:null};
+  if(p.st==='已取消') return {k:'已取消',cls:'p-grey',d:null};
+  const L=dayLeft(dOf(p.eta));
+  return L<0?{k:'超期未到',cls:'p-red',d:L}:{k:'在途',cls:'p-cyan',d:L}; }
+const poLate=()=>PCPO.filter(p=>!p.arrivedAt&&p.st!=='已取消'&&dayLeft(dOf(p.eta))<0);
+const poOnWay=()=>PCPO.filter(p=>!p.arrivedAt&&p.st!=='已取消');
+/* 供应商准时率（现算：到货日 ≤ ETA 算准时） */
+function suppOnTime(id){ const done=PCPO.filter(p=>p.supp===id&&p.arrivedAt);
+  if(!done.length) return null;
+  const ok=done.filter(p=>dOf(p.arrivedAt.slice(0,10))<=dOf(p.eta)).length;
+  return {n:done.length,ok,pct:Math.round(ok/done.length*100)}; }
+
+/* ── 调价历史：供应商调价直接改毛利率，必须留痕 ── */
+let PCPRICE=[
+ {at:'2026/07/01',mat:'M-KNX-P4W',cur:'USD',from:82.00,to:86.00,by:'老张',why:'供应商年度调价 +4.9%（已确认函）'},
+ {at:'2026/05/12',mat:'M-SEN-PIR',cur:'CNY',from:180.00,to:168.00,by:'老张',why:'量大议价，单价下调'},
+];
+/* ── RMA 索赔：承接运维现场归因＝产品缺陷、且物料还在保修期内的 ── */
+let PCRMA=[
+ {id:'RMA-0142-01',mat:'M-KNX-GW',qty:1,supp:'S-KNX',pj:'KX-2026-0142',from:'维护单 MT-0142-01',
+  cause:'product_defect',at:'2026/07/09',st:'索赔中',cost:210.00,note:'网关固件故障，原件已回传供应商'},
+];
+
+/* ── 采购设置：阈值与下拉都可改 ── */
+let pcSet={etaWarnDays:3, fxStaleDays:7, reqSlaH:72};
+let PC_REASON=['集中采购 · 常备件补货','项目采购 · 按方案 BOM','项目采购 · 现场变更追加','急件补料','样品/测试','其他'];
+
+/* ── 采购卡点（现算派生）── */
+function pcStuckRows(){ const out=[];
+  const late=poLate();
+  late.forEach(p=>out.push({pj:p.pj,what:'采购单 '+p.id+' 超期未到 '+(-dayLeft(dOf(p.eta)))+' 天',
+    why:'供应商 '+suppOf(p.supp).name+' · 预计 '+p.eta+' 到，现在还没来 —— 该催了'+
+      (p.pj?'；这单是项目采购，工地在等':''),h:-dayLeft(dOf(p.eta))*24,p:'采购单'}));
+  pcReqAll().forEach(r=>{const m=matOf(r.mat);
+    out.push({pj:r.pj,what:'需求待下单：'+m.name+' ×'+r.qty,
+      why:r.src+' —— '+r.why,h:r.src==='项目需求'?48:12,p:'采购需求'});});
+  if(fxStaleDays()>pcSet.fxStaleDays)
+    out.push({pj:'',what:'汇率已 '+fxStaleDays()+' 天没更新',
+      why:'汇率过期会让采购成本算错 —— 下单前先更新（超过 '+pcSet.fxStaleDays+' 天就提醒）',h:fxStaleDays()*24,p:'汇率'});
+  PCRMA.filter(r=>r.st==='索赔中').forEach(r=>out.push({pj:r.pj,what:'RMA 索赔中：'+matOf(r.mat).name,
+    why:'来自 '+r.from+' · 产品缺陷 · 向 '+suppOf(r.supp).name+' 索赔，赔回后冲减维护成本',h:24,p:'RMA索赔'}));
+  return out.sort((a,b)=>(b.h||0)-(a.h||0)); }
+
+/* ── 项目采购状态（只读）：每个在建项目走到哪一步 ── */
+function pcProjRows(){ return PROJECTS.filter(p=>['施工中','项目交付'].includes(p.status)).map(p=>{
+  const f=finOf(p.code); const s2=f?f.ms[1]:null;
+  const paid=!!(s2&&s2.settled);
+  const reqs=PCREQ.filter(r=>r.pj===p.code);
+  const pos=PCPO.filter(x=>x.pj===p.code&&x.st!=='已取消');
+  const arrived=pos.filter(x=>x.arrivedAt);
+  return {p,paid,s2At:paid?(s2.recv&&s2.recv.length?s2.recv[s2.recv.length-1].at:'已结清'):null,
+    reqs,pos,arrived,
+    step: !paid?'等 S2 物料款结清'
+      :(!reqs.length?'等库管提料'
+      :(!pos.length?'待下单'
+      :(arrived.length<pos.length?'在途':'已到货 · 待出库'))) };}); }
+
 /* ═══ 五十四轮：运维线（用户 2026-08-03 定 · 蓝图见决策记录 §18）═══
    这条线在干什么：工程把房子交出去，运维管房子交出去<以后>的每一次麻烦。
    主线一条：客户报修 → 派人上门 → 现场把事实说清楚 → 财务定价开票 → 结案。
@@ -5928,8 +6293,411 @@ ${helpNote(`<b>这页怎么用</b>：这里的四个数是全公司工程口径�
 <div class="panel" style="max-width:560px"><div class="panel-head">改动留痕</div>
  <div class="panel-body"><div class="hint">本页所有改动自动写入左栏「操作日志」—— 什么时间、谁、把哪个阈值从多少改成多少 · 只读不可删。</div>
   <button class="btn" onclick="go('eng','操作日志')">打开操作日志 →</button></div></div>`,
-'proc/项目列表':()=>projectList('proc'),
-'wh/项目列表':()=>projectList('wh'),
+'proc/总览':()=>{
+ const reqs=pcReqAll(); const way=poOnWay(); const late=poLate();
+ const rows=pcStuckRows();
+ const pj=reqs.filter(r=>r.src==='项目需求').length, ct=reqs.length-pj;
+ return `<h2>采购总览</h2>
+ <div class="page-sub">采购是<b>库管需求指令的执行者</b> —— 这页看：有什么要买、买了的到没到、汇率还新不新</div>
+ ${ops([['去处理 →','—','跳到对应页面并只显示那一条']])}
+ ${helpNote(`<b>这条线在干什么</b>：采购要回答的就几个问题——<b>什么时候、什么原因、买什么货、
+   什么汇率、多少钱、多少货</b>，以及<b>货到了没、什么时候能到</b>。
+   需求不是采购自己想出来的：<b>集中采购</b>来自库管的补货建议（C1 常备件低于红线，系统现算），
+   <b>项目采购</b>来自项目 S2 物料款结清后库管按方案提的料。<b>采购是执行者，不是需求方。</b>`)}
+ ${helpNote(`★<b>真正的采购在线下做</b>（打电话、发邮件给供应商）。这个平台不下单，
+   它做的是让你<b>方便决策、执行正确的指令</b>：该买什么、找哪家、什么价、什么汇率算下来多少钱、
+   什么时候能到、超期了该催谁。<b>指令留痕 + 到货跟踪</b>，就这两件事。`)}
+ <div class="cards">
+  <div class="card"><div class="card-label">待下单需求</div>
+    <div class="card-value"${reqs.length?' style="color:var(--warning)"':''}>${reqs.length}</div>
+    <div class="card-foot">项目采购 ${pj} · 集中备货 ${ct}<br>都来自库管，不是采购自己提的</div></div>
+  <div class="card"><div class="card-label">在途未到</div><div class="card-value">${way.length}</div>
+    <div class="card-foot">最近一批预计 ${way.length?way.map(p=>p.eta).sort()[0]:'—'} 到</div></div>
+  <div class="card"><div class="card-label">★超期未到</div>
+    <div class="card-value"${late.length?' style="color:var(--breach)"':''}>${late.length}</div>
+    <div class="card-foot">${late.length?'该催了 —— 项目采购超期工地在等':'都在计划内 ✓'}</div></div>
+  <div class="card"><div class="card-label">汇率</div>
+    <div class="card-value" style="font-size:var(--fs-lg)">${fxStaleDays()} 天前</div>
+    <div class="card-foot">CNY ${FXR.cny} · USD ${FXR.usd}<br>${fxStaleDays()>pcSet.fxStaleDays?'<b style="color:var(--warning)">该更新了</b>':'还新鲜'}</div></div>
+  <div class="card"><div class="card-label">RMA 索赔中</div><div class="card-value">${PCRMA.filter(r=>r.st==='索赔中').length}</div>
+    <div class="card-foot">产品缺陷向供应商索赔 · 赔回冲减维护成本</div></div>
+ </div>
+ <div class="panel"><div class="panel-head">卡点与异常 <span class="muted" style="font-weight:400">按卡了多久排 · 全部现算</span></div>
+  <table><thead><tr><th>项目编号</th><th>项目 · 地址</th><th>卡点</th><th>卡在哪 / 影响什么</th><th>卡了多久</th><th></th></tr></thead>
+  <tbody>${rows.map(r=>`<tr>
+    <td>${r.pj?`<b class="mono" style="color:var(--accent)">${r.pj}</b>`:'<span class="pill p-grey">公司级</span>'}</td>
+    <td>${r.pj?`<b>${pjNick(r.pj)}</b><div class="hint">📍 ${pjAddr(r.pj)}</div>`:'<span class="hint">集中采购 · 不属于单个项目</span>'}</td>
+    <td><b>${r.what}</b></td><td class="hint">${r.why}</td>
+    <td class="num">${r.h?Math.round(r.h/24)+' 天':'—'}</td>
+    <td><button class="btn" onclick="goPj('proc','${r.p}','${r.pj}')">去处理 →</button></td></tr>`).join('')
+    ||'<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">此刻没有卡点</td></tr>'}</tbody></table>
+ </div>`;
+},
+'proc/采购需求':()=>{
+ const all=[...PCREQ,...pcRestock()];
+ const rows=all.filter(r=>(pcF==='全部'||r.src===pcF)&&(!pcQ||
+   `${r.id} ${matOf(r.mat).name} ${r.pj} ${pjNick(r.pj)} ${r.why}`.toLowerCase().includes(pcQ.toLowerCase())));
+ const picked=pcPicked();
+ return `<h2>采购需求 <span class="pill p-cyan">都来自库管 · 采购是执行者</span></h2>
+ <div class="page-sub">两个来源：<b>集中采购</b>＝库管补货建议（C1 低于红线，系统现算）· <b>项目采购</b>＝项目 S2 结清后按方案提料</div>
+ ${ops([
+  ['勾需求 → 生成采购单','一张单只能开给<b>一个供应商</b>（勾了两家会拦）','进「采购单」并跟踪到货；需求转「已下单」'],
+  ['退回库管','★采购<b>不能自己删需求</b> —— 觉得不合理就退回，写清为什么','库管收到通知，由<b>库管</b>决定改数量还是撤销'],
+  ['补货建议','<b>系统现算，不用人维护</b> —— 库存低于红线自动出现，补够了自动消失','—'],
+  ['自己想买点什么','<b>做不到</b> —— 这页没有「新建需求」按钮','要买什么由库管下指令'],
+ ])}
+ ${helpNote(`<b>这页怎么用</b>：把要买的勾上，点「生成采购单」。系统会按物料的供应商归堆——
+   <b>一张采购单只能开给一家供应商</b>，勾了两家会拦下来让你分开下。
+   生成之后<b>拿着这张单去线下下单</b>（打电话/发邮件），系统这边负责记住"什么时候为什么买了多少"和"什么时候该到"。`)}
+ ${helpNote(`★<b>要不要采购，指令由库管下达，采购不能自己决定</b>（用户 2026-08-04 定）。
+   这页<b>没有「新建需求」按钮</b>，也<b>不能删需求</b>——因为"要买什么"是库存和项目决定的，
+   不是采购决定的。采购觉得某条不合理（数量不对、型号不对、时机不对），就点<b>「退回库管」</b>
+   写清为什么，由<b>库管</b>去改或撤销。这样责任始终清楚：<b>库管定要什么，采购定找谁买、什么价、什么时候到</b>。`)}
+${helpNote(`<b>补货建议是现算的</b>：C1 常备件的库存低于红线就自动出现在这里，补够了自动消失——
+   不用人去维护一张"要买什么"的清单。红线在「物料主表」里改。
+   <b>项目需求</b>则是库管在项目 S2 物料款结清后按方案 BOM 提的，带项目编号。`)}
+ <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);flex-wrap:wrap;align-items:center">
+   ${['全部','项目需求','库管补货'].map(x=>`<button class="btn${pcF===x?' btn-primary':''}" onclick="pcF='${x}';renderAll()">${x}</button>`).join('')}
+   <input id="pcq" class="search" placeholder="🔍 搜物料 / 项目 / 原因…" value="${pcQ}"
+     style="width:230px;padding:6px var(--sp-2)" oninput="pcQ=this.value;keepFocus('pcq')">
+   <button class="btn btn-primary" style="margin-left:auto" onclick="pcPoOpen()">
+     生成采购单${picked.length?`（已勾 ${picked.length} 项）`:''}</button>
+ </div>
+ <div class="panel"><table>
+  <thead><tr><th style="width:40px"></th><th style="width:90px">来源</th><th style="width:160px">项目 · 地址</th>
+    <th>物料</th><th style="width:70px;text-align:right">数量</th><th style="width:130px">供应商</th>
+    <th>为什么要买</th><th style="width:90px">状态</th></tr></thead>
+  <tbody>${rows.map(r=>{const m=matOf(r.mat); const sp=suppOf(m.supp);
+    return `<tr${r.st!=='待下单'?' style="opacity:.55"':''}>
+     <td>${r.st==='待下单'?`<input type="checkbox" style="width:auto"${pcPick[r.id]?' checked':''} onchange="pcPickTog('${r.id}')">`:''}</td>
+     <td><span class="pill ${r.src==='项目需求'?'p-cyan':'p-amber'}">${r.src}</span></td>
+     <td>${r.pj?`<b>${pjNick(r.pj)}</b><div class="hint">📍 ${pjAddr(r.pj)}</div>`:'<span class="pill p-grey">公司级</span><div class="hint">集中备货</div>'}</td>
+     <td><b>${m.name}</b><div class="hint mono">${m.code} · ${m.model||''}</div></td>
+     <td class="num">${r.qty}</td>
+     <td>${sp.name}<div class="hint">${sp.cur} · 交期 ${sp.leadDays} 天</div></td>
+     <td class="hint" style="max-width:280px">${r.why}<div class="mono" style="font-size:10px">${r.at} · ${r.by}</div></td>
+     <td>${r.st==='已退回'?`<span class="pill p-red">已退回库管</span><div class="hint">${r.backWhy||''}</div>`
+       :r.st==='待下单'?`<span class="pill p-amber">待下单</span>
+         ${r.src==='项目需求'?`<div><a style="color:#c62828;cursor:pointer;font-size:11px" onclick="pcReqBack('${r.id}')">退回库管</a></div>`:''}`
+       :`<span class="pill p-green">已下单</span>${r.po?`<div class="hint mono">${r.po}</div>`:''}`}</td></tr>`;}).join('')
+    ||'<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">没有匹配的需求 —— 库存都在红线以上，项目也没提料</td></tr>'}</tbody></table>
+ </div>`;
+},
+'proc/采购单':()=>{
+ const F=['全部','在途','超期未到','已到货','已取消'];
+ const rows=PCPO.filter(p=>{const e=poEta(p);
+   return (pcF==='全部'||F.indexOf(pcF)<0||e.k===pcF)&&(!pcQ||
+     `${p.id} ${suppOf(p.supp).name} ${p.reason} ${p.pj} ${pjNick(p.pj)}`.toLowerCase().includes(pcQ.toLowerCase()));});
+ return `<h2>采购单 <span class="pill p-cyan">指令留痕 + 到货跟踪</span></h2>
+ <div class="page-sub">★<b>真正的采购在线下做</b>——这里记下：什么时候 · 什么原因 · 买什么 · 多少 · 什么汇率 · 多少钱，然后盯着<b>什么时候到</b></div>
+ ${ops([
+  ['标记到货','—','通知库管入库点数（<b>真正入库、记成本是库管的动作</b>）'],
+  ['催货','超期未到才需要','留痕第几次催 · 对方给了新日期才改 ETA'],
+  ['取消','已到货的不能取消（要退走库管退货流程）· 原因必填','相关需求退回「待下单」'],
+ ])}
+ ${helpNote(`<b>采购这条线管的是四样</b>（用户 2026-08-04 定）：<b>价格</b>（采购价与调价历史）·
+   <b>供应商</b>（找谁买、交期、准不准时）· <b>运输费用与时间</b>（运费算进落地成本 · ETA 决定工地等不等得起）·
+   <b>部门之间的门禁</b>（S2 没结清不提料、货没到不能入库、没入库不能出库）。
+   <b>要买什么不归采购决定</b>——那是库管下的指令。`)}
+${helpNote(`<b>运费算进落地成本</b>：落地 AUD ＝（单价 + 运费）× 定格汇率。
+   海运便宜但慢、空运快但贵三倍——<b>运费和时间是一体两面</b>，选哪个是采购的判断，
+   所以两个数都摆在明细里。`)}
+${helpNote(`<b>汇率下单即定格</b>：这单用哪个汇率，在生成的那一刻就写死了。以后汇率再涨再跌，
+   <b>这单的成本不动</b>——不然上个月买的东西这个月成本自己变了，账永远对不上。`)}
+ ${helpNote(`<b>超期未到要催，但别乱改 ETA</b>：对方给了新日期才改，改动进日志（原日期留着）。
+   要是拿"大概还要几天"随手改 ETA，超期天数永远归零，就再也看不出哪家供应商总是拖了——
+   供应商的<b>历史准时率</b>就是这么算出来的。`)}
+ <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);flex-wrap:wrap;align-items:center">
+   ${F.map(x=>`<button class="btn${pcF===x?' btn-primary':''}" onclick="pcF='${x}';renderAll()">${x}</button>`).join('')}
+   <input id="pcq2" class="search" placeholder="🔍 搜单号 / 供应商 / 原因 / 项目…" value="${pcQ}"
+     style="width:250px;padding:6px var(--sp-2)" oninput="pcQ=this.value;keepFocus('pcq2')">
+   <span class="muted" style="font-size:var(--fs-xs);margin-left:auto">${rows.length} / ${PCPO.length} 张</span>
+ </div>
+ <div class="panel"><table>
+  <thead><tr><th style="width:104px">单号</th><th style="width:130px">供应商</th><th style="width:150px">什么时候 / 谁</th>
+    <th>为什么买 · 买了什么</th><th style="width:110px;text-align:right">多少钱</th>
+    <th style="width:150px">什么时候到</th><th style="width:140px"></th></tr></thead>
+  <tbody>${rows.map(p=>{const e=poEta(p); const sp=suppOf(p.supp); const open=pcSel===p.id;
+    const main=`<tr${p.st==='已取消'?' style="opacity:.5"':''}>
+     <td><b class="mono">${p.id}</b>${p.pj?`<div class="hint">项目采购</div>`:'<div class="hint">集中采购</div>'}</td>
+     <td>${sp.name}<div class="hint">${sp.contact} · ${sp.cur}</div></td>
+     <td class="mono" style="font-size:11px">${p.at}<div class="hint">${p.by}</div></td>
+     <td><b>${p.reason}</b>
+       <div class="hint">${p.lines.map(l=>matOf(l.mat).name+' ×'+l.qty).join(' ｜ ')}</div>
+       ${p.pj?`<div class="hint">📍 ${pjNick(p.pj)} · ${pjAddr(p.pj)}</div>`:''}</td>
+     <td class="num">${can('purchase')?`${p.cur} ${poAmt(p).toLocaleString()}
+       <div class="hint">汇率 ${p.fx} 🔒<br>＝ ${A$(poAud(p))}</div>`:'— —'}</td>
+     <td><span class="pill ${e.cls}">${e.k}</span>
+       <div class="hint mono">预计 ${p.eta}${p.arrivedAt?`<br>实际 ${p.arrivedAt.slice(0,10)}`:(e.d!=null?`<br>${e.d>=0?'还剩 '+e.d+' 天':'超期 '+(-e.d)+' 天'}`:'')}</div>
+       ${p.chase&&p.chase.length?`<div class="hint">已催 ${p.chase.length} 次</div>`:''}</td>
+     <td style="white-space:nowrap">${p.arrivedAt||p.st==='已取消'?'<span class="hint">—</span>'
+       :`<button class="btn btn-primary" style="padding:2px 8px;font-size:11px" onclick="pcArrive('${p.id}')">标记到货</button>
+         ${e.k==='超期未到'?`<button class="btn" style="padding:2px 8px;font-size:11px;margin-left:4px" onclick="pcChase('${p.id}')">催货</button>`:''}
+         <div><a style="color:#c62828;cursor:pointer;font-size:11px" onclick="pcPoCancel('${p.id}')">取消</a></div>`}
+       <div><a style="color:var(--accent);cursor:pointer;font-size:11px" onclick="pcSel=${open?'null':`'${p.id}'`};renderAll()">${open?'收起 ▴':'明细 ▸'}</a></div></td></tr>`;
+    if(!open) return main;
+    return main+`<tr><td colspan="7" style="background:var(--bg-elevated);padding:var(--sp-3)">
+      <table><thead><tr><th>物料</th><th style="text-align:right">数量</th><th style="text-align:right">单价（${p.cur}）</th>
+        <th style="text-align:right">运费（${p.cur}）</th><th style="text-align:right">小计</th>
+        <th style="text-align:right">落地 AUD</th><th>保修</th></tr></thead>
+      <tbody>${p.lines.map(l=>{const m=matOf(l.mat); const fr=m.freight||0;
+        const sub=l.qty*(l.unit+fr);
+        return `<tr><td><b>${m.name}</b><div class="hint mono">${m.code} · ${m.model||''}</div></td>
+         <td class="num">${l.qty}</td><td class="num">${can('purchase')?l.unit.toFixed(2):'— —'}</td>
+         <td class="num">${can('purchase')?(fr?fr.toFixed(2):'<span class="muted">—</span>'):'— —'}</td>
+         <td class="num">${can('purchase')?sub.toLocaleString():'— —'}</td>
+         <td class="num">${can('purchase')?A$(Math.round(sub*p.fx*100)/100):'— —'}</td>
+         <td class="hint">${m.warrantyM?m.warrantyM+' 个月<br><span class="muted">从到货起算，走 RMA 索赔看它</span>':'无'}</td></tr>`;}).join('')}
+      <tr><td colspan="4"><b>合计（含运费 · 按下单时汇率 ${p.fx} 定格）</b></td>
+        <td class="num"><b>${can('purchase')?p.lines.reduce((a,l)=>a+l.qty*(l.unit+(matOf(l.mat).freight||0)),0).toLocaleString():'— —'}</b></td>
+        <td class="num"><b>${can('purchase')?A$(Math.round(p.lines.reduce((a,l)=>a+l.qty*(l.unit+(matOf(l.mat).freight||0)),0)*p.fx*100)/100):'— —'}</b></td>
+        <td></td></tr>
+      </tbody></table>
+      ${p.chase&&p.chase.length?`<div class="hint" style="margin-top:8px"><b>催货记录</b>：${
+        p.chase.map(c=>c.at+' '+c.by+(c.oldEta!==c.newEta?'（ETA '+c.oldEta+' → '+c.newEta+'）':'（对方没给新日期）')).join(' ｜ ')}</div>`:''}
+      ${p.cancelWhy?`<div class="gate" style="margin-top:8px">已取消：${p.cancelWhy}</div>`:''}
+      <div class="hint" style="margin-top:8px">到货后由<b>库管入库点数</b>并把成本记进库存（出库单价从那里来）——采购这边只跟踪"到没到"</div>
+     </td></tr>`;}).join('')
+    ||'<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">没有匹配的采购单</td></tr>'}</tbody></table>
+ </div>`;
+},
+'proc/供应商':()=>`
+<h2>供应商 <span class="pill p-cyan">采购决策的底牌</span></h2>
+<div class="page-sub">找谁买 · 什么币种 · 交期多久 · 历史准时不准时 —— 这些决定了"什么时候该下单"</div>
+${ops([
+ ['改供应商信息','邮箱格式必须对（催货对账都发这里）· 标准交期必须是正整数','下单时按标准交期自动带出预计到货'],
+ ['看历史准时率','<b>现算</b>：到货日 ≤ 预计到货 算准时','—'],
+])}
+${helpNote(`<b>为什么供应商信息这么重要</b>：采购的每一个决定都靠它——
+  <b>找谁买</b>（这个料只有一家有还是可比价）· <b>什么币种</b>（要不要看汇率）·
+  <b>交期多久</b>（现在下单什么时候到，工地等不等得起）· <b>历史准不准时</b>（这家总拖，就得提前下单）。
+  备注栏尤其重要：<b>"春节前后要提前两周"这种经验，不写下来就只在一个人脑子里</b>，他一休假就断了。`)}
+${helpNote(`<b>准时率是算出来的，不是填的</b>：每张单的预计到货和实际到货都记着，
+  到货日 ≤ 预计到货就算准时。所以催货时<b>不许随手改 ETA</b>——改了这个数就废了。`)}
+<div class="panel"><table>
+ <thead><tr><th style="width:170px">供应商</th><th style="width:170px">联系人</th><th style="width:80px">币种</th>
+   <th style="width:90px">标准交期</th><th style="width:130px">结算条件</th>
+   <th style="width:120px">历史准时率</th><th>备注（经验）</th><th style="width:60px"></th></tr></thead>
+ <tbody>${SUPP.map(x=>{const ot=suppOnTime(x.id);
+   const mats=MATS.filter(m=>m.supp===x.id&&m.active);
+   const open=PCPO.filter(p=>p.supp===x.id&&!p.arrivedAt&&p.st!=='已取消');
+   return `<tr>
+    <td><b>${x.name}</b><div class="hint">${x.addr}</div>
+      <div class="hint">在供 ${mats.length} 种物料${open.length?` · <b style="color:var(--accent)">${open.length} 单在途</b>`:''}</div></td>
+    <td>${x.contact}<div class="hint mono" style="font-size:10px">${x.phone}<br>${x.email}</div></td>
+    <td><b>${x.cur}</b>${x.cur!=='AUD'?`<div class="hint">汇率 ${fxOf(x.cur)}</div>`:'<div class="hint">无汇率风险</div>'}</td>
+    <td class="num">${x.leadDays} 天</td>
+    <td class="hint">${x.terms}</td>
+    <td>${ot?`<b${ot.pct<80?' style="color:var(--warning)"':''}>${ot.pct}%</b><div class="hint">${ot.ok}/${ot.n} 单准时</div>`
+      :'<span class="muted">还没有到货记录</span>'}</td>
+    <td class="hint" style="max-width:300px">${x.note||'—'}</td>
+    <td><a style="color:var(--accent);cursor:pointer" onclick="suppEdit('${x.id}')">编辑</a></td></tr>`;}).join('')}</tbody></table>
+ <div class="panel-body hint">供应商是<b>公司级</b>信息，不属于任何单个项目；改动进操作日志</div>
+</div>`,
+'proc/项目采购状态':()=>{
+ const rows=pcProjRows();
+ return `<h2>项目采购状态 <span class="pill p-grey">只读</span></h2>
+ <div class="page-sub">项目采购走到哪一步了 —— <b>这页只看不改</b>：钱是财务的、提料是库管的、下单在「采购需求」</div>
+ ${ops([['这页能做什么','什么都不做 —— <b>只读</b>','要下单去「采购需求」；要看单去「采购单」']])}
+ ${helpNote(`<b>为什么只读</b>：一个项目的采购要走四步——<b>①S2 物料款结清</b>（财务）→
+   <b>②库管按方案提料</b>（库管）→ <b>③采购下单</b>（采购）→ <b>④到货入库</b>（库管）。
+   四步里采购只管第③步，其余三步的按钮都在别的部门。这页把四步串起来给你看，
+   免得"到底卡在谁那儿"要问三个人。`)}
+ ${helpNote(`<b>没结 S2 就不该提料下单</b>：物料款没到就先买，等于公司垫钱。
+   所以第一列是财务的 S2 状态——灰的就是还没到钱，别催库管提料。`)}
+ <div class="panel"><div class="panel-head">部门之间的门禁链 <span class="muted" style="font-weight:400">一环扣一环 · 采购只负责中间那一段</span></div>
+  <div class="panel-body" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:var(--fs-xs)">
+   ${[['财务','S2 物料款结清','没结清就先买＝公司垫钱'],
+      ['库管','按方案提料','要买什么由库管定，采购不自己决定'],
+      ['采购','下单 · 盯到货','找谁买 / 什么价 / 运费多少 / 什么时候到'],
+      ['库管','到货入库点数','没入库就没有库存，出库单价从这里来'],
+      ['库管','出库给提货人','★物料既跟项目走，也跟提货人走'],
+      ['工程','安装'] ].map((x,i)=>`
+     <span class="pill ${x[0]==='采购'?'p-cyan':'p-grey'}" title="${x[2]||''}">${i+1}. ${x[0]} · ${x[1]}</span>
+     ${i<5?'<span class="muted">→</span>':''}`).join('')}
+   <div class="hint" style="width:100%;margin-top:6px">每一环没完成，下一环就动不了 —— 这就是为什么这页只读：
+    采购能推的只有第 3 环，其余都在别的部门手里。</div>
+  </div></div>
+ <div class="panel"><table>
+  <thead><tr><th style="width:120px">项目编号</th><th style="width:170px">项目 · 地址</th>
+    <th style="width:130px">①S2 物料款</th><th style="width:110px">②库管提料</th>
+    <th style="width:150px">③采购下单</th><th style="width:150px">④到货</th><th>当前卡在哪</th></tr></thead>
+  <tbody>${rows.map(r=>`<tr>
+    <td><b class="mono" style="color:var(--accent)">${r.p.code}</b><div class="hint">${OPENED[r.p.code]||''}</div></td>
+    <td><b>${r.p.nick}</b><div class="hint">📍 ${r.p.street}, ${r.p.suburb} ${r.p.state}</div></td>
+    <td>${r.paid?'<span class="pill p-green">已结清</span>':'<span class="pill p-grey">未结清</span>'}
+      <div class="hint">财务在推</div></td>
+    <td>${r.reqs.length?`<span class="pill p-cyan">${r.reqs.length} 项</span>`:'<span class="muted">—</span>'}
+      <div class="hint">库管提</div></td>
+    <td>${r.pos.length?r.pos.map(p=>`<div class="mono" style="font-size:11px">${p.id}</div>`).join('')
+      :(r.reqs.length?'<span class="pill p-amber">待下单</span>':'<span class="muted">—</span>')}</td>
+    <td>${r.pos.length?r.pos.map(p=>{const e=poEta(p);
+      return `<div><span class="pill ${e.cls}">${e.k}</span> <span class="hint mono">${p.arrivedAt?p.arrivedAt.slice(0,10):p.eta}</span></div>`;}).join('')
+      :'<span class="muted">—</span>'}</td>
+    <td class="hint"><b>${r.step}</b></td></tr>`).join('')
+    ||'<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">此刻没有在建项目</td></tr>'}</tbody></table>
+  <div class="panel-body hint">集中采购（公司备货）不在这张表里 —— 那部分不属于任何项目，在「采购需求 / 采购单」里看</div>
+ </div>`;
+},
+'proc/物料主表':()=>{
+ const rows=MATS.filter(m=>!pcQ||`${m.code} ${m.name} ${m.model} ${suppOf(m.supp).name}`.toLowerCase().includes(pcQ.toLowerCase()));
+ return `<h2>物料主表</h2>
+ <div class="page-sub">买什么 · 找谁买 · 什么价 · 保修多久 · C1 常备件红线多少 —— 采购维护，全公司共用</div>
+ ${ops([
+  ['改采购价','必须写调价原因（≥4 字）','进「调价历史」· 落地成本与毛利率立即重算'],
+  ['C1 / C2 与红线','C1＝常备件（低于红线自动出补货建议）· C2＝项目专用（按需买）','红线决定补货建议什么时候冒出来'],
+ ])}
+ ${helpNote(`<b>C1 和 C2 是两种买法</b>：<b>C1 常备件</b>（面板、线材这些每个项目都要的）——
+   设一条<b>红线</b>，库存低于红线就自动出现在「采购需求」里，集中采购、备着；
+   <b>C2 项目专用</b>（某个项目特有的网关、特殊模块）——不备货，项目要了才买。
+   分错了后果很直接：C2 当 C1 备货＝钱压在仓库里；C1 当 C2＝每次都急着买，交期赶不上。`)}
+ ${helpNote(`<b>落地成本 ＝（单价 + 运费）× 汇率</b>，用的是<b>当前牌价</b>（估算用）；
+   真正下单时会把<b>那一刻的汇率定格</b>进采购单，两个数不一样是正常的。
+   采购价与毛利率只有<b>采购和管理层</b>能看到。`)}
+ <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);align-items:center">
+   <input id="pcq3" class="search" placeholder="🔍 搜编码 / 名称 / 型号 / 供应商…" value="${pcQ}"
+     style="width:260px;padding:6px var(--sp-2)" oninput="pcQ=this.value;keepFocus('pcq3')">
+   <span class="muted" style="font-size:var(--fs-xs);margin-left:auto">${rows.length} / ${MATS.length} 种</span>
+ </div>
+ <div class="panel"><table>
+  <thead><tr><th>物料</th><th style="width:70px">协议</th><th style="width:130px">供应商</th>
+    <th style="width:60px">类别</th><th style="width:110px">库存 / 红线</th>
+    <th style="width:120px;text-align:right">采购价</th><th style="width:110px;text-align:right">落地 AUD</th>
+    <th style="width:80px">保修</th><th style="width:50px"></th></tr></thead>
+  <tbody>${rows.map(m=>{const sp=suppOf(m.supp); const q=stockOf(m.code);
+    const low=m.cls==='C1'&&m.reorder!=null&&q<m.reorder;
+    return `<tr>
+     <td><b>${m.name}</b><div class="hint mono">${m.code} · ${m.model||''}</div></td>
+     <td>${m.proto==='none'?'<span class="muted">—</span>':m.proto.toUpperCase()}</td>
+     <td>${sp.name}<div class="hint">${sp.cur} · ${sp.leadDays} 天</div></td>
+     <td><span class="pill ${m.cls==='C1'?'p-cyan':'p-grey'}">${m.cls}</span></td>
+     <td class="num">${q}${m.reorder!=null?` / ${m.reorder}`:' <span class="muted">/ —</span>'}
+       ${low?'<div class="hint" style="color:var(--warning)">低于红线</div>':''}</td>
+     <td class="num">${can('purchase')?`${m.cur} ${m.price.toFixed(2)}${m.freight?`<div class="hint">+运费 ${m.freight}</div>`:''}`:'— —'}</td>
+     <td class="num">${can('purchase')?A$(matAud(m)):'— —'}</td>
+     <td class="hint">${m.warrantyM?m.warrantyM+' 个月':'无'}</td>
+     <td>${can('purchase')?`<a style="color:var(--accent);cursor:pointer" onclick="matPrice('${m.code}')">调价</a>`:''}</td></tr>`;}).join('')}</tbody></table>
+  <div class="panel-body hint">库存数来自<b>库管</b>（采购只读）；红线与类别由采购定 —— 它们决定补货建议什么时候出现</div>
+ </div>`;
+},
+'proc/汇率':()=>`
+<h2>汇率</h2>
+<div class="page-sub">三币种采购换算 AUD · <b>下单那一刻定格进采购单</b>，以后再变已下的单不动</div>
+${ops([['更新汇率','必须是正数','只影响<b>之后</b>新下的单 · 改动进操作日志']])}
+${helpNote(`<b>为什么汇率要定格</b>：这单用哪个汇率，在生成采购单的那一刻就写死了。
+  否则上个月买的东西，这个月因为汇率动了成本自己变了，库存成本、毛利率、项目成本全跟着漂，
+  而且<b>不会报错，只是数字悄悄错了</b>。所以：<b>这页改的是"以后"，不是"过去"</b>。`)}
+${helpNote(`超过 <b>${pcSet.fxStaleDays} 天</b>没更新就进总览卡点 —— 拿着两周前的汇率去算成本，
+  算出来的数没人敢信。天数在「设置」里改。`)}
+<div class="split">
+ <div class="panel" style="max-width:520px"><div class="panel-head">当前牌价</div>
+  <div class="panel-body">
+   <div class="field"><label>CNY → AUD</label>
+     <input id="fx-cny" class="mono" style="width:120px" value="${FXR.cny}"></div>
+   <div class="field"><label>USD → AUD</label>
+     <input id="fx-usd" class="mono" style="width:120px" value="${FXR.usd}"></div>
+   <button class="btn btn-primary" onclick="fxSave()">更新汇率</button>
+   <div class="hint" style="margin-top:var(--sp-2)">最后更新：<b class="mono">${FXR.at}</b>（${FXR.src}）·
+     距今 <b${fxStaleDays()>pcSet.fxStaleDays?' style="color:var(--warning)"':''}>${fxStaleDays()} 天</b></div>
+  </div></div>
+ <div class="panel"><div class="panel-head">已下单的汇率（🔒 定格 · 只读）</div>
+  <table><thead><tr><th>采购单</th><th>供应商</th><th>币种</th><th style="text-align:right">当时汇率</th>
+    <th style="text-align:right">金额</th><th>下单时间</th></tr></thead>
+  <tbody>${PCPO.filter(p=>p.cur!=='AUD').map(p=>`<tr>
+    <td class="mono">${p.id}</td><td>${suppOf(p.supp).name}</td><td>${p.cur}</td>
+    <td class="num">🔒 ${p.fx}</td>
+    <td class="num">${can('purchase')?A$(poAud(p)):'— —'}</td>
+    <td class="mono" style="font-size:11px">${p.at}</td></tr>`).join('')
+    ||'<tr><td colspan="6" class="muted">还没有外币采购单</td></tr>'}</tbody></table>
+  <div class="panel-body hint">这些汇率<b>改不了</b> —— 它们是下单那一刻的历史事实</div>
+ </div>
+</div>`,
+'proc/调价历史':()=>`
+<h2>调价历史</h2>
+<div class="page-sub">采购价一动，毛利率跟着动 —— 谁在什么时候把哪个料从多少改成多少、为什么，全在这儿</div>
+${ops([['这页能做什么','只读 —— 调价在「物料主表」点「调价」','每次调价自动进这张表，删不掉']])}
+${helpNote(`<b>为什么调价必须写原因</b>：采购价直接决定毛利率。三个月后有人问"这个料怎么贵了 5 块"，
+  没有原因就只能猜。所以调价时原因是<b>必填</b>（≥4 字），这张表<b>只增不改</b>。`)}
+<div class="panel"><table>
+ <thead><tr><th style="width:110px">时间</th><th>物料</th><th style="width:70px">币种</th>
+   <th style="width:100px;text-align:right">调前</th><th style="width:100px;text-align:right">调后</th>
+   <th style="width:90px;text-align:right">幅度</th><th style="width:80px">谁改的</th><th>为什么</th></tr></thead>
+ <tbody>${PCPRICE.map(r=>{const m=matOf(r.mat); const d=(r.to-r.from)/r.from*100;
+   return `<tr><td class="mono">${r.at}</td>
+    <td><b>${m.name}</b><div class="hint mono">${r.mat}</div></td>
+    <td>${r.cur}</td>
+    <td class="num">${can('purchase')?r.from.toFixed(2):'— —'}</td>
+    <td class="num">${can('purchase')?r.to.toFixed(2):'— —'}</td>
+    <td class="num"${d>0?' style="color:var(--breach)"':' style="color:var(--healthy)"'}>${can('purchase')?(d>0?'+':'')+d.toFixed(1)+'%':'— —'}</td>
+    <td>${r.by}</td><td class="hint">${r.why}</td></tr>`;}).join('')
+   ||'<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">还没有调价记录</td></tr>'}</tbody></table>
+</div>`,
+'proc/RMA索赔':()=>`
+<h2>RMA 索赔</h2>
+<div class="page-sub">产品缺陷向供应商索赔 —— 来源是运维现场的归因，赔回后<b>冲减维护成本</b></div>
+${ops([['这页能做什么','看索赔进度 · 线下跟供应商走流程','赔回后由财务冲减对应维护单成本']])}
+${helpNote(`<b>索赔单从哪来</b>：运维上门时现场确认归因，只要是<b>产品缺陷</b>且物料<b>还在保修期内</b>，
+  就自动进这张表。归因是全公司统一的四类词表——<b>现场填一次，免责判定和索赔两处共用</b>，
+  不会出现"运维说是产品坏的、采购这边却查无此事"。`)}
+${helpNote(`保修期看的是<b>物料保修</b>（从 S2 物料款结清起算，各供应商月数不同），
+  跟客户那边的<b>免责维保</b>是<b>两套钟</b>——别混。免责维保决定收不收客户钱，物料保修决定能不能找供应商赔。`)}
+<div class="panel"><table>
+ <thead><tr><th style="width:120px">索赔单</th><th style="width:160px">项目 · 地址</th><th>物料</th>
+   <th style="width:130px">供应商</th><th style="width:110px">来源</th>
+   <th style="width:100px;text-align:right">成本</th><th style="width:90px">状态</th><th>说明</th></tr></thead>
+ <tbody>${PCRMA.map(r=>{const m=matOf(r.mat);
+   return `<tr><td><b class="mono">${r.id}</b><div class="hint">${r.at}</div></td>
+    <td><b>${pjNick(r.pj)}</b><div class="hint">📍 ${pjAddr(r.pj)}</div></td>
+    <td><b>${m.name}</b><div class="hint mono">${r.mat} ×${r.qty}</div></td>
+    <td>${suppOf(r.supp).name}<div class="hint">保修 ${m.warrantyM} 个月</div></td>
+    <td class="hint">${r.from}<div><span class="pill p-amber">${causeCn(r.cause)}</span></div></td>
+    <td class="num">${can('stock')?A$2(r.cost):'— —'}</td>
+    <td><span class="pill ${r.st==='索赔中'?'p-amber':'p-green'}">${r.st}</span></td>
+    <td class="hint">${r.note}</td></tr>`;}).join('')
+   ||'<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">没有索赔中的单</td></tr>'}</tbody></table>
+ <div class="panel-body hint">赔回来之后由财务冲减那张维护单的成本 —— 免单的维护本来是公司贴钱，赔回一部分就少贴一点</div>
+</div>`,
+'proc/设置':()=>`
+<h2>采购设置</h2>
+<div class="page-sub">阈值与下拉都可改 · 改完立即生效 · 每次改动进操作日志</div>
+${ops([
+ ['改阈值','只能填正整数（填 0 等于把提醒关掉）','总览卡点立即按新阈值现算'],
+ ['增删采购原因','重复拦 · 已被采购单用过的删不掉 · 「其他」不可删','生成采购单时的下拉立即跟着变'],
+])}
+${helpNote(`<b>这页怎么用</b>：三个阈值——<b>到货预警</b>（还有几天到就提醒你盯着）·
+  <b>汇率过期</b>（多少天没更新就提醒，拿旧汇率算成本没人敢信）· <b>需求 SLA</b>（需求提出多久没下单算超时）。
+  再加一个「采购原因」下拉——写死的选项永远不够用，但也不能乱加，同一件事永远选同一个原因，统计才对得上。`)}
+<div class="split">
+ <div class="panel" style="max-width:520px"><div class="panel-head">阈值</div>
+  <div class="panel-body">
+   <div class="field"><label>到货预警（还剩几天到就提醒）</label>
+     <input class="mono" style="width:90px" value="${pcSet.etaWarnDays}" onchange="pcSetVal('etaWarnDays','到货预警天数',this.value)"></div>
+   <div class="field"><label>汇率过期提醒（天）</label>
+     <input class="mono" style="width:90px" value="${pcSet.fxStaleDays}" onchange="pcSetVal('fxStaleDays','汇率过期天数',this.value)">
+     <div class="hint">当前汇率已 ${fxStaleDays()} 天没更新${fxStaleDays()>pcSet.fxStaleDays?'（<b style="color:var(--warning)">已超</b>）':''}</div></div>
+   <div class="field"><label>需求 SLA（小时 —— 需求提出多久没下单算超时）</label>
+     <input class="mono" style="width:90px" value="${pcSet.reqSlaH}" onchange="pcSetVal('reqSlaH','需求 SLA 小时',this.value)">
+     <div class="hint">当前 ${pcReqAll().length} 条待下单</div></div>
+  </div></div>
+ <div class="panel" style="max-width:520px"><div class="panel-head">采购原因
+   <span class="muted" style="font-weight:400">生成采购单时的下拉</span></div>
+  <div class="panel-body">
+   <table><tbody>${PC_REASON.map((c,i)=>`<tr><td>${c}</td>
+     <td style="text-align:right;width:90px">${c==='其他'?'<span class="hint">兜底 · 不可删</span>'
+       :`<span class="delx" onclick="pcReasonDel(${i})">✕</span>`}</td></tr>`).join('')}</tbody></table>
+   <div style="display:flex;gap:6px;margin-top:var(--sp-3)">
+     <input id="pc-reason-new" placeholder="新增原因，如：客户指定品牌 / 替代料测试" style="flex:1">
+     <button class="btn btn-primary" onclick="pcReasonAdd()">新增</button></div>
+   <div class="hint">三个月后你得说得清当初<b>为什么买</b> —— 原因是采购单的必填项</div>
+  </div></div>
+</div>
+<div class="panel" style="max-width:560px"><div class="panel-head">改动留痕</div>
+ <div class="panel-body"><div class="hint">本页所有改动自动写入左栏「操作日志」· 只读不可删。</div>
+  <button class="btn" onclick="go('proc','操作日志')">打开操作日志 →</button></div></div>`,
+/* 五十七轮用户定：库管这边不是「项目列表」而是「项目出库状态」——
+   采购的项目采购状态一到货就是办理入库；项目真正需要的是<b>出库</b>：
+   把物料交到<b>指定提货人</b>手里。★物料既跟着项目走，也跟着提货人走。 */
+'wh/项目出库状态':()=>projectList('wh'),
 'fin/财务节点':()=>{
  const sent=FINPAY.flatMap(f=>f.ms.filter(m=>m.inv&&!m.settled).map(m=>({f,m})));
  const owing=sent.reduce((a,x)=>a+msDue(x.f,x.m)-msPaid(x.m),0);
