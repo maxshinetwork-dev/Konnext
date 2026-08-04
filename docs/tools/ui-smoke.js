@@ -1902,7 +1902,7 @@ const { chromium } = require('playwright');
       &&freeJudge('KX-2026-0142','human').ok===false;
     // 维保双钟
     go('mt','维保状态'); h=document.getElementById('main').innerHTML;
-    R.war=h.includes('免责维保（决定收不收客户钱）')&&h.includes('物料保修（决定能不能找供应商赔）')
+    R.war=h.includes('免责维保（决定收不收客户钱）')&&h.includes('物料保修（决定能不能找供应商换）')
       &&h.includes('起点＝交付日')&&h.includes('起点＝S2 结清');
     const w=warOf('KX-2026-0142');
     R.warCalc=w.freeM===12&&w.partM===24&&w.fEnd.getFullYear()===2027;
@@ -1974,6 +1974,219 @@ const { chromium } = require('playwright');
   await page.screenshot({path:__dirname+'/shot_维护单跟踪.png'});
   await page.evaluate(()=>{mtSel=null;go('mt','业主订阅');});
   await page.screenshot({path:__dirname+'/shot_业主订阅.png'});
+
+  // ═══ 五十八轮：供应商 建立 / 修改 / 停用 / 删除 ═══
+  const sp=await page.evaluate(()=>{ const R={}; const l0=OPLOG.length, n0=SUPP.length;
+    loginAs('warehouse'); go('proc','供应商');
+    let h=document.getElementById('main').innerHTML;
+    R.ui=h.includes('＋ 新增供应商')&&h.includes('>停用<')&&h.includes('>删除<');
+    // 新增：名称必填不重名
+    suppNew();
+    document.getElementById('sp-name').value='';
+    suppSave(null); R.gName=SUPP.length===n0;
+    document.getElementById('sp-name').value='KNX Asia Trading';
+    suppSave(null); R.gDup=SUPP.length===n0;
+    document.getElementById('sp-name').value='测试供应商 ABC';
+    document.getElementById('sp-e').value='bad-email';
+    suppSave(null); R.gMail=SUPP.length===n0+1&&!suppOf(SUPP[SUPP.length-1].id).email;  // 建了但邮箱没存进去
+    const nid=SUPP[SUPP.length-1].id;
+    document.getElementById('sp-e').value='sales@abc.com';
+    document.getElementById('sp-c').value='Kelly';
+    document.getElementById('sp-l').value='0';
+    suppSave(nid); R.gLead=suppOf(nid).leadDays!==0;
+    document.getElementById('sp-l').value='21';
+    suppSave(nid);
+    R.created=suppOf(nid).contact==='Kelly'&&suppOf(nid).leadDays===21
+      &&OPLOG.some(l=>l.action==='新建供应商'||l.action==='修改供应商信息');
+    // 停用 / 启用
+    suppToggle(nid); R.off=suppOf(nid).active===false&&suppLive().every(x=>x.id!==nid);
+    suppToggle(nid); R.on=suppOf(nid).active===true;
+    // 有在途单的不许停用
+    suppToggle('S-KNX'); R.gBusy=suppOf('S-KNX').active!==false;
+    // 删除：被引用的删不掉；没引用的能删
+    suppDel('S-KNX'); R.gRef=!!suppOf('S-KNX').id;
+    suppDel(nid); uiOk();
+    R.del=!SUPP.some(x=>x.id===nid)&&OPLOG[0].action==='删除供应商';
+    OPLOG.splice(0,OPLOG.length-l0); renderAll();
+    R.restored=SUPP.length===n0;
+    return JSON.stringify(R);});
+  const S58=JSON.parse(sp);
+  ok(S58.ui,'供应商页缺 新增 / 停用 / 删除 入口');
+  ok(S58.gName,'供应商名称空竟能建（应拦）');
+  ok(S58.gDup,'供应商重名竟能建（应拦）');
+  ok(S58.gMail,'供应商邮箱格式错竟被保存（应拦）');
+  ok(S58.gLead,'标准交期填 0 竟被保存（应拦）');
+  ok(S58.created,'新建/修改供应商未生效或未留痕');
+  ok(S58.off&&S58.on,'停用/启用未生效（停用的不该出现在新下单选项里）');
+  ok(S58.gBusy,'有在途未到采购单的供应商竟能停用（应拦）');
+  ok(S58.gRef,'被物料/采购单引用的供应商竟能删（应拦，要改用停用）');
+  ok(S58.del,'没有任何引用的供应商应能删除');
+  ok(S58.restored,'供应商测试后演示态未还原');
+
+  // ═══ 五十九轮：物料主表 增 / 改 / 停用 / 删 · 调价（弹窗里摆最近 10 次历史）═══
+  const mtR=await page.evaluate(()=>{ const R={};
+    const l0=OPLOG.length, m0=JSON.parse(JSON.stringify(MATS)), p0=JSON.parse(JSON.stringify(PCPRICE));
+    loginAs('warehouse'); go('proc','物料主表');
+    const h=document.getElementById('main').innerHTML;
+    R.ui=h.includes('＋ 新增物料')&&h.includes('>调价</a>')&&h.includes('>编辑</a>');
+    const n=MATS.length;
+    matNew();
+    document.getElementById('mt-code').value='m-bad code';
+    document.getElementById('mt-name').value='测';
+    matSave(null); R.gName=MATS.length===n;                        // 名称 <2 字
+    document.getElementById('mt-name').value='测试面板 XYZ';
+    matSave(null); R.gRe=MATS.length===n;                          // C1 没填补货红线
+    document.getElementById('mt-re').value='10';
+    matSave(null); R.gCode=MATS.length===n;                        // 编码不合法
+    document.getElementById('mt-code').value='M-TEST-XYZ';
+    matSave(null); R.gPrice=MATS.length===n;                       // 建档没填单价
+    document.getElementById('mt-price').value='50';
+    document.getElementById('mt-fr2').value='2';
+    matSave(null);
+    R.created=MATS.length===n+1&&matOf('M-TEST-XYZ').price===50&&OPLOG.some(l=>l.action==='新建物料');
+    matNew();                                                      // 重复编码
+    document.getElementById('mt-code').value='M-TEST-XYZ';
+    document.getElementById('mt-name').value='重复编码测试';
+    document.getElementById('mt-re').value='5';
+    document.getElementById('mt-price').value='9';
+    matSave(null); R.gDup=MATS.length===n+1;
+    pcClose();
+    matEdit('M-TEST-XYZ');                                         // C2 不该有红线
+    document.getElementById('mt-cls').value='C2';
+    matSave('M-TEST-XYZ'); R.gC2=matOf('M-TEST-XYZ').cls==='C1';
+    document.getElementById('mt-re').value='';
+    matSave('M-TEST-XYZ'); R.edited=matOf('M-TEST-XYZ').cls==='C2'&&matOf('M-TEST-XYZ').reorder==null
+      &&OPLOG.some(l=>l.action==='修改物料');
+    // 调价：弹窗里要能看到这个料自己的历史 · 同价拦 · 原因 <4 字拦
+    matPrice('M-SEN-PIR');
+    const d=document.getElementById('dcbox').innerHTML;
+    R.priceHist=d.includes('最近 2 次调价历史')&&d.includes('量大议价，单价下调')&&d.includes('为什么调价');
+    const pn=PCPRICE.length, old=matOf('M-SEN-PIR').price;
+    document.getElementById('mp-new').value=String(old);
+    document.getElementById('mp-why').value='试试同价';
+    matPriceSave('M-SEN-PIR'); R.gSame=PCPRICE.length===pn;
+    document.getElementById('mp-new').value='175';
+    document.getElementById('mp-why').value='涨';
+    matPriceSave('M-SEN-PIR'); R.gWhy=PCPRICE.length===pn;
+    document.getElementById('mp-why').value='供应商年中调价，已收确认函';
+    matPriceSave('M-SEN-PIR');
+    R.priced=PCPRICE.length===pn+1&&PCPRICE[0].mat==='M-SEN-PIR'&&PCPRICE[0].from===old
+      &&matOf('M-SEN-PIR').price===175&&OPLOG.some(l=>l.action==='调整采购价');
+    // 停用：有库存的不许停
+    matToggle('M-KNX-P4W'); R.gStock=matOf('M-KNX-P4W').active!==false;
+    matToggle('M-TEST-XYZ'); R.off=matOf('M-TEST-XYZ').active===false;
+    matToggle('M-TEST-XYZ'); R.on=matOf('M-TEST-XYZ').active===true;
+    // 删除：被引用的删不掉；没引用的能删
+    matDel('M-KNX-GW'); R.gRef=!!matOf('M-KNX-GW').code;
+    matDel('M-TEST-XYZ'); uiOk(); R.del=!MATS.some(x=>x.code==='M-TEST-XYZ');
+    MATS.length=0; m0.forEach(x=>MATS.push(x));
+    PCPRICE.length=0; p0.forEach(x=>PCPRICE.push(x));
+    OPLOG.splice(0,OPLOG.length-l0); renderAll();
+    R.restored=MATS.length===m0.length&&PCPRICE.length===p0.length&&matOf('M-SEN-PIR').price===168;
+    return JSON.stringify(R);});
+  const S59=JSON.parse(mtR);
+  ok(S59.ui,'物料主表缺 新增 / 编辑 / 调价 入口');
+  ok(S59.gName,'物料内部名称 <2 字竟能建（应拦）');
+  ok(S59.gRe,'C1 常备件不填补货红线竟能建（应拦 —— 不填就永远不出补货建议）');
+  ok(S59.gCode,'物料编码格式非法竟能建（应拦）');
+  ok(S59.gPrice,'建档不填采购单价竟能建（应拦 —— 没价算不出落地成本）');
+  ok(S59.created,'新建物料未生效或未留痕');
+  ok(S59.gDup,'物料编码重复竟能建（应拦 —— 重码会让出入库全对不上）');
+  ok(S59.gC2,'C2 项目专用带着补货红线竟能存（应拦）');
+  ok(S59.edited,'修改物料未生效或未留痕');
+  ok(S59.priceHist,'调价弹窗没摆出这个料自己的最近 10 次调价历史');
+  ok(S59.gSame,'新价与原价相同竟记了一笔调价（应拦，历史要干净）');
+  ok(S59.gWhy,'调价原因 <4 字竟能存（应拦）');
+  ok(S59.priced,'调价未落流水 / 未改现价 / 未留痕');
+  ok(S59.gStock,'仓库还有货的物料竟能停用（应拦 —— 停了剩货成死账）');
+  ok(S59.off&&S59.on,'物料停用/启用未生效');
+  ok(S59.gRef,'被采购单/需求/退换引用的物料竟能删（应拦，要改用停用）');
+  ok(S59.del,'没有任何引用且库存为 0 的物料应能删除');
+  ok(S59.restored,'物料主表测试后演示态未还原');
+
+  // ═══ 六十轮 A：调价历史 —— 每个物料最近一次（看趋势）+ 全部流水 ═══
+  const phR=await page.evaluate(()=>{ const R={};
+    loginAs('warehouse'); go('proc','调价历史');
+    const h=document.getElementById('main').innerHTML;
+    R.two=h.includes('每个物料的最近一次调价')&&h.includes('全部调价流水');
+    R.everyMat=MATS.every(m=>h.includes(m.code));      // 每个料都有一行，含从没调过的
+    R.never=h.includes('从没调过')&&h.includes('M-KNX-GW');
+    R.trend=h.includes('最近一次调价在涨的')&&h.includes('最近一次调价在降的')&&h.includes('★从没调过价的');
+    R.jump=h.includes('matPrice(\'M-KNX-GW\')');       // 行尾能直达调价
+    R.rows=(h.match(/调价流水/g)||[]).length>0;
+    loginAs('eng'); go('proc','调价历史');             // 工程没有 purchase 视野 → 价必须遮成 — —
+    const h2=document.getElementById('main').innerHTML;
+    R.mask=h2.includes('— —')&&!h2.includes('168.00')&&!h2.includes('86.00');
+    loginAs('warehouse'); renderAll();
+    return JSON.stringify(R);});
+  const S60A=JSON.parse(phR);
+  ok(S60A.two,'调价历史缺「每个物料最近一次」或「全部流水」两张表之一');
+  ok(S60A.everyMat,'调价历史的物料视图漏了物料（应该每个料一行，含从没调过的）');
+  ok(S60A.never,'从没调过价的物料没被标出来（这类最危险 —— 价从没核过）');
+  ok(S60A.trend,'调价历史缺趋势卡（涨 / 降 / 从没调过）');
+  ok(S60A.jump,'调价历史行尾没有直达「调价」的入口');
+  ok(S60A.mask,'没有采购视野的人竟看得到采购价（应遮成 — —）');
+
+  // ═══ 六十轮 B：RMA 退换 —— 四步跟踪 · 定期催确认 · 已接收即通知库管入库 ═══
+  const rmR=await page.evaluate(()=>{ const R={};
+    const l0=OPLOG.length, n0=NOTIF.length, r0=JSON.parse(JSON.stringify(PCRMA));
+    loginAs('warehouse'); go('proc','RMA退换');
+    const h=document.getElementById('main').innerHTML;
+    R.four=RMA_ST.every(st=>h.includes(st));
+    R.due=h.includes('该催了');
+    R.noClaim=!h.includes('索赔');
+    const r=PCRMA.find(x=>x.id==='RMA-0121-01');       // 已退回 · 停很久 → 该催了
+    R.dueCalc=rmaDue(r)===true&&rmaWaitDays(r)>=pcSet.rmaChaseDays;
+    const c0=(r.chase||[]).length;
+    rmaChase('RMA-0121-01');
+    const dh=document.getElementById('dcbox').innerHTML;
+    R.chaseDlg=dh.includes('确认是否已收到我们寄回的坏件')&&dh.includes('发件身份');
+    rmaChaseSend('RMA-0121-01');
+    R.chased=r.chase.length===c0+1&&OPLOG[0].action==='退换催确认'&&NOTIF.length===n0+1;
+    rmaAdv('RMA-0121-01');                             // 凭据 <4 字要拦
+    document.getElementById('uiinput').value='收到'; uiOk();
+    R.gNote=r.st==='已退回';
+    rmaAdv('RMA-0121-01');
+    document.getElementById('uiinput').value='对方邮件确认已签收，转技术检测'; uiOk();
+    R.adv=r.st==='对方已收'&&r.track[r.track.length-1].note.indexOf('对方邮件')===0
+      &&OPLOG[0].action==='退换推进';
+    const g=PCRMA.find(x=>x.id==='RMA-0180-01');       // 已发货 → 推进即开收货弹窗
+    rmaAdv('RMA-0180-01');
+    R.recvDlg=document.getElementById('dcbox').innerHTML.includes('收到换回来的货');
+    document.getElementById('rm-q').value='5';
+    document.getElementById('rm-n').value='AU Post 7788 1122';
+    rmaRecvSave('RMA-0180-01'); R.gMore=g.st==='已发货';        // 收得比寄的多 → 拦
+    document.getElementById('rm-q').value='2';
+    document.getElementById('rm-n').value='收';
+    rmaRecvSave('RMA-0180-01'); R.gEvid=g.st==='已发货';        // 凭据 <4 字 → 拦
+    document.getElementById('rm-n').value='AU Post 7788 1122 前台签收';
+    rmaRecvSave('RMA-0180-01');
+    R.recv=g.st==='已接收'&&g.recvQty===2&&!!g.inboundAt
+      &&NOTIF[0].what.indexOf('退换件已到')===0
+      &&NOTIF[0].to.some(t=>t.who.indexOf('库管')===0)
+      &&OPLOG.some(l=>l.action==='退换已接收'&&l.rel.includes('wh'));
+    rmaAdv('RMA-0180-01'); uiOk(); R.noMore=g.st==='已接收';    // 走完的不能再推
+    R.stuck=pcStuckRows().some(x=>x.p==='RMA退换');
+    PCRMA.length=0; r0.forEach(x=>PCRMA.push(x));
+    OPLOG.splice(0,OPLOG.length-l0); NOTIF.splice(0,NOTIF.length-n0); renderAll();
+    R.restored=PCRMA.length===r0.length&&PCRMA.every(x=>x.st===r0.find(y=>y.id===x.id).st);
+    return JSON.stringify(R);});
+  const S60B=JSON.parse(rmR);
+  ok(S60B.four,'RMA 退换页没摆出四步（已退回 → 对方已收 → 已发货 → 已接收）');
+  ok(S60B.due,'停太久的退换单没标「该催了」');
+  ok(S60B.noClaim,'RMA 页还留着「索赔」字样（用户已定：这页是退换，不是索赔）');
+  ok(S60B.dueCalc,'rmaDue 判定不对（超阈值天数应判该催）');
+  ok(S60B.chaseDlg,'催确认弹窗没写清要问什么、或缺发件身份横幅');
+  ok(S60B.chased,'催确认未留痕 / 未生成通知');
+  ok(S60B.gNote,'退换推进凭据 <4 字竟能存（应拦）');
+  ok(S60B.adv,'退换推进未生效或未留痕');
+  ok(S60B.recvDlg,'从「已发货」推进应打开收货弹窗');
+  ok(S60B.gMore,'收到数量比寄回去的还多竟能存（应拦）');
+  ok(S60B.gEvid,'收货凭据 <4 字竟能存（应拦）');
+  ok(S60B.recv,'标已接收后：状态/实收数/入库通知库管 三者未同时到位');
+  ok(S60B.noMore,'已走完的退换单竟还能往前推（应拦）');
+  ok(S60B.stuck,'跟踪中的退换单没进采购卡点表');
+  ok(S60B.restored,'RMA 退换测试后演示态未还原');
 
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
