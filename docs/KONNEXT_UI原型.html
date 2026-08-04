@@ -644,9 +644,11 @@ function logRangeSet(k){ logRange=k; if(k!=='自定义'){ logFrom=''; logTo=''; 
 function logClear(){ logQ=''; logDeptF='全部'; logWho='全部'; logPjF='全部';
   logRange='全部'; logFrom=''; logTo=''; renderAll(); }
 function logExport(d,n){
-  opLog('','导出操作日志','「'+DEPT[d].label+'相关」当前筛选结果 '+n+' 条 → CSV',[d]);
+  const lb=d==='ALL'?'全公司审计':DEPT[d].label+'相关';
+  opLog('','导出操作日志','「'+lb+'」当前筛选结果 '+n+' 条 → CSV',
+    d==='ALL'?['fin','eng','presales','proc','wh','mt']:[d]);
   renderAll();
-  uiAlert('已导出 '+n+' 条（演示）：konnext_操作日志_'+DEPT[d].label+'.csv\n'+
+  uiAlert('已导出 '+n+' 条（演示）：konnext_操作日志_'+lb+'.csv\n'+
     '正式系统按当前筛选条件生成 CSV 下载到本地 —— 导出这个动作本身也留痕'); }
 const nowTs=()=>{const d=new Date(),z=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}/${z(d.getMonth()+1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;};
@@ -4717,9 +4719,12 @@ function placeholder(){
 
 /* ── 共用：售前大表表格（项目列表与项目状态表同款可操作） ── */
 /* ═══ 操作日志页（二十轮：六部门通用组件）═══ */
+/* 敏感操作：改权限 / 改全局参数 / 删除停用 / 定格 / 停服 —— 这些出问题最难挽回，审计页要单独挑出来 */
+const AUDIT_HOT=['修改安全参数','修改发送人身份','删除','停用','拒付','停服','定格','请款','发放','账号','权限','导出'];
+const isHot=r=>AUDIT_HOT.some(k=>(r.action||'').includes(k));
 function opLogPage(d){
- const dl=DEPT[d].label;
- const mine=OPLOG.filter(r=>r.rel.includes(d));
+ const dl=d==='ALL'?'全公司':DEPT[d].label;
+ const mine=d==='ALL'?OPLOG.slice():OPLOG.filter(r=>r.rel.includes(d));
  const rows=mine.filter(r=>logDeptF==='全部'||r.dept===logDeptF)
    .filter(r=>logWho==='全部'||r.who===logWho)
    .filter(r=>logPjF==='全部'||(logPjF==='公司级'?!r.pj:r.pj===logPjF))
@@ -5453,6 +5458,45 @@ ${can('customer')?`
 </div>`,
 
 /* ───────── 决策页 · 全局参数 ───────── */
+'decision/审计日志':()=>{
+ const hot=OPLOG.filter(isHot);
+ const depts=[...new Set(OPLOG.map(r=>r.dept))];
+ return `
+<h2>审计日志 <span class="pill p-cyan">全公司 · 只读</span></h2>
+<div class="page-sub">六个部门的「操作日志」各看各的一摊；这页是<b>决策管理员看全公司</b>的总账 —— 谁在什么时候动了什么，一条都不漏</div>
+${ops([
+ ['筛选与导出','和部门操作日志同一套：时间 / 操作人 / 项目 / 逐字搜索 / 导出 CSV','导出这个动作本身也会留一条日志'],
+ ['想改或删某条','不可能 —— 日志只读，管理员也只能看','正式系统落 audit_log 表并带触发器，连超级用户改动也会留痕'],
+])}
+${helpNote(`<b>这页和部门「操作日志」有什么不一样</b>：部门页只给你看<b>和本部门有关</b>的条目
+  （\`rel\` 里带了这个部门的）；这页<b>不过滤</b>，全公司 ${OPLOG.length} 条一条不落——
+  跨部门扯皮时，这里是唯一能把时间线拼完整的地方。`)}
+${helpNote(`★<b>敏感操作单独挑出来</b>：改安全参数 · 改发件身份 · 删除/停用 · 定格 · 拒付停服 ·
+  标记请款 · 文档发放 · 账号与权限 · 导出。这些出了问题最难挽回，所以摆在最上面一栏，
+  <b>不用先搜再找</b>。`)}
+<div class="cards">
+ <div class="card"><div class="card-label">全公司留痕</div><div class="card-value">${OPLOG.length}</div>
+   <div class="card-foot">涉及 ${depts.length} 个部门角色</div></div>
+ <div class="card"><div class="card-label">★敏感操作</div>
+   <div class="card-value"${hot.length?' style="color:var(--warning)"':''}>${hot.length}</div>
+   <div class="card-foot">${hot.length?'改权限 / 定格 / 停服 / 删除 / 导出 一类':'暂时没有'}</div></div>
+ <div class="card"><div class="card-label">今天</div>
+   <div class="card-value">${OPLOG.filter(r=>r.ts.slice(0,10)===todayS()).length}</div>
+   <div class="card-foot">按操作时间算</div></div>
+ <div class="card"><div class="card-label">日志能不能改</div>
+   <div class="card-value" style="font-size:var(--fs-lg)">不能</div>
+   <div class="card-foot">只读 · 连核心管理员也只能看</div></div>
+</div>
+${hot.length?`<div class="panel"><div class="panel-head">★ 敏感操作 <span class="muted" style="font-weight:400">最近 ${Math.min(hot.length,12)} 条 · 全量在下面那张表里</span></div>
+ <table><thead><tr><th style="width:150px">时间</th><th style="width:110px">操作人</th>
+   <th style="width:130px">部门</th><th style="width:150px">操作</th><th>改了什么</th></tr></thead>
+ <tbody>${hot.slice(0,12).map(r=>`<tr>
+   <td class="mono" style="font-size:11px">${r.ts}</td><td><b>${r.who}</b></td>
+   <td class="hint">${r.dept}</td>
+   <td><span class="pill p-amber">${r.action}</span></td>
+   <td class="hint">${r.pj?`<b class="mono">${r.pj}</b> `:''}${r.detail}</td></tr>`).join('')}</tbody></table>
+</div>`:''}
+${opLogPage('ALL')}`;},
 'decision/全局参数':()=>`
 <h2>全局参数</h2>
 <div class="page-sub">改一处全公司生效 · 改动全部进审计日志</div>
@@ -8765,12 +8809,6 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
     <td><button class="btn" onclick="go('wh','${r.p}')">去处理 →</button></td></tr>`).join('')
     ||'<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">此刻没有卡点 ✓</td></tr>'}</tbody></table>
  </div>`;},
-'proc/总览':()=>overview('采购',[
-  ['低于红线','5 项','','C1 定期备货，纳入下次集中采购'],
-  ['待到货','12 项','','PO-0087 等 3 张单'],
-  ['本月调价','7 次','purchase','全部留痕可追溯'],
-  ['RMA 待退换','2 件','','在供应商处 40 天未返还'],
-]),
 'mt/总览':()=>{
  const open=mtOpen();
  const wait=MCASES.filter(c=>mtStage(c).k==='已受理');

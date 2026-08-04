@@ -6140,6 +6140,16 @@ INSERT INTO assertion_def(code,label,severity,query,hint) VALUES
  $q$SELECT login_name, full_name FROM app_account
      WHERE tier=1 AND active AND email IS NULL$q$,
  NULL),
+-- ★2026-08-04 全面回归发现：INV-SEC-07 只查 10 张手列的「关键表」，
+--   而实际有 20 张表压根没开 RLS，断言却一路全绿 —— 正是 CLAUDE.md 说的
+--   「手列清单一定会漏且不报错」。视图有 security_invoker 自动补齐，表没有，所以这里自动扫全库。
+('INV-SEC-09','所有表必须开启 RLS（自动扫全库，不许手列清单）','high',
+ $q$SELECT relname FROM pg_class
+     WHERE relkind='r' AND relnamespace='public'::regnamespace
+       AND NOT relrowsecurity
+     ORDER BY relname$q$,
+ '降权角色 konnext_app 对这些表有完整 DML —— 没有 RLS 就等于谁登录都能读写全部。'
+ 'auth_otp（别人的验证码）· audit_log（留痕可被删改）· account_department（改部门＝提权）最要紧'),
 
 -- ══════════ 流程 ══════════
 ('INV-FLOW-01','SM 顺序：完成的 SM(n) 其前序必须完成或标不适用','critical',

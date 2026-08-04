@@ -2316,6 +2316,104 @@ const { chromium } = require('playwright');
   ok(S61.settleSync,'财务结算未退料后库管台账没同步销账（两页各说各话且不报错）');
   ok(S61.restored,'库管测试后演示态未还原');
 
+  // ═══════════ 全面回归（2026-08-04）：六部门跨线链路 ═══════════
+  // 单个部门内部的门禁前面各自测过了；这一段专门测「部门之间对不对得上」——
+  // 最危险的 bug 从来不是某一页算错，而是两个部门各算各的、数字悄悄不一致还不报错。
+  const chain=await page.evaluate(()=>{ const R={}; loginAs('admin');
+
+    // ① 引用完整性：任何部门引用的项目编号，都必须在全公司项目表里真实存在
+    //    （比"两张表长得一样"更要紧 —— 悬空的项目号会让待办/成本/收款挂到空气上）
+    const refs=new Set();
+    FINPAY.forEach(f=>refs.add(f.code)); MCASES.forEach(c=>refs.add(c.code));
+    WHOUT.forEach(o=>refs.add(o.pj)); WHMOVE.forEach(m=>m.pj&&refs.add(m.pj));
+    PCPO.forEach(x=>x.pj&&refs.add(x.pj)); PCREQ.forEach(x=>x.pj&&refs.add(x.pj));
+    PCRMA.forEach(x=>x.pj&&refs.add(x.pj)); SCH.forEach(x=>x.pj&&refs.add(x.pj));
+    Object.keys(SMD).forEach(k=>refs.add(k));
+    R.noDangling=[...refs].filter(c=>c&&!PROJECTS.some(p=>p.code===c)).length===0;
+    // 售前已签约的项目必须出现在全公司列表里（签约即流转到下游）
+    R.signedFlow=BIGPD.filter(b=>b.step>=6&&!b.lost).every(b=>PROJECTS.some(p=>p.code===b.code));
+
+    // ② SM3/SM4 与财务 S2/S3 同源：解锁与否只能来自同一个事实，不许两边各存一份
+    R.smSame=FINPAY.every(f=>{ const d=SMD[f.code]; if(!d) return true;
+      return !!f.sm3===!!(d.sm[2].done||d.sm[2].na) && !!f.sm4===!!(d.sm[3].done||d.sm[3].na); });
+    // 财务侧门禁必须真的按 sm3 拦（不是只画个红字）——
+    // 造出"S1 已结清、SM3 没完成"的局面，此时当前节点应当是 S2 且被 SM3 卡住
+    const g=FINPAY.find(f=>!f.sm3);
+    let s2Gate=true;
+    if(g){ const bak=g.ms[0].settled; g.ms[0].settled=true;
+      const st=finStage(g);
+      s2Gate=!!st&&st.m.s==='S2'&&(st.gate||'').includes('SM3');
+      g.ms[0].settled=bak; }
+    R.s2Gate=s2Gate;
+
+    // ③ 财务 S2 结清 ⇄ 库管能不能出库：必须是同一个判断
+    R.s2Wh=PROJECTS.every(p=>{const f=finOf(p.code); if(!f) return true;
+      return whPjOut(p.code).s2===!!f.ms[1].settled;});
+
+    // ④ 库管未退料 ⇄ 财务 S4 未退料金额：两条线算的是同一批货
+    R.unretSame=Math.abs(whPjOut('KX-2026-0142').unretAmt-finOf('KX-2026-0142').unret)<0.01;
+
+    // ⑤ 库存低于红线 ⇄ 采购补货建议：指令由库管下达，采购只是执行者
+    const low=whLow().map(m=>m.code).sort().join(',');
+    const rs=pcRestock().map(r=>r.mat).sort().join(',');
+    R.lowSame=low===rs;
+    R.reqSrc=pcReqAll().every(r=>['库管补货','项目需求'].includes(r.src));   // 没有"采购自己提的"
+
+    // ⑥ 采购到货 / 退换换回 ⇄ 库管待入库
+    const pend=whInPend().map(x=>x.id).sort().join(',');
+    const should=[...PCPO.filter(p=>p.arrivedAt&&!p.whInAt&&p.st!=='已取消').map(p=>p.id),
+                  ...PCRMA.filter(r=>r.st==='已接收'&&!r.whInAt).map(r=>r.id)].sort().join(',');
+    R.inSame=pend===should&&pend.length>0;
+
+    // ⑦ 库存 = 期初 + 流水（没有第二个真相来源）
+    R.stockOne=MATS.every(m=>stockOf(m.code)===(WH_OPEN[m.code]||0)
+      +WHMOVE.reduce((x,v)=>x+(v.mat===m.code?v.qty:0),0));
+
+    // ⑧ 运维维护单派工 ⇄ 工程排班表：维护派工只存在于工程那张表里
+    schSeed();
+    const mtTasks=SCH.filter(x=>x.type==='维护');
+    R.mtSch=mtTasks.every(t=>!t.mt||MCASES.some(c=>c.id===t.mt));
+
+    // ⑨ 运维不碰钱：维护单的定价/开票/收款字段只由财务动
+    R.mtNoMoney=MCASES.every(c=>c.amt==null||['待定价','已开票','已结案'].includes(c.st));
+
+    // ⑩ 项目归属三态：卡点表里不许出现"既没项目也没标公司级"的行
+    const allStuck=[...pcStuckRows(),...whStuckRows(),...mtStuckRows()];
+    R.tri=allStuck.every(r=>typeof r.pj==='string');
+    R.triPj=allStuck.filter(r=>r.pj).every(r=>PROJECTS.some(p=>p.code===r.pj));  // 有项目号就必须真存在
+
+    // ⑪ 跨部门动作必须双写日志（rel 至少两个部门），随手抽三类查
+    const cross=OPLOG.filter(l=>['出库计入项目成本','物料出库','退换已接收','入库点数'].includes(l.action));
+    R.crossLog=cross.length===0||cross.every(l=>l.rel.length>=2);
+
+    // ⑫ 金额遮罩：换个没权限的身份，五类金额一个都不能漏出来
+    loginAs('maintenance');   // see:[] —— 什么钱都不该看到
+    const leak=[];
+    ['proc/物料主表','proc/调价历史','wh/库存流水','wh/物料在谁手里','fin/成本与利润率'].forEach(k=>{
+      const [t,p]=k.split('/'); go(t,p);
+      const h=document.getElementById('main').innerHTML;
+      if(/A\$[\d,]+\.\d\d/.test(h)) leak.push(k); });
+    R.mask=leak.length===0; R.maskWho=leak.join('、');
+    loginAs('admin'); renderAll();
+    return JSON.stringify(R);});
+  const CH=JSON.parse(chain);
+  ok(CH.noDangling,'★有部门引用了全公司项目表里不存在的项目编号（悬空引用）');
+  ok(CH.signedFlow,'售前已签约的项目没有出现在全公司列表里（签约应即流转下游）');
+  ok(CH.smSame,'SM3/SM4 与财务 S2/S3 解锁状态不同源（两边各存一份迟早对不上）');
+  ok(CH.s2Gate,'SM3 未完成时财务 S2 门禁没真拦');
+  ok(CH.s2Wh,'财务 S2 结清与库管能否出库判断不一致');
+  ok(CH.unretSame,'库管未退料金额与财务 S4 未退料对不上（同一批货两个数）');
+  ok(CH.lowSame,'库存低于红线的物料与采购补货建议对不上');
+  ok(CH.reqSrc,'采购需求里出现了不是库管下达的来源（采购不能自己决定买什么）');
+  ok(CH.inSame,'采购到货/退换换回 与 库管待入库 对不上');
+  ok(CH.stockOne,'库存不是唯一真相（期初+流水）—— 出现了第二个来源');
+  ok(CH.mtSch,'工程排班里的维护任务指向了不存在的维护单');
+  ok(CH.mtNoMoney,'维护单出现了运维不该动的金额状态');
+  ok(CH.tri,'卡点行没有项目归属字段（三态：具体项目 / 公司级 / 无从追溯，不许缺）');
+  ok(CH.triPj,'卡点行的项目编号在项目表里不存在');
+  ok(CH.crossLog,'跨部门动作没有双写日志（只记一边，另一边查不到）');
+  ok(CH.mask,'★金额遮罩漏了：'+(CH.maskWho||'')+'（没权限的身份看到了具体金额）');
+
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
   console.log(`断言失败: ${fails.length}`); fails.forEach(f=>console.log('  ✗ '+f));
