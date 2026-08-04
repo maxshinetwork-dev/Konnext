@@ -1144,19 +1144,26 @@ const { chromium } = require('playwright');
     // SM：无剩余工作
     document.getElementById('sc-t').value='Site Meeting'; schPjToggle();
     const smNo=document.getElementById('sc-rem').textContent.includes('SM 阶段不存在剩余工作');
-    // 维护：第一次 → 无；有上次剩余 → 自动带；上次没填 → 门禁拦
+    // 维护（五十六轮起第二个框列<维护单>）：剩余工作按该单的项目带出；上次没填 → 门禁拦
     document.getElementById('sc-t').value='维护'; schPjToggle();
-    document.getElementById('sc-pjq').value='王宅'; schPjFilter();
+    const mtOnlyCase=document.getElementById('sc-mtwrap').style.display==='block'
+      &&document.getElementById('sc-pjwrap').style.display==='none';
+    document.getElementById('sc-mt').value='MT-0142-06'; schMtPick();   // 王宅
     const mtCarry=document.getElementById('sc-rem').textContent.includes('主卧面板偶发失联');
-    document.getElementById('sc-pjq').value='刘宅'; schPjFilter();
+    const luJob=MCASES.find(x=>x.id==='KX-0121-13').job;                // 刘宅：临时清掉派工好让它进下拉
+    MCASES.find(x=>x.id==='KX-0121-13').job=null; schPjToggle();
+    document.getElementById('sc-mt').value='KX-0121-13'; schMtPick();
     const mtGap=document.getElementById('sc-rem').textContent.includes('没有留下剩余工作记录');
     document.getElementById('sc-st').value='09:00';
     document.getElementById('sc-et').value='11:00';
     const c0=SCH.length; schSave();
     const mtBlocked=SCH.length===c0;                      // 上次没填 → 拦
-    document.getElementById('sc-pjq').value='王宅'; schPjFilter();
+    MCASES.find(x=>x.id==='KX-0121-13').job=luJob; schPjToggle();
+    document.getElementById('sc-mt').value='MT-0142-06'; schMtPick();
     schSave();
-    const saved=SCH.length===c0+1&&SCH[SCH.length-1].remain.includes('主卧面板偶发失联');
+    const saved=SCH.length===c0+1&&SCH[SCH.length-1].remain.includes('主卧面板偶发失联')
+      &&SCH[SCH.length-1].mtId==='MT-0142-06'&&SCH[SCH.length-1].pj==='KX-2026-0142';
+    MCASES.find(x=>x.id==='MT-0142-06').job=null;         // 还原：这张单本该是「已受理未派工」
     // 倒休保存不带内容/剩余
     schAdd('小陈',fut);                                   // 小陈倒休余额 12.5h（老李 4h 本周已排满）
     document.getElementById('sc-t').value='倒休'; schPjToggle();
@@ -1165,13 +1172,14 @@ const { chromium } = require('playwright');
     const tl=SCH[SCH.length-1];
     const toilSaved=tl.type==='倒休'&&tl.pj===''&&tl.note===''&&tl.remain==='';
     SCH.splice(c0,2); OPLOG.splice(0,2); NOTIF.splice(0,2); schOff=0; renderAll(); loginAs('finance');
-    return JSON.stringify({toilOk,filtered,remAuto,multi,smNo,mtCarry,mtGap,mtBlocked,saved,toilSaved});});
+    return JSON.stringify({toilOk,filtered,remAuto,multi,smNo,mtCarry,mtGap,mtBlocked,saved,toilSaved,mtOnlyCase});});
   const r43=JSON.parse(w43);
   ok(r43.toilOk,'倒休仍显示项目/工作内容/剩余工作（应只填时长）');
   ok(r43.filtered,'关联项目不支持搜索过滤');
   ok(r43.multi,'工作内容仍是单行输入（应多行大框）');
   ok(r43.remAuto,'剩余工作未自动带出上次每日上报的剩余');
   ok(r43.smNo,'SM 阶段未标明「不存在剩余工作」');
+  ok(r43.mtOnlyCase,'排班选「维护」时第二个框应列维护单（项目框隐藏）');
   ok(r43.mtCarry,'维护未带出上次维护的剩余');
   ok(r43.mtGap&&r43.mtBlocked,'上次维护没填剩余时未提示/未拦下派工');
   ok(r43.saved,'保存后剩余工作未写入任务');
@@ -1847,20 +1855,33 @@ const { chromium } = require('playwright');
     R.newOk=MCASES.length===m0+1&&nc.st==='已受理'&&nc.rep.at===null
       &&OPLOG[0].action==='受理报修'&&OPLOG[0].detail.includes('【未知】');
     R.noResp=mtResp(nc).h===null;                                // 报修时间未知 → 不参与响应统计
-    // 派工：过去日期 / 重叠 拦；成功写进排班表
-    go('mt','派工与上门');
-    mtDispOpen(nc.id);
-    document.getElementById('mt-d').value='2020-01-01'; mtDispSave();
-    R.gPast=!nc.job;
-    const ds=ymdS(weekDays(1)[3]);
-    document.getElementById('mt-who').value='小周';
-    document.getElementById('mt-d').value=ds.replace(/\//g,'-');
-    document.getElementById('mt-st').value='09:00';
-    document.getElementById('mt-et').value='11:00';
-    mtDispSave();
-    const made=SCH.filter(x=>x.d===ds&&x.type==='维护'&&x.pj==='KX-2026-0142');
-    R.disp=!!nc.job&&made.length===1&&made[0].ack===false
-      &&OPLOG[0].action==='维护派工'&&NOTIF[0].what.includes('维护派工');
+    // ★五十六轮：派人改在工程「派工排班」里做（工作类型＝维护 → 第二个框选维护单）
+    go('mt','运维派工状态');
+    R.noDispBtn=!document.getElementById('main').innerHTML.includes('>派工<')
+      &&document.getElementById('main').innerHTML.includes('去派工排班 →');
+    loginAs('eng'); go('eng','派工排班'); schSeed();
+    const ds=ymdS(weekDays(1)[4]);
+    schAdd('小周',ds);
+    document.getElementById('sc-t').value='维护'; schPjToggle();
+    R.mtBox=document.getElementById('sc-mtwrap').style.display==='block'
+      &&document.getElementById('sc-pjwrap').style.display==='none'
+      &&document.getElementById('sc-mt').innerHTML.includes(nc.id);
+    document.getElementById('sc-mt').value=nc.id; schMtPick();
+    R.autoFill=document.getElementById('sc-note').value.includes('业主说二楼面板')
+      &&document.getElementById('sc-mtinfo').innerHTML.includes('Franklin');   // 地址自动带出
+    document.getElementById('sc-st').value='09:00';
+    document.getElementById('sc-et').value='11:00';
+    schSave();
+    const made=SCH.filter(x=>x.d===ds&&x.type==='维护'&&x.mtId===nc.id);
+    R.disp=made.length===1&&made[0].pj==='KX-2026-0142'&&made[0].ack===false
+      &&!!nc.job&&nc.job.who==='小周'
+      &&OPLOG.some(l=>l.action==='维护单派工');
+    // 没选维护单 → 拦
+    schAdd('小周',ymdS(weekDays(1)[5]));
+    document.getElementById('sc-t').value='维护'; schPjToggle();
+    document.getElementById('sc-mt').value='';
+    const n1=SCH.length; schSave(); R.gNoCase=SCH.length===n1; schClose();
+    loginAs('maintenance');
     // 三样齐：缺一样 → 拦并标红
     mtSiteOpen(nc.id);
     document.getElementById('mt-cause').value='human';
@@ -1924,8 +1945,11 @@ const { chromium } = require('playwright');
   ok(M54.gNote,'客户原话不足 5 字竟能建单（应拦）');
   ok(M54.newOk,'受理建单未生效 / 未留痕【未知】报修时间');
   ok(M54.noResp,'报修时间未知的单不该参与响应时长统计');
-  ok(M54.gPast,'派工到过去的日期竟成功（应拦）');
-  ok(M54.disp,'派工未写进派工排班表（维护）/ 未留痕通知');
+  ok(M54.noDispBtn,'运维派工页不该再有「派工」按钮（排人在工程派工排班里）');
+  ok(M54.mtBox,'排班浮窗选「维护」时第二个框应列维护单（而不是项目）');
+  ok(M54.autoFill,'选中维护单后未自动带出项目地址与工作内容');
+  ok(M54.disp,'维护派工未写进排班表 / 未回写到维护单 / 未留痕');
+  ok(M54.gNoCase,'维护任务没选维护单竟能保存（应拦）');
   ok(M54.gThree,'三样不齐竟算完成（应拦并标红）');
   ok(M54.stuckShows,'三样不齐未进总览卡点（且要说清缺哪样）');
   ok(M54.threeOk,'三样齐未转待定价 / 未定免责 / 未通知财务');
