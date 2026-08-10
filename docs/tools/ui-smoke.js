@@ -1888,7 +1888,8 @@ const { chromium } = require('playwright');
     R.ovStuck=mtStuckRows().length>0;
     // 报修受理：门禁 + 未知报修时间
     go('mt','报修受理'); h=document.getElementById('main').innerHTML;
-    R.repUnknown=h.includes('【未知】')&&h.includes('不统计');
+    /* ★七十轮口径（用户 2026-08-10 纠正）：报修时间必知必填；说不清的是"问题什么时候开始的" */
+    R.repUnknown=h.includes('问题什么时候开始的')&&h.includes('【未知】')&&h.includes('不影响 SLA');
     mtNewOpen();
     document.getElementById('mt-pj').value='';
     document.getElementById('mt-note').value='坏了';
@@ -1897,11 +1898,27 @@ const { chromium } = require('playwright');
     R.pjAuto=document.getElementById('mt-pj').value==='KX-2026-0142';   // 筛到唯一自动选中
     mtNewSave(); R.gNote=MCASES.length===m0;                     // 原话<5字 → 拦
     document.getElementById('mt-note').value='业主说二楼面板按下去没反应，昨天开始的';
+    /* ★报修时间必填、不许未来；问题出现时间不许晚于报修时间 */
+    document.getElementById('mt-at').value='';
+    mtNewSave(); R.gAt=MCASES.length===m0;
+    const fut=new Date(Date.now()+864e5);
+    const p2=n=>String(n).padStart(2,'0');
+    const futStr=fut.getFullYear()+'-'+p2(fut.getMonth()+1)+'-'+p2(fut.getDate())+'T09:00';
+    document.getElementById('mt-at').value=futStr;
+    mtNewSave(); R.gFuture=MCASES.length===m0;
+    document.getElementById('mt-at').value=nowLocal();
+    document.getElementById('mt-since').value=futStr;             // 问题出现晚于报修 → 拦
+    mtNewSave(); R.gSince=MCASES.length===m0;
+    document.getElementById('mt-since').value='';                 // 说不清就留空
     mtNewSave();
     const nc=MCASES[0];
-    R.newOk=MCASES.length===m0+1&&nc.st==='已受理'&&nc.rep.at===null
-      &&OPLOG[0].action==='受理报修'&&OPLOG[0].detail.includes('【未知】');
-    R.noResp=mtResp(nc).h===null;                                // 报修时间未知 → 不参与响应统计
+    R.newOk=MCASES.length===m0+1&&nc.st==='已受理'&&!!nc.rep.at&&nc.rep.since===null
+      &&OPLOG[0].action==='受理报修'&&OPLOG[0].detail.includes('问题出现时间 【未知】');
+    /* ★这是本轮修掉的洞：客户说不清开始时间的单，以前会悄悄退出 SLA 统计 */
+    R.stillCounted=mtResp(nc).h!==null;
+    /* ★负数守卫：报修时间比上门还晚＝数据填错，不许显示成一个负的小时数 */
+    R.negGuard=(()=>{ const t={rep:{at:'2026/08/09 10:00'},job:{d:'2026/08/01',st:'09:00'}};
+      const x=mtResp(t); return x.h===null&&x.bad===true; })();
     // ★五十六轮：派人改在工程「派工排班」里做（工作类型＝维护 → 第二个框选维护单）
     go('mt','运维派工状态');
     R.noDispBtn=!document.getElementById('main').innerHTML.includes('>派工<')
@@ -1986,12 +2003,18 @@ const { chromium } = require('playwright');
   const M54=JSON.parse(mt);
   ok(M54.pages,'运维应 8 页（含设置 / 维保状态，且不含项目列表）');
   ok(M54.ov&&M54.ovStuck,'运维总览缺五块 / 卡点表未现算');
-  ok(M54.repUnknown,'报修受理未体现【未知】报修时间与"不统计"');
+  ok(M54.repUnknown,'报修受理页没把「问题什么时候开始的」单列一栏并注明不影响 SLA');
   ok(M54.gPj,'没选项目竟能建维护单（应拦：只受理已交付项目）');
   ok(M54.pjAuto,'受理弹窗项目搜索筛到唯一未自动选中');
   ok(M54.gNote,'客户原话不足 5 字竟能建单（应拦）');
-  ok(M54.newOk,'受理建单未生效 / 未留痕【未知】报修时间');
-  ok(M54.noResp,'报修时间未知的单不该参与响应时长统计');
+  ok(M54.gAt,'★报修时间空着竟能建单 —— 客户什么时候告诉我们的，我们永远知道');
+  ok(M54.gFuture,'报修时间填未来竟能建单（客户还没打电话，怎么算响应）');
+  ok(M54.gSince,'问题出现时间比报修时间还晚竟能存（问题总得先出现，客户才会报）');
+  ok(M54.newOk,'受理建单未生效 / 没留痕「问题出现时间【未知】」');
+  ok(M54.stillCounted,'★客户说不清问题何时开始的单又退出了响应时长统计 —— '+
+    '这正是本轮要修的洞：真正响应慢的单最容易这么漏掉，报表永远好看');
+  ok(M54.negGuard,'★报修时间晚于上门时间竟算出一个负的响应时长 —— '+
+    '负数会被平均进 SLA 报表把真实的慢冲掉，而且不报错；应当当场标「时间对不上」');
   ok(M54.noDispBtn,'运维派工页不该再有「派工」按钮（排人在工程派工排班里）');
   ok(M54.mtBox,'排班浮窗选「维护」时第二个框应列维护单（而不是项目）');
   ok(M54.autoFill,'选中维护单后未自动带出项目地址与工作内容');
