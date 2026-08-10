@@ -1207,6 +1207,8 @@ const { chromium } = require('playwright');
     const mtBlocked=SCH.length===c0;                      // 上次没填 → 拦
     MCASES.find(x=>x.id==='KX-0121-13').job=luJob; schPjToggle();
     document.getElementById('sc-mt').value='MT-0142-06'; schMtPick();
+    /* 七十二轮起：上门之前要有研发结论 —— 这条单测在下面 M54 里，这里先放行 */
+    MCASES.find(x=>x.id==='MT-0142-06').rd={st:'skip',note:'演示数据：跳过研发排查'};
     schSave();
     const saved=SCH.length===c0+1&&SCH[SCH.length-1].remain.includes('主卧面板偶发失联')
       &&SCH[SCH.length-1].mtId==='MT-0142-06'&&SCH[SCH.length-1].pj==='KX-2026-0142';
@@ -1879,7 +1881,8 @@ const { chromium } = require('playwright');
   // ═══ 五十四轮：运维线（受理 / 派工 / 三样齐 / 维保双钟 / 订阅 / 设置）═══
   const mt=await page.evaluate(()=>{ const R={}; const l0=OPLOG.length, n0=NOTIF.length, m0=MCASES.length, s0=SCH.length;
     loginAs('maintenance');
-    R.pages=DEPT.mt.pages.length===8&&DEPT.mt.pages.includes('设置')&&DEPT.mt.pages.includes('维保状态')
+    R.pages=DEPT.mt.pages.length===9&&DEPT.mt.pages.includes('设置')&&DEPT.mt.pages.includes('维保状态')
+      &&DEPT.mt.pages.includes('故障分析')     // 七十三轮 M7
       &&!DEPT.mt.pages.includes('项目列表');   // 运维没有项目列表页（入口是维护单，不是项目）
     // 总览：五卡 + 卡点现算
     go('mt','总览'); let h=document.getElementById('main').innerHTML;
@@ -1935,6 +1938,37 @@ const { chromium } = require('playwright');
       &&document.getElementById('sc-mtinfo').innerHTML.includes('Franklin');   // 地址自动带出
     document.getElementById('sc-st').value='09:00';
     document.getElementById('sc-et').value='11:00';
+    /* ★七十二轮 M4（用户 2026-08-10 定）：上门之前必须先有研发排查结论 */
+    schSave(); R.gNoRd=SCH.filter(x=>x.d===ds&&x.type==='维护'&&x.mtId===nc.id).length===0;
+    R.rdWhy=(document.getElementById('toasts').textContent||'').includes('研发排查结论');
+    document.getElementById('toasts').innerHTML='';
+    /* 走一遍研发排查：转排查 → 排一节「远程排查」→ 填结论 */
+    loginAs('maintenance');
+    mtRdStart(nc.id); document.getElementById('uiinput').value='远程看一下面板固件版本和总线电压'; uiOk();
+    R.rdDoing=rdOf(nc).st==='doing'&&mtStage(nc).k==='研发排查中';
+    loginAs('eng'); go('eng','派工排班');
+    schAdd('陈工',ymdS(weekDays(1)[3]));
+    document.getElementById('sc-t').value='远程排查'; schPjToggle();
+    R.rdType=document.getElementById('sc-mtwrap').style.display==='block';
+    document.getElementById('sc-mt').value=nc.id; schMtPick();
+    document.getElementById('sc-st').value='10:00';
+    document.getElementById('sc-et').value='11:00';
+    schSave();
+    R.rdSched=SCH.some(x=>x.type==='远程排查'&&x.mtId===nc.id&&x.pj==='KX-2026-0142')
+      &&OPLOG.some(l=>l.action==='排远程排查');           // ★研发工时照样记进项目
+    loginAs('maintenance');
+    mtRdDone(nc.id); document.getElementById('uiinput').value='短'; uiOk();
+    R.gRdNote=rdOf(nc).st==='doing';                       // 结论太短 → 拦
+    mtRdDone(nc.id);
+    document.getElementById('uiinput').value='固件版本过旧远程刷新无效，需上门换面板本体';
+    uiOk();
+    R.rdDone=rdOf(nc).st==='done';
+    loginAs('eng'); go('eng','派工排班');
+    schAdd('小周',ds);
+    document.getElementById('sc-t').value='维护'; schPjToggle();
+    document.getElementById('sc-mt').value=nc.id; schMtPick();
+    document.getElementById('sc-st').value='09:00';
+    document.getElementById('sc-et').value='11:00';
     schSave();
     const made=SCH.filter(x=>x.d===ds&&x.type==='维护'&&x.mtId===nc.id);
     R.disp=made.length===1&&made[0].pj==='KX-2026-0142'&&made[0].ack===false
@@ -1975,12 +2009,28 @@ const { chromium } = require('playwright');
     R.sub=h.includes('生效中')&&h.includes('年化订阅费')&&h.includes('不计入项目利润率');
     const x=subOf('KX-2026-0121'); const st=subState(x);
     R.subOverdue=st.k==='已逾期';                                  // 2026/06/01 到期 → 已逾期
-    const fee0=subOf('KX-2026-0142').fee;
-    subTier('KX-2026-0142','5');
-    R.tier5=subOf('KX-2026-0142').fee===0&&subOf('KX-2026-0142').to==='';
-    subRenew('KX-2026-0142'); R.gT5Renew=subOf('KX-2026-0142').to==='';   // 第5档不能续
-    subTier('KX-2026-0142','2'); subOf('KX-2026-0142').fee=fee0;
-    subOf('KX-2026-0142').from='2026/05/31'; subOf('KX-2026-0142').to='2027/05/31';
+    /* ★七十一轮 M6（用户 2026-08-10 定）：档位只能在续费时改 */
+    const a42=subOf('KX-2026-0142');            // 到 2027/05/31，离到期还远
+    const fee0=a42.fee, tier0=a42.tier;
+    subTier('KX-2026-0142','3');
+    R.gMidTier=a42.tier===tier0&&a42.fee===fee0;         // 期间中途改档 → 拦
+    R.midWhy=(document.getElementById('toasts').textContent||'').includes('续费时改');
+    document.getElementById('toasts').innerHTML='';
+    const a21=subOf('KX-2026-0121');            // 已逾期＝在续费窗口里
+    R.canTier=subCanTier(a21)&&!subCanTier(a42);
+    const t21=a21.tier, f21=a21.fee, from21=a21.from, to21=a21.to;
+    subTier('KX-2026-0121','5'); uiOk();
+    R.tier5=a21.fee===0&&a21.to==='';
+    subRenew('KX-2026-0121'); R.gT5Renew=a21.to==='';    // 第5档不能续
+    /* 续费时可以一并换档 */
+    a21.tier=t21; a21.fee=f21; a21.from=from21; a21.to=to21;
+    SEC.stepAt=Date.now();            // 续费是不可逆动作，要二次验证 —— 这里当作刚验过
+    subRenew('KX-2026-0121');
+    document.getElementById('sr-t').value='1';
+    subRenewSave('KX-2026-0121');
+    R.renewTier=a21.tier===1&&a21.to!==to21
+      &&OPLOG.some(l=>l.action==='订阅续费'&&l.detail.includes('换档'));
+    a21.tier=t21; a21.fee=f21; a21.from=from21; a21.to=to21;
     // 设置
     go('mt','设置'); h=document.getElementById('main').innerHTML;
     R.setUI=h.includes('响应 SLA')&&h.includes('订阅五档年费标准')&&h.includes('报修渠道')
@@ -2001,7 +2051,7 @@ const { chromium } = require('playwright');
     R.restored=MCASES.length===m0&&SCH.length===s0;
     return JSON.stringify(R);});
   const M54=JSON.parse(mt);
-  ok(M54.pages,'运维应 8 页（含设置 / 维保状态，且不含项目列表）');
+  ok(M54.pages,'运维应 9 页（含故障分析 / 设置 / 维保状态，且不含项目列表）');
   ok(M54.ov&&M54.ovStuck,'运维总览缺五块 / 卡点表未现算');
   ok(M54.repUnknown,'报修受理页没把「问题什么时候开始的」单列一栏并注明不影响 SLA');
   ok(M54.gPj,'没选项目竟能建维护单（应拦：只受理已交付项目）');
@@ -2018,6 +2068,13 @@ const { chromium } = require('playwright');
   ok(M54.noDispBtn,'运维派工页不该再有「派工」按钮（排人在工程派工排班里）');
   ok(M54.mtBox,'排班浮窗选「维护」时第二个框应列维护单（而不是项目）');
   ok(M54.autoFill,'选中维护单后未自动带出项目地址与工作内容');
+  ok(M54.gNoRd,'★没有研发排查结论竟能派人上门 —— 很多毛病远程就能解决，白跑一趟最贵');
+  ok(M54.rdWhy,'拦下来了却没说清要先转研发排查');
+  ok(M54.rdDoing,'转研发排查后状态没变成「研发排查中」');
+  ok(M54.rdType,'排班里没有「远程排查」这一类（研发的时间要记进工时与项目成本）');
+  ok(M54.rdSched,'排了远程排查却没写进排班表 / 没留痕');
+  ok(M54.gRdNote,'排查结论只写一个字竟能存（应拦 ≥10 字 —— 要写清查出什么、还用不用上门）');
+  ok(M54.rdDone,'填了结论状态没变成「排查完成」');
   ok(M54.disp,'维护派工未写进排班表 / 未回写到维护单 / 未留痕');
   ok(M54.gNoCase,'维护任务没选维护单竟能保存（应拦）');
   ok(M54.gThree,'三样不齐竟算完成（应拦并标红）');
@@ -2026,8 +2083,12 @@ const { chromium } = require('playwright');
   ok(M54.freeJudge,'免责判定错（免责期内产品缺陷应全免、人为应计费）');
   ok(M54.war&&M54.warCalc,'维保状态未把两套钟分开（起点/期限/到期）');
   ok(M54.sub&&M54.subOverdue,'业主订阅缺生效/年化/不计利润率说明，或逾期未判出');
+  ok(M54.gMidTier,'★订阅期间中途竟能改档 —— 客户已按老档位付了一整年，服务范围却变了，账对不上');
+  ok(M54.midWhy,'拦下来了却没说清"档位只能在续费时改"');
+  ok(M54.canTier,'续费窗口判断错（快到期/已逾期/未订阅才开放改档）');
   ok(M54.tier5,'改第 5 档未清空年费与期间');
   ok(M54.gT5Renew,'第 5 档竟能续费（应拦）');
+  ok(M54.renewTier,'★续费时不能一并换档（换档只有这一个时刻可以做）');
   ok(M54.setUI,'运维设置缺阈值 / 五档年费 / 两个下拉 / 归因四类');
   ok(M54.gZero,'阈值填 0 未被拦');
   ok(M54.setOk&&M54.feeOk,'改阈值 / 改年费未生效或未留痕');
@@ -3043,6 +3104,121 @@ const { chromium } = require('playwright');
   ok(S69.detail,'项目详情页没渲染出进度/历史排班/工时占比');
   ok(S69.schHist,'★项目详情里看不到这个项目派过的班（用户就是为这个提的）');
   ok(S69.docs,'项目详情里没有相关单据的入口');
+
+  // ═══ 七十一~七十四轮：部门试用反馈 M3/M5/M6/M7 · E3/E5/E6 ═══
+  const r74=await page.evaluate(()=>{ const R={};
+    const l0=OPLOG.length, n0=NOTIF.length;
+    const lv0=JSON.parse(JSON.stringify(PJLV)), nt0=JSON.parse(JSON.stringify(PJNOTE));
+    // ── M3 分级 SLA：每档不一样，超了自动进待办 ──
+    loginAs('maintenance');
+    R.priSla = priSla({pri:'P0'})===4&&priSla({pri:'P3'})===72&&priSla({})===24;   // 默认 P2
+    /* 挑一张运维手上还在推的（待定价/已开票的归财务，本来就不该再推给运维） */
+    const c0=MCASES.find(c=>!mtClosed(c)&&c.rep&&c.rep.at&&!['待定价','已开票'].includes(c.st));
+    const oldPri=c0.pri;
+    c0.pri='P0';
+    R.overByPri = mtResp(c0).sla===4&&mtResp(c0).over===true;                      // P0 只有 4 小时
+    R.slaTodo = mtTodos().some(t=>t.id==='mt-sla-'+c0.id&&t.ev.startsWith('P0'));  // ★自动进待办
+    R.inAll = allTodos().some(t=>t.id==='mt-sla-'+c0.id);
+    c0.pri=oldPri;
+    go('mt','设置');
+    R.priSet = document.getElementById('main').innerHTML.includes('分级 SLA');
+    mtPriVal('P0',0); R.gPriZero = mtSet.pri.P0===4;                               // 0 → 拦
+    mtPriVal('P0',6); R.priSaved = mtSet.pri.P0===6&&OPLOG[0].action==='修改分级 SLA';
+    mtPriVal('P0',4);
+    // ── M5 默认只看未关闭 ──
+    go('mt','维护单跟踪');
+    R.defOpen = mtF==='未关闭'
+      &&!document.getElementById('main').innerHTML.includes('MT-0142-01');          // 已结案的不上屏
+    mtF='全部'; renderAll();
+    R.allShows = document.getElementById('main').innerHTML.includes('MT-0142-01');
+    mtF='未关闭'; renderAll();
+    // ── M5 完结交财务：三样不齐拦；齐了转待定价并交事实给财务 ──
+    const bad=MCASES.find(c=>c.job&&c.job.done&&!mtThree(c).ok);
+    const st0=bad&&bad.st;
+    if(bad){ mtFinish(bad.id); R.gThreeFinish = bad.st===st0; }
+    const okc=MCASES.find(c=>c.job&&c.job.done&&mtThree(c).ok&&!['待定价','已开票','已结案','已作废'].includes(c.st));
+    if(okc){
+      mtFinish(okc.id); document.getElementById('uiinput').value='修好了'; uiOk();
+      R.gFinishNote = okc.st!=='待定价';                                            // <10 字 → 拦
+      mtFinish(okc.id);
+      document.getElementById('uiinput').value='更换二楼调光模块并重新对码，全部回路测试通过';
+      uiOk();
+      R.finished = okc.st==='待定价'&&!!okc.finishNote
+        &&OPLOG.some(l=>l.action==='维护完结交财务')
+        &&NOTIF.some(x=>(x.what||'').includes('维护完结待定价'));
+    } else { R.gFinishNote=true; R.finished=true; }
+    // ── M7 故障分析 ──
+    go('mt','故障分析'); const ha=document.getElementById('main').innerHTML;
+    R.ana = ha.includes('按归因')&&ha.includes('按现象')&&ha.includes('按型号')
+      &&ha.includes('哪个设备最爱坏')&&ha.includes('没填归因');
+    mtAnaR='all'; renderAll();
+    R.anaRange = document.getElementById('main').innerHTML.includes('全部');
+    mtAnaR='6';
+    // ── E6 项目分级 ──
+    loginAs('eng'); go('eng','项目列表');
+    const he=document.getElementById('main').innerHTML;
+    R.lvCol = he.includes('pjLvSet')&&he.includes('★资源用量')&&he.includes('★下次跟进');
+    R.lvSort = he.indexOf('KX-2026-0188')<he.indexOf('KX-2026-0142');   // A 级置顶
+    pjLvSet('KX-2026-0142');
+    document.getElementById('lv-k').value='A';
+    document.getElementById('lv-w').value='短';
+    pjLvSave('KX-2026-0142'); R.gLvWhy = lvOf('KX-2026-0142').lv!=='A';   // 原因太短 → 拦
+    document.getElementById('lv-w').value='老客户转介绍来的，要做成样板';
+    pjLvSave('KX-2026-0142');
+    R.lvSaved = lvOf('KX-2026-0142').lv==='A'&&OPLOG.some(l=>l.action==='项目分级');
+    // ── E5 项目备忘：多条取最近的当跟进时间 + 到期进待办 ──
+    R.noteNext = noteNext('KX-2026-0188').due==='2026/08/20';           // 08/20 比 08/28 近
+    pickPj(PROJECTS.findIndex(p=>p.code==='KX-2026-0188')); go('eng','项目详情');
+    const hd=document.getElementById('main').innerHTML;
+    R.noteBlock = hd.includes('项目备忘')&&hd.includes('Builder Sam 说砌墙')
+      &&hd.includes('安装调试')&&hd.includes('工时占比');               // ★E3 安装调试并进来了
+    R.noInstPage = !DEPT.eng.pages.includes('安装调试');
+    const nn=PJNOTE.length;
+    pjNoteAdd('KX-2026-0188');
+    document.getElementById('nt-t').value='短';
+    pjNoteSave('KX-2026-0188'); R.gNoteTxt = PJNOTE.length===nn;
+    document.getElementById('nt-t').value='业主说要等家具进场后再装窗帘电机';
+    document.getElementById('nt-d').value='';
+    pjNoteSave('KX-2026-0188'); R.gNoteDue = PJNOTE.length===nn;        // 没日期 → 拦
+    document.getElementById('nt-d').value='2026-08-15';
+    pjNoteSave('KX-2026-0188');
+    R.noteSaved = PJNOTE.length===nn+1&&noteNext('KX-2026-0188').due==='2026/08/15';
+    /* 到期前 3 天才进待办 —— 08/15 那条还早，用近的那条验 */
+    R.noteTodo = noteTodos().some(t=>t.pj==='KX-2026-0203')
+      &&!noteTodos().some(t=>t.id==='note-'+PJNOTE[PJNOTE.length-1].id);
+    // 还原
+    PJLV=lv0; PJNOTE.length=0; nt0.forEach(x=>PJNOTE.push(x));
+    mtF='未关闭'; mtRepAll=false; mtAnaR='6';
+    OPLOG.splice(0,OPLOG.length-l0); NOTIF.splice(0,NOTIF.length-n0);
+    pcClose(); renderAll();
+    R.restored = PJNOTE.length===nt0.length&&lvOf('KX-2026-0142').lv==='B';
+    return JSON.stringify(R);});
+  const S74=JSON.parse(r74);
+  ok(S74.priSla,'M3 分级 SLA 不对（P0 4h / P1 8h / P2 24h / P3 72h，默认 P2）');
+  ok(S74.overByPri,'★超没超还在按全公司一个 24 小时判 —— 应按这一单自己那一档');
+  ok(S74.slaTodo&&S74.inAll,'★超 SLA 的单没自动进待办 —— 不自动推，分级就只是个好看的标签');
+  ok(S74.priSet,'设置页没有四档 SLA 可改');
+  ok(S74.gPriZero,'分级 SLA 填 0 竟能存（等于这一档永远超期）');
+  ok(S74.priSaved,'改分级 SLA 没生效 / 没留痕');
+  ok(S74.defOpen,'★维护单跟踪没默认只看未关闭（单子越堆越长，找不到手上的活）');
+  ok(S74.allShows,'点「全部」看不到已结案的历史单');
+  ok(S74.gThreeFinish,'三样不齐竟能完结交财务（财务按归因+时长定价，缺一样定不了）');
+  ok(S74.gFinishNote,'处理情况只写三个字竟能完结（应拦 ≥10 字 —— 财务要照着往发票上写）');
+  ok(S74.finished,'完结没转「待定价」/ 没留痕 / 没把事实交给财务');
+  ok(S74.ana,'★M7 故障分析没做出四个角度（归因 / 现象 / 型号 / 项目）');
+  ok(S74.anaRange,'故障分析的时间范围切不了');
+  ok(S74.lvCol,'项目列表没有分级 / 资源用量 / 下次跟进三列');
+  ok(S74.lvSort,'★项目列表没按分级置顶（干不过来的时候先干 A）');
+  ok(S74.gLvWhy,'★分级原因太短竟能存 —— 不写原因的分级，最后人人都是 A');
+  ok(S74.lvSaved,'分级没保存 / 没留痕');
+  ok(S74.noteNext,'★一个项目多条备忘时没取最近那条当跟进时间（用户明确要求）');
+  ok(S74.noteBlock,'★项目详情里没有备忘块 / 安装调试没并进来');
+  ok(S74.noInstPage,'★「安装调试」还是单独一页 —— 和「派工排班」两处都能派人，容易搞混');
+  ok(S74.gNoteTxt,'备忘内容太短竟能存（写"跟进一下"，过两周自己也想不起来）');
+  ok(S74.gNoteDue,'★备忘没填跟进日期竟能存 —— 没有日期就不会提醒，等于没记');
+  ok(S74.noteSaved,'备忘没保存 / 跟进时间没跟着变成最近那条');
+  ok(S74.noteTodo,'★备忘到期没进待办（记了不提醒等于没记）');
+  ok(S74.restored,'七十四轮测试后演示态未还原');
 
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));

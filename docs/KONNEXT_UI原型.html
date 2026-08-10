@@ -409,11 +409,11 @@ const WHO = {
 };
 const DEPT = {
   presales:{label:'售前', pages:['项目列表','项目状态表','操作日志','设置']},  /* 用户定：大表=项目列表；状态表=比例图+走向图+状态过滤 */
-  eng:     {label:'工程管理', pages:['总览','项目列表','项目详情','派工排班','出货单','Site Meeting','物料变更审批','安装调试','交付','工程流水账','每日工时管理','文档库','操作日志','设置']},
+  eng:     {label:'工程管理', pages:['总览','项目列表','项目详情','派工排班','出货单','Site Meeting','物料变更审批','交付','工程流水账','每日工时管理','文档库','操作日志','设置']},
   proc:    {label:'采购', pages:['总览','采购需求','采购单','供应商','物料主表','汇率','调价历史','RMA退换','操作日志','设置']},
   wh:      {label:'库管', pages:['总览','项目出库状态','入库','出库','退库与拒收','盘点','物料在谁手里','库存流水','操作日志','设置']},
   fin:     {label:'财务', pages:['财务节点','项目列表','项目收款S1-S3','尾款结算S4与Var','运维财务支持','催账和停服','工资数据','项目报销','成本与利润率','操作日志','设置']},
-  mt:      {label:'运维', pages:['总览','报修受理','运维派工状态','维护单跟踪','维保状态','业主订阅','操作日志','设置']},
+  mt:      {label:'运维', pages:['总览','报修受理','运维派工状态','维护单跟踪','故障分析','维保状态','业主订阅','操作日志','设置']},
   decision:{label:'决策页', pages:['决策看板','风险看板','悬而未决','账号与权限','系统健康','审计日志','全局参数']},
 };
 /* ═══ 四十九轮：发送人身份（用户 2026-08-03 定 · 在总管理员「决策页 / 全局参数」里设置）═══
@@ -489,7 +489,7 @@ const COMPANY_PAGES=new Set([
   'fin/财务节点','fin/项目收款S1-S3','fin/尾款结算S4与Var','fin/运维财务支持','fin/催账和停服',
   'fin/工资数据','fin/项目报销','fin/成本与利润率','fin/设置','fin/总览','fin/工资','presales/总览','presales/项目列表','presales/项目状态表','presales/设置','mt/总览',
   'presales/操作日志','eng/操作日志','proc/操作日志','wh/操作日志','fin/操作日志','mt/操作日志',
-  'mt/报修受理','mt/运维派工状态','mt/维护单跟踪','mt/维保状态','mt/业主订阅','mt/设置',
+  'mt/报修受理','mt/运维派工状态','mt/维护单跟踪','mt/故障分析','mt/维保状态','mt/业主订阅','mt/设置',
   'presales/项目列表','eng/项目列表','wh/项目出库状态','fin/项目列表',
   'decision/决策看板','decision/风险看板','decision/悬而未决','decision/账号与权限',
   'decision/系统健康','decision/审计日志','decision/全局参数',
@@ -2869,7 +2869,19 @@ function pcProjRows(){ return PROJECTS.filter(p=>['施工中','项目交付'].in
      · 换件走库管出库 —— 出库那刻单价定格，自动归集到这张维护单 */
 
 /* 运维设置：阈值与下拉都做成可改的（同工程线口径） */
-let mtSet={slaH:24, freeRemindDays:60, subRemindDays:30, warRemindDays:60};
+let mtSet={slaH:24, freeRemindDays:60, subRemindDays:30, warRemindDays:60,
+  pri:{P0:4,P1:8,P2:24,P3:72}};      /* ★每档 SLA 不同（用户 2026-08-10 提），单位小时 */
+/* ★维护单分级（用户 2026-08-10 提）：不分级就只能按先来后到，
+   全屋停摆和"一个灯不亮"排在同一条队里 —— 真急的那单一定被慢的挡住，而且没人会发现 */
+const MT_PRI=[
+ {k:'P0',cn:'P0 · 全屋停摆',      note:'全屋失控 / 断网断电 / 有安全隐患 —— 今天必须到'},
+ {k:'P1',cn:'P1 · 主要功能不可用',note:'整层灯控或空调失效、网关离线 —— 当天内响应'},
+ {k:'P2',cn:'P2 · 局部功能异常',  note:'个别面板/传感器不正常 —— 一个工作日内'},
+ {k:'P3',cn:'P3 · 轻微 / 咨询',   note:'外观、用法咨询、可等的小毛病 —— 三天内'},
+];
+const priOf=c=>MT_PRI.find(x=>x.k===((c&&c.pri)||'P2'))||MT_PRI[2];
+const priSla=c=>mtSet.pri[priOf(c).k]||24;
+const priCls=k=>({P0:'p-red',P1:'p-amber',P2:'p-cyan',P3:'p-grey'})[k]||'p-grey';
 let MT_CH=['电话','微信','邮件','现场','其他'];                    // 报修渠道（可增删）
 let MT_SYM=['面板无反应','灯控失灵','网关离线','传感器误触发','App 连不上','地暖不工作','其他'];
 const MT_CAUSE=[                                                   // 四类统一词表，内建不可改
@@ -2920,6 +2932,49 @@ const subOf=code=>SUBS.find(x=>x.code===code);
 
 /* ── 维护单：运维视角的状态链（财务只认后三态，前面几步它看不到也不该看到）──
    已受理 → 已派工 → 上门（三样齐才算完）→ 待定价 → 已开票 → 已结案 ｜ 已作废 */
+/* ══════════ 研发排查（用户 2026-08-10 定：两个都要）══════════
+   现实流程：派人上门之前，先让研发远程看一眼 —— 很多毛病远程就能解决，
+   跑一趟 Sydney 来回两三个小时，白跑最贵。
+   所以做三件：
+     ①排班里新增工作类型「<b>远程排查</b>」—— 研发花的时间<b>记进工时和项目成本</b>
+       （原来这段时间完全没人记，等于白干）
+     ②维护单多一个状态「<b>研发排查中</b>」
+     ③<b>派人上门之前必须先有排查结论</b>（或明确标「无需排查」并写原因）
+   ★为什么要门禁：靠自觉的话，忙起来一定直接派人；白跑一趟没人会报错，成本悄悄就上去了。 */
+const RD_ST={none:'未排查',doing:'研发排查中',done:'排查完成',skip:'无需排查'};
+const rdOf=c=>(c&&c.rd)||{st:'none'};
+const rdReady=c=>['done','skip'].includes(rdOf(c).st);
+function mtRdStart(id){ const c=MCASES.find(x=>x.id===id); if(!c) return;
+  if(rdReady(c)){ uiAlert('这单的研发排查已经有结论了（'+RD_ST[rdOf(c).st]+'）'); return; }
+  uiPrompt('转研发远程排查 · '+id+'（'+pjNick(c.code)+'）\n'+
+    '现象：'+((c.rep&&c.rep.sym)||'—')+'\n\n要研发看什么？（必填 ≥4 字）',v=>{
+    const w=(v||'').trim();
+    if(w.length<4){ uiAlert('门禁：要研发看什么必须写清楚（≥4 字）—— 只写"看一下"，研发不知道从哪下手'); return; }
+    c.rd={st:'doing',ask:w,by:WHO[me].name,at:nowTs()};
+    opLog(c.code,'转研发排查',id+' · '+w+' —— 上门之前先远程看一眼，能远程解决就不用跑一趟',['mt','eng']);
+    notifAdd(c.code,'研发远程排查：'+id+' · '+w,[{who:'工程管理 陈工',how:'待办',ok:false}]);
+    renderAll();
+    uiAlert('已转研发排查 ✓\n★研发花的时间在工程「派工排班」里按<b>远程排查</b>记 —— 记了才算进成本\n'+
+      '有结论之前，这单<b>派不了上门任务</b>'); }); }
+function mtRdDone(id){ const c=MCASES.find(x=>x.id===id); if(!c) return;
+  uiPrompt('填排查结论 · '+id+'\n\n★结论必须说清两件事：查出是什么问题、<b>还用不用上门</b>\n（必填 ≥10 字）',v=>{
+    const w=(v||'').trim();
+    if(w.replace(/\s/g,'').length<10){ uiAlert('门禁：排查结论必填（≥10 字）——\n'+
+      '要写清楚查出什么、还用不用上门。写"看过了"，派工的人还是不知道要不要去'); return; }
+    c.rd=Object.assign({},c.rd,{st:'done',note:w,doneBy:WHO[me].name,doneAt:nowTs()});
+    opLog(c.code,'研发排查完成',id+' · '+w,['mt','eng']);
+    notifAdd(c.code,'研发排查完成 '+id+'：'+w,[{who:'运维 小周',how:'待办',ok:false}]);
+    renderAll(); uiAlert('已记录 ✓ 现在可以派上门任务了（如果结论是不用去，直接完结就行）'); }); }
+function mtRdSkip(id){ const c=MCASES.find(x=>x.id===id); if(!c) return;
+  uiPrompt('标「无需研发排查」· '+id+'\n为什么不用排查？（必填 ≥4 字）\n'+
+    '例：现场照片已确认是人为砸坏、换件即可',v=>{
+    const w=(v||'').trim();
+    if(w.length<4){ uiAlert('门禁：原因必填（≥4 字）—— 跳过一道门禁总得说得出理由'); return; }
+    c.rd={st:'skip',note:w,by:WHO[me].name,at:nowTs()};
+    opLog(c.code,'标记无需研发排查',id+' · '+w,['mt','eng']);
+    renderAll(); uiAlert('已标记 ✓ 可以直接派上门任务'); }); }
+/* 关闭＝这单运维这边彻底不用管了（结案或作废）—— 默认不上屏，免得越堆越长 */
+const mtClosed=c=>['已结案','已作废'].includes(c.st);
 function mtStage(c){
   if(c.st==='已作废') return {k:'已作废',cls:'p-grey',next:'—'};
   if(c.st==='已结案') return {k:'已结案',cls:'p-green',next:'—'};
@@ -2927,7 +2982,10 @@ function mtStage(c){
   if(c.st==='待定价') return {k:'待定价',cls:'p-amber',next:'等财务定价开票'};
   if(c.job&&c.job.done) return {k:'上门完 · 三样不齐',cls:'p-red',next:'补齐归因/服务内容/客户签字，财务才定得了价'};
   if(c.job) return {k:'已派工',cls:'p-cyan',next:c.job.d+' '+c.job.st+' · '+c.job.who+' 上门'};
-  return {k:'已受理',cls:'p-amber',next:'待派工'}; }
+  /* ★上门之前先过研发（用户 2026-08-10 定） */
+  if(rdOf(c).st==='doing') return {k:'研发排查中',cls:'p-cyan',next:'等研发给结论 —— 有结论才派得了上门'};
+  if(rdOf(c).st==='none') return {k:'已受理',cls:'p-amber',next:'★先转研发远程排查（或标「无需排查」），再派人上门'};
+  return {k:'已受理',cls:'p-amber',next:'研发已给结论 · 待派工'}; }
 /* ══════════ 两个时间，别混（用户 2026-08-10 纠正）══════════
    原来只有一个「报修时间」，还允许留空 —— 那是把两件事揉成了一件：
      ①【报修时间】客户什么时候<b>告诉我们</b>的 —— <b>永远知道</b>，就是接到电话那一刻。
@@ -2943,7 +3001,9 @@ function mtResp(c){ const at=c.rep&&c.rep.at;
   /* ★负数＝报修时间比上门还晚，一定是数据填错了。宁可当场标出来，也别显示一个负的小时数
      —— 负数会被平均进 SLA 报表，把真实的响应慢冲掉，而且不会报错 */
   if(h<0) return {h:null,bad:true,txt:'报修时间晚于上门时间 —— 数据有问题，请核对'};
-  return {h,txt:h+' 小时',over:h>mtSet.slaH}; }
+  /* ★超没超按【这一单自己那一档】的 SLA 判，不再是全公司一个 24 小时 */
+  const sla=priSla(c);
+  return {h,txt:h+' 小时',sla,over:h>sla}; }
 /* 问题拖了多久才报：问题首次出现 → 客户报修。说不清就是说不清，不猜 */
 function mtSince(c){ const r=c.rep||{};
   if(!r.since) return {d:null,txt:'【未知】客户说不清哪天开始的'};
@@ -2977,7 +3037,9 @@ function mtStuckRows(){ const out=[];
       why:'自动续费'+(x.auto?'开着，到期自动生成待开票':'关着，不续就断')+' —— 先跟业主确认',h:0,p:'业主订阅'});});
   return out.sort((a,b)=>(b.h||0)-(a.h||0)); }
 /* ── 运维动作 ── */
-let mtQ='', mtF='全部', mtSel=null, mtDlg=null;
+let mtQ='', mtF='未关闭', mtSel=null, mtDlg=null;
+let mtAnaR='6';   /* 故障分析的时间范围（近 6 个月） */
+let mtRepAll=false;   /* ★报修受理默认只看未关闭（用户 2026-08-10） */
 function mtShow(html){ const b=document.getElementById('dcbox'); b.innerHTML=html;
   document.getElementById('dcback').style.display='block'; b.style.display='block'; }
 function mtClose(){ mtDlg=null; document.getElementById('dcback').style.display='none';
@@ -3013,6 +3075,11 @@ function mtNewOpen(){ mtDlg={m:'new'};
      '<div class="field"><label>故障现象</label><select id="mt-sym">'+
        MT_SYM.map(c=>'<option>'+c+'</option>').join('')+'</select></div>'+
    '</div>'+
+   '<div class="field"><label>★<b>急不急</b>（分级 —— 决定这单的 SLA）</label>'+
+     '<select id="mt-pri">'+MT_PRI.map(x=>'<option value="'+x.k+'"'+(x.k==='P2'?' selected':'')+'>'+
+       x.cn+'　·　SLA '+mtSet.pri[x.k]+' 小时　—— '+x.note+'</option>').join('')+'</select>'+
+     '<div class="hint">不分级就只能按先来后到：<b>全屋停摆和"一个灯不亮"排在同一条队里</b>，'+
+       '真急的那单一定被慢的挡住，而且没人会发现。<br>超过这一档的 SLA，系统会<b>自动推到待办</b>提醒跟进</div></div>'+
    '<div class="field"><label>客户原话 / 现象描述（必填 ≥5 字 —— 派工的人靠这几句判断带什么件）</label>'+
      '<textarea id="mt-note" style="width:100%;min-height:64px;font-size:12px"></textarea></div>'+
    '<div class="field"><label>口头预估金额（选填 · <b>只作参考，不参与计费</b>，实际以财务发票为准）</label>'+
@@ -3049,10 +3116,12 @@ function mtNewSave(){ const v=id=>((document.getElementById(id)||{}).value||'').
   const n=MCASES.filter(c=>c.code===code).length+1;
   const id='MT-'+code.slice(-4)+'-'+String(n).padStart(2,'0');
   const fix=t=>t?t.replace('T',' ').replace(/-/g,'/'):null;
-  MCASES.unshift({id,code,st:'已受理',free:null,amt:null,
+  MCASES.unshift({id,code,st:'已受理',free:null,amt:null,pri:v('mt-pri')||'P2',
+    rd:{st:'none'},
     rep:{at:fix(at),since:fix(since),ch:v('mt-ch'),by:WHO[me].name,sym:v('mt-sym'),note},
     est:isNaN(est)?undefined:est, tech:'',site:0,travel:0,costHr:0,parts:[]});
-  opLog(code,'受理报修',id+' · '+v('mt-sym')+' · '+v('mt-ch')+'报修 · 报修时间 '+fix(at)+
+  opLog(code,'受理报修',id+' · '+(v('mt-pri')||'P2')+' · '+v('mt-sym')+' · '+v('mt-ch')+
+    '报修 · 报修时间 '+fix(at)+
     ' · 问题出现时间 '+(since?fix(since):'【未知】（客户说不清，留空不猜）'),['mt']);
   mtClose(); renderAll();
   uiAlert('已建单 '+id+' ✓ 下一步去<b>工程「派工排班」</b>排人（工作类型选「维护」→ 第二个框选这张单）'+
@@ -3166,31 +3235,112 @@ function mtVoid(id){ const c=MCASES.find(x=>x.id===id); if(!c) return;
     uiAlert('已作废 '+id+'（原因已留痕，单据仍可查）'+
       (gone.length?'\n★ 工程那边 '+gone.length+' 条维护排班已一并删除，已短信+App 通知 '+
         [...new Set(gone.map(x=>x.who))].join('、')+'——别让人白跑一趟':'')); }); }
+/* ★运维完结（用户 2026-08-10 定）：
+   「我点一下完结，发送发票，可能需要填一下大致的处理情况，剩下的金额信息应该直接同步给财务去开票。」
+   —— 是否开票、金额多少、收没收到，都是<b>财务</b>关心的事，运维这页不跟踪。
+   运维要做的只有一件：确认这单干完了，把<b>定价要用的事实</b>一次性交过去。 */
+function mtFinish(id){ const c=MCASES.find(x=>x.id===id); if(!c) return;
+  const t=mtThree(c);
+  if(!c.job||!c.job.done){ uiAlert('门禁：人还没上门（或上门任务没完成）—— 完结不了'); return; }
+  if(!t.ok){ uiAlert('门禁：现场三样还差 '+
+    [!t.cause&&'归因',!t.sum&&'当日服务内容',!t.sign&&'客户签字'].filter(Boolean).join('、')+
+    ' ——\n财务按<b>归因 + 在场时长</b>定价，缺一样就定不了。让现场在 App 上补齐再完结'); return; }
+  const st=mtSite(c);
+  const lab=Math.round(((c.site||0)+(c.travel||0))*(c.costHr||0)*100)/100;
+  const mat=(c.parts||[]).reduce((a,p)=>a+(p.cost||0)*(p.qty||1),0);
+  uiPrompt('完结 '+id+'（'+pjNick(c.code)+'）\n\n'+
+    '交给财务的事实：\n'+
+    '· 归因：'+causeCn(st.cause)+'\n'+
+    '· 在场 '+(c.site||0)+' h + 路上 '+(c.travel||0)+' h\n'+
+    '· 换件成本 '+A$(mat)+'（从库管出库台账归集）\n'+
+    '· 客户 '+(st.signBy||'—')+' 已签字\n\n'+
+    '大致处理情况（必填 ≥10 字 —— 财务开票时要往发票上写）：',v=>{
+    const w=(v||'').trim();
+    if(w.replace(/\s/g,'').length<10){ uiAlert('门禁：处理情况必填（≥10 字）——\n'+
+      '财务要照着这段往发票上写，写"修好了"客户看不懂也认不了账'); return; }
+    c.st='待定价'; c.finishNote=w; c.finishAt=nowTs(); c.finishBy=WHO[me].name;
+    opLog(c.code,'维护完结交财务',id+' · 归因 '+causeCn(st.cause)+' · 在场 '+(c.site||0)+
+      'h + 路上 '+(c.travel||0)+'h · 换件 '+A$(mat)+' · '+w+
+      ' —— 运维这边结束，定价开票收款归财务',['mt','fin']);
+    notifAdd(c.code,'维护完结待定价 '+id+'：'+causeCn(st.cause)+' · '+w,
+      [{who:'财务 王姐',how:'待办',ok:false}]);
+    renderAll();
+    uiAlert('已完结 ✓ 这单交给财务了\n★运维这边到此为止 —— <b>定价、开票、收款都在财务</b>，'+
+      '这页不再跟踪金额'); }); }
 /* 订阅：续费 / 退订 / 改档 */
 function subRenew(code){ const x=subOf(code); if(!x) return;
   if(x.tier===5){ uiAlert('门禁：第 5 档＝不订阅，没有可续的期间 —— 要开通请先改档位'); return; }
+  /* ★续费是唯一可以顺手改档的时刻（用户 2026-08-10 定） */
+  pcDlg={m:'subr',code};
+  pcShow('<div style="font-weight:600;margin-bottom:2px">订阅续费 · '+pjNick(code)+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">当前第 <b>'+x.tier+'</b> 档 · '+A$(x.fee)+'/年 · '+
+     '本期 '+x.from+' → '+x.to+'</div>'+
+   '<div class="field"><label>下一期的档位（★<b>要换档就在这一刻换</b>）</label>'+
+     '<select id="sr-t">'+[1,2,3,4].map(t=>'<option value="'+t+'"'+(t===x.tier?' selected':'')+'>第 '+t+
+       ' 档 · '+A$(mtSet['tier'+t]||0)+'/年</option>').join('')+'</select>'+
+     '<div class="hint">期间中途不许改档 —— 客户已按老档位付了一整年，服务范围却变了，账对不上</div></div>'+
+   '<div class="hint" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
+     '续期一年：'+x.to+' → '+ymd(addM(dOf(x.to),12))+'　·　确认后通知财务开票'+
+     '<br>订阅收支<b>不计入项目利润率</b>（它不是项目的钱）</div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="subRenewSave(\''+code+'\')">确认续费</button></div>'); }
+function subRenewSave(code){ const x=subOf(code); if(!x) return;
+  const t=parseInt(((document.getElementById('sr-t')||{}).value||''),10);
+  pcClose();
   needStepUp('订阅续费（生成下一期并通知财务开票）',()=>{
+    const old=x.tier;
+    if(t&&t!==old){ x.tier=t; x.fee=mtSet['tier'+t]||x.fee; }
     const from=dOf(x.to), to=addM(from,12);
     x.from=ymd(from); x.to=ymd(to); x.cancelled=false;
-    opLog(code,'订阅续费','第 '+x.tier+' 档 · 新一期 '+x.from+' → '+x.to+' · 年费 '+A$(x.fee)+
+    opLog(code,'订阅续费','第 '+x.tier+' 档'+(t&&t!==old?'（本次由第 '+old+' 档换档）':'')+
+      ' · 新一期 '+x.from+' → '+x.to+' · 年费 '+A$(x.fee)+
       ' —— 已通知财务开票（订阅收支不计入项目利润率）',['mt','fin']);
     notifAdd(code,'订阅续费：第 '+x.tier+' 档 · '+A$(x.fee)+'/年',[{who:'财务 王姐',how:'待办',ok:false}]);
-    renderAll(); uiAlert('已续期 ✓ '+x.from+' → '+x.to+'\n已通知财务开票'); }); }
+    renderAll(); uiAlert('已续期 ✓ '+x.from+' → '+x.to+
+      (t&&t!==old?'\n档位已由第 '+old+' 档换到第 '+x.tier+' 档':'')+'\n已通知财务开票'); }); }
 function subCancel(code){ const x=subOf(code); if(!x) return;
   uiPrompt('退订 '+pjNick(code)+' 的订阅，原因（必填）：',r=>{ const why=(r||'').trim();
     if(why.length<4){ uiAlert('门禁：退订原因必须写清楚（≥4 字）'); return; }
     x.cancelled=todayS(); x.auto=false; x.why=why;
     opLog(code,'订阅退订','第 '+x.tier+' 档 · 原因：'+why+' —— 历史已收仍留在累计里，不再计年化',['mt','fin']);
     renderAll(); uiAlert('已退订（历史已收仍计入累计，但不再计年化与生效数）'); }); }
+/* ★档位只能在【续费的时候】改（用户 2026-08-10 定）——
+   期间中途改档，客户已经按老档位付过一整年的钱了，服务范围却变了：
+   已收的年费和现在的档位对不上，而且系统不会报错。
+   开放窗口只有三种：①现在没订阅（第 5 档，等于新开通）②已退订 ③快到期/已过期（＝续费窗口） */
+function subCanTier(x){ if(!x) return false;
+  if(x.tier===5||x.cancelled) return true;
+  const L=dayLeft(dOf(x.to));
+  return L<=mtSet.subRemindDays; }
+function subTierWhy(x){ if(subCanTier(x)) return '';
+  return '档位只能在续费时改 —— 现在这一期到 '+x.to+' 才满，还剩 '+dayLeft(dOf(x.to))+' 天。'+
+    '期间中途改档，客户已按老档位付了一整年，服务范围却变了，已收的年费和档位就对不上了。'+
+    '到期前 '+mtSet.subRemindDays+' 天开放，或者点「续费」时一并改。'; }
 function subTier(code,t){ const x=subOf(code); if(!x) return; const tier=parseInt(t,10);
-  if(tier===5){ x.tier=5; x.fee=0; x.from=''; x.to=''; }
-  else { x.tier=tier; x.fee=mtSet['tier'+tier]||x.fee; }
-  opLog(code,'改订阅档位','→ 第 '+tier+' 档'+(tier===5?'（不订阅：年费与期间一并清空）':' · 年费 '+A$(x.fee)),['mt','fin']);
-  renderAll(); }
+  if(!subCanTier(x)){ uiAlert('门禁：'+subTierWhy(x)); renderAll(); return; }
+  const old=x.tier;
+  if(tier===old){ renderAll(); return; }
+  uiConfirm('把 '+pjNick(code)+' 从第 '+old+' 档改成第 '+tier+' 档？\n'+
+    (tier===5?'第 5 档＝不订阅：年费与期间会一并清空。':'新年费 '+A$(mtSet['tier'+tier]||0)+'/年。')+
+    '\n改动进操作日志并通知财务。',ok=>{ if(!ok){ renderAll(); return; }
+    if(tier===5){ x.tier=5; x.fee=0; x.from=''; x.to=''; }
+    else { x.tier=tier; x.fee=mtSet['tier'+tier]||x.fee; }
+    opLog(code,'改订阅档位','第 '+old+' 档 → 第 '+tier+' 档'+
+      (tier===5?'（不订阅：年费与期间一并清空）':' · 年费 '+A$(x.fee))+
+      '（在续费窗口内改的）',['mt','fin']);
+    notifAdd(code,'订阅档位变更：第 '+old+' 档 → 第 '+tier+' 档',[{who:'财务 王姐',how:'待办',ok:false}]);
+    renderAll(); uiAlert('已改档 ✓ 第 '+old+' 档 → 第 '+tier+' 档\n已通知财务'); }); }
 function subAuto(code,v){ const x=subOf(code); if(!x) return; x.auto=v;
   opLog(code,'改自动续费',(v?'开':'关')+' —— '+(v?'到期自动生成下一期并通知财务开票':'到期不再自动续，需人工确认'),['mt']);
   renderAll(); }
 /* 设置 */
+function mtPriVal(k,v){ const nv=parseInt(v,10);
+  if(!(nv>0)){ uiAlert('门禁：请填正整数小时 —— 填 0 等于这一档永远超期'); renderAll(); return; }
+  const old=mtSet.pri[k]; if(old===nv){ renderAll(); return; }
+  mtSet.pri[k]=nv;
+  opLog('','修改分级 SLA',k+'：'+old+' 小时 → '+nv+' 小时（超了自动进待办；立即按新阈值现算）',['mt']);
+  renderAll(); uiAlert('已保存：'+k+' SLA '+old+' h → '+nv+' h'); }
 function mtSetVal(k,label,v){ const nv=parseInt(v,10);
   if(!(nv>0)){ uiAlert('门禁：请填正整数 —— 填 0 等于把这条提醒关掉，系统不会再提醒你'); renderAll(); return; }
   const old=mtSet[k]; if(old===nv){ renderAll(); return; }
@@ -3307,6 +3457,7 @@ let SCH_TYPES=[
  {k:'安装',        c:'t-inst',std:true},
  {k:'交付',        c:'t-deli',std:true},
  {k:'维护',        c:'t-mt',  std:true},
+ {k:'远程排查',    c:'t-mt',  std:true},   /* ★研发远程看一眼 —— 时间照样记进工时与项目成本 */
  {k:'倒休',        c:'t-toil',std:false},
 ];
 const schCls=k=>(SCH_TYPES.find(x=>x.k===k)||{c:'t-inst'}).c;
@@ -3414,7 +3565,7 @@ function schPaint(){ const o=schOpen; if(!o) return; const x=o.id?SCH.find(s=>s.
      SCH_TYPES.map(s=>'<option'+(x&&x.type===s.k?' selected':'')+'>'+s.k+'</option>').join('')+'</select></div>'+
    /* ★五十六轮：工作类型＝维护时，第二个框列的是<维护单>不是项目 ——
       维护活儿的源头永远是一张单，选了单，项目地址与工作内容就是单上写好的，不用再抄一遍 */
-   '<div class="field" id="sc-mtwrap" style="display:none"><label>关联维护单（必选 —— 维护活儿都由报修单来）</label>'+
+   '<div class="field" id="sc-mtwrap" style="display:none"><label>关联维护单（必选 —— 维护 / 远程排查都由报修单来）</label>'+
      '<select id="sc-mt" onchange="schMtPick()"><option value="">— 请选择维护单 —</option>'+
      schMtOpts()+'</select>'+
      '<div class="hint" id="sc-mtinfo">选中维护单后，<b>项目地址与工作内容自动带出</b>（来自运维建单时记的现象与客户原话）</div></div>'+
@@ -3567,7 +3718,7 @@ function schMtPick(){ const id=((document.getElementById('sc-mt')||{}).value||''
   schRemainPaint(); schMinPrev(); }
 function schPjToggle(){ const ty=(document.getElementById('sc-t')||{}).value;
   const w=document.getElementById('sc-pjwrap'); if(!w) return;
-  const toil=(ty==='倒休'), mt=(ty==='维护');
+  const toil=(ty==='倒休'), mt=(ty==='维护'||ty==='远程排查');   /* ★远程排查也由维护单来 */
   /* 维护 → 选维护单（项目由单带出）；其余 → 选项目；倒休 → 都不要 */
   const mw=document.getElementById('sc-mtwrap'); if(mw) mw.style.display=mt?'block':'none';
   w.style.display=(toil||mt)?'none':'block';
@@ -3597,11 +3748,19 @@ function schSave(){ const o=schOpen; if(!o) return;
   if(min<15){ uiAlert('门禁：一段活至少 15 分钟'); return; }
   const ov=schOverlap(o.who,o.d,st,et,o.id);
   if(ov){ uiAlert('门禁：时间和同一天的「'+ov.type+' '+ov.st+'–'+ov.et+'」重叠了——'+o.who+' 不能同时在两个地方'); return; }
-  const mtId=ty==='维护'?v('sc-mt'):'';
+  const mtId=(ty==='维护'||ty==='远程排查')?v('sc-mt'):'';
+  if(ty==='远程排查'&&!mtId){ uiAlert('门禁：远程排查也要关联一张维护单 —— 不然这段工时算不到任何项目上'); return; }
   if(ty==='维护'&&!mtId){ uiAlert('门禁：维护任务必须关联一张维护单——维护活儿的源头永远是客户报修，\n'+
     '没有单就没有归因、没有客户签字，财务也定不了价。请先让运维在「报修受理」建单'); return; }
   const mtC=mtId?MCASES.find(x=>x.id===mtId):null;
-  const pjc=ty==='倒休'?'':(ty==='维护'?(mtC?mtC.code:''):v('sc-pj'));
+  /* ★上门之前先过研发（用户 2026-08-10 定）——「远程排查」这类任务本身不受限，它就是去排查的 */
+  if(ty==='维护'&&mtC&&!rdReady(mtC)){
+    uiAlert('门禁：'+mtId+' 还没有<b>研发排查结论</b>，派不了上门任务 ——\n'+
+      '很多毛病远程就能解决，跑一趟来回两三个小时，白跑最贵。\n\n'+
+      '两条路：①在运维「维护单跟踪」里点<b>转研发排查</b>，排一节「远程排查」；'+
+      '②确实不用排查的，点<b>无需研发排查</b>并写原因'); return; }
+  const rdC=ty==='远程排查'?(mtId?MCASES.find(x=>x.id===mtId):null):null;
+  const pjc=ty==='倒休'?'':((ty==='维护'||ty==='远程排查')?(mtC?mtC.code:''):v('sc-pj'));
   if(ty!=='倒休'&&!pjc){ uiAlert('门禁：任务必须关联具体项目——不允许建立无项目关联的工作'); return; }
   if(ty==='倒休'){ const bal=toilBal(o.who)*60;
     const used=SCH.filter(s=>s.who===o.who&&s.type==='倒休'&&s.id!==o.id).reduce((a,s)=>a+s.min,0);
@@ -3619,7 +3778,11 @@ function schSave(){ const o=schOpen; if(!o) return;
       [{who:o.who+'（App 日程）',how:'App 通知',ok:false}]);
     uiAlert('已保存 ✓ 短信已发 '+o.who+'——日程<b>已同步到他 App</b>（回不回都显示）；等回 Y 红点变绿'); }
   else{ SCH.push({id:'T'+(SCH.length+1)+'x',d:o.d,who:o.who,type:ty,pj:pjc,st,et,min,note,remain:rem,sent:true,ack:false,mtId});
-    if(mtC){ mtC.job={who:o.who,d:o.d,st,et,done:false}; mtC.tech=o.who;
+    if(ty==='远程排查'&&rdC){
+      rdC.rd=Object.assign({st:'doing'},rdC.rd||{},{st:'doing',eng:o.who,at:nowTs()});
+      opLog(pjc,'排远程排查',mtId+' → '+o.who+' '+o.d+' '+st+'–'+et+
+        '（研发时间照样记进工时与项目成本；有结论前这单派不了上门）',['eng','mt']); }
+    if(ty==='维护'&&mtC){ mtC.job={who:o.who,d:o.d,st,et,done:false}; mtC.tech=o.who;
       opLog(pjc,'维护单派工',mtId+' → '+o.who+' '+o.d+' '+st+'–'+et+'（在工程派工排班里排的；地址与内容自动取自建单信息）',['eng','mt']); }
     opLog(pjc,'新增排班',o.who+' '+o.d+'：'+ty+' '+st+'–'+et+'（'+minLab(min)+'）'+(pjc?'（'+pjLab+'）':''),['eng']);
     notifAdd(pjc,'新排工：'+o.who+' '+o.d+' '+ty+' '+st+'–'+et+(pjc?' @ '+pjLab:''),
@@ -3927,6 +4090,93 @@ function smNa(code,no){
   uiPrompt('标「不适用」原因（老项目/特殊情况，留痕）：',v=>{
     if(!v||!String(v).trim()) return; const s=SMD[code].sm[no-1]; s.na=String(v).trim();
     opLog(code,'SM'+no+' 标不适用',s.na,['eng']); renderAll(); }); }
+/* ══════════ E6 项目分级（用户 2026-08-10 提）══════════
+   「需要有地方为项目进行分级，并能写原因（项目本身很大，重要客户的项目，打开市场的项目等等）。
+     在真的干不过来的时候，优先处理高等级的项目。」
+   ★分级必须写原因：不写原因的分级，过两个月谁也说不清凭什么是 A，最后就变成人人都是 A。 */
+const PJ_LV=[
+ {k:'A',cn:'A · 优先',  c:'#dc2626',note:'干不过来的时候先干这个'},
+ {k:'B',cn:'B · 正常',  c:'#2563eb',note:'默认'},
+ {k:'C',cn:'C · 可后置',c:'#5f6b76',note:'不急，人手紧张时可以往后排'},
+];
+let PJLV={
+ 'KX-2026-0188':{lv:'A',why:'Mosman 大宅 · 全屋 KNX，规模最大的一单，业主还牵着两个转介绍',by:'陈工',at:'2026/07/15 10:20'},
+ 'KX-2026-0203':{lv:'A',why:'Killara 打开北区市场的样板房，Builder 会带客户来看',by:'陈工',at:'2026/07/20 09:00'},
+ 'KX-2026-0170':{lv:'C',why:'业主长期在海外，自己说不着急，年底前完成即可',by:'陈工',at:'2026/06/30 16:40'},
+};
+const lvOf=code=>PJLV[code]||{lv:'B',why:'',by:'',at:''};
+const lvMeta=k=>PJ_LV.find(x=>x.k===k)||PJ_LV[1];
+function pjLvSet(code){ const cur=lvOf(code);
+  pcDlg={m:'lv',code};
+  pcShow('<div style="font-weight:600;margin-bottom:2px">项目分级 · '+pjNick(code)+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">真的干不过来的时候，<b>先干等级高的</b>。'+
+     '分级只影响排序与提醒，不改任何门禁</div>'+
+   '<div class="field"><label>等级</label><select id="lv-k">'+
+     PJ_LV.map(x=>'<option value="'+x.k+'"'+(x.k===cur.lv?' selected':'')+'>'+x.cn+' —— '+x.note+'</option>').join('')+
+   '</select></div>'+
+   '<div class="field"><label>★为什么是这个等级（必填 ≥6 字）</label>'+
+     '<textarea id="lv-w" style="width:100%;min-height:70px;font-size:12px" '+
+       'placeholder="如：合同额最大 / 重要客户 / 样板房，Builder 会带客户来看 / 业主不急">'+(cur.why||'')+'</textarea>'+
+     '<div class="hint">★不写原因的分级，过两个月谁也说不清凭什么是 A —— 最后就变成人人都是 A，分级等于没有</div></div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="pjLvSave(\''+code+'\')">保存</button></div>'); }
+function pjLvSave(code){
+  const k=((document.getElementById('lv-k')||{}).value||'B');
+  const w=((document.getElementById('lv-w')||{}).value||'').trim();
+  if(w.replace(/\s/g,'').length<6){ uiAlert('门禁：分级原因必填（≥6 字）——\n'+
+    '不写原因的分级，过两个月谁也说不清凭什么是 A，最后就变成人人都是 A'); return; }
+  const old=lvOf(code).lv;
+  PJLV[code]={lv:k,why:w,by:WHO[me].name,at:nowTs()};
+  opLog(code,'项目分级',(old===k?'':'第 '+old+' 级 → ')+k+' 级 —— '+w,['eng','presales','fin']);
+  pcClose(); renderAll(); uiAlert('已保存 ✓ '+pjNick(code)+' → '+lvMeta(k).cn); }
+
+/* ══════════ E5 项目备忘（用户 2026-08-10 提）══════════
+   「builder 说项目大致会在某某日期进入某某阶段，需要先记下来，到了目标时间附近的时候跟进；
+     或者老板某某日期回到澳洲，需要继续安排。这种带日期/时限的信息，可以都记在一处，
+     同时设定跟进时间，到期提醒或者放入待办。如果项目存在多个带时限的信息，则设定最近的时限作为跟进时间。」
+   ★这些话现在全在各人脑子里和微信里 —— 忘了不会有任何提示。 */
+let PJNOTE=[
+ {id:'N-0188-01',pj:'KX-2026-0188',txt:'Builder Sam 说砌墙大概 08/20 完，之后才能进场封板',
+  due:'2026/08/20',by:'陈工',at:'2026/08/05 09:20',done:false},
+ {id:'N-0188-02',pj:'KX-2026-0188',txt:'业主 08/28 从墨尔本回来，回来后才能定二楼面板颜色',
+  due:'2026/08/28',by:'陈工',at:'2026/08/06 14:00',done:false},
+ {id:'N-0203-01',pj:'KX-2026-0203',txt:'电工 Leo 08/12 才有空，SM2 得等他',
+  due:'2026/08/12',by:'陈工',at:'2026/08/04 11:30',done:false},
+];
+const noteOf=pj=>PJNOTE.filter(n=>n.pj===pj&&!n.done).sort((a,b)=>a.due<b.due?-1:1);
+/* ★多条带时限的信息 → 取【最近的那个】当这个项目的跟进时间（用户明确要求） */
+const noteNext=pj=>noteOf(pj)[0]||null;
+const noteLeft=n=>n?dayLeft(dOf(n.due)):null;
+function pjNoteAdd(code){ pcDlg={m:'note',code};
+  const d=new Date(); d.setDate(d.getDate()+7);
+  pcShow('<div style="font-weight:600;margin-bottom:2px">记一条项目备忘 · '+pjNick(code)+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">带日期的话都记在这儿 —— 到期自动进<b>待办</b>提醒你跟进。'+
+     '一个项目有好几条时，<b>最近的那条</b>就是这个项目的跟进时间</div>'+
+   '<div class="field"><label>记什么（必填 ≥6 字）</label>'+
+     '<textarea id="nt-t" style="width:100%;min-height:70px;font-size:12px" '+
+       'placeholder="如：Builder 说砌墙大概 08/20 完，之后才能进场封板"></textarea></div>'+
+   '<div class="field"><label>什么时候跟进（必填）</label>'+
+     '<input type="date" id="nt-d" value="'+ymdS(d).replace(/\//g,'-')+'" style="width:180px">'+
+     '<div class="hint">到这天进待办；提前 3 天开始提醒</div></div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="pjNoteSave(\''+code+'\')">记下</button></div>'); }
+function pjNoteSave(code){
+  const t=((document.getElementById('nt-t')||{}).value||'').trim();
+  const d=((document.getElementById('nt-d')||{}).value||'').trim();
+  if(t.replace(/\s/g,'').length<6){ uiAlert('门禁：内容必填（≥6 字）—— 写"跟进一下"，过两周你也想不起来是什么事'); return; }
+  if(!d){ uiAlert('门禁：跟进日期必填 —— 没有日期就不会提醒你，等于没记'); return; }
+  const id='N-'+code.slice(-4)+'-'+String(PJNOTE.filter(n=>n.pj===code).length+1).padStart(2,'0');
+  PJNOTE.push({id,pj:code,txt:t,due:d.replace(/-/g,'/'),by:WHO[me].name,at:nowTs(),done:false});
+  opLog(code,'记项目备忘',id+' · '+d.replace(/-/g,'/')+' 跟进 · '+t,['eng']);
+  pcClose(); renderAll();
+  uiAlert('已记下 ✓ '+d.replace(/-/g,'/')+' 到期会进待办\n这个项目的跟进时间＝所有备忘里<b>最近的那个</b>'); }
+function pjNoteDone(id){ const n=PJNOTE.find(x=>x.id===id); if(!n) return;
+  uiConfirm('把「'+n.txt+'」标记为已跟进？\n标了就不再提醒（记录留着可查）',ok=>{ if(!ok) return;
+    n.done=true; n.doneAt=nowTs(); n.doneBy=WHO[me].name;
+    opLog(n.pj,'备忘已跟进',n.id+' · '+n.txt,['eng']); renderAll(); }); }
+
 /* ═══ 四十六轮：安装调试（SM4 之后 ~ 交付之前）═══
    工时占比＝已投入 ÷ 售前预计；四档配色（阈值在「设置」里由工程改）：
    <70 充裕 · 70~预警线 正常 · 预警线~100 接近超支（发预警）· >100 已超支（亏损，重点标） */
@@ -4369,7 +4619,7 @@ function engLedger(code){
     r.miss=r.ppl.filter(q=>!q.io&&!q.future).length;      // 派了工没打卡（过去的日子才算问题）
     r.on=r.ppl.filter(q=>q.io).length; });
   return rows; }
-let engLgF='全部', engLgBad=false;
+let engLgF='全部', engLgBad=false, engLgQ='';   /* ★engLgQ＝流水账搜索（用户 2026-08-10） */
 const ENG_LG_STAGES=['全部','Site Meeting','安装','交付','维护'];
 /* ═══ 四十八轮：交付 ═══
    待交付＝①施工部分已结束（安装项清零／工程管理确认完工）②S4 尾款已结清（收款线现算）
@@ -5096,7 +5346,30 @@ const finTodos=()=>FINPAY.filter(f=>!f.susp&&!f.ms[0].settled).map(f=>{
     act:'跟进 S1：'+(m.inv?'收款/催款':'标记请款')+(note?' ｜ 📝 售前注释：'+note.text:''),
     h:m.inv?Math.max(daysSince(m.inv),0)*24:24, sla:72,
     pj:f.code, p:'项目收款S1-S3'};});
-const allTodos=()=>[...preTodos(),...finTodos(),...TODOS];
+/* ★超 SLA 的维护单自动进待办（用户 2026-08-10 提）——
+   分级之后每档 SLA 不一样，超没超只能现算；不自动推到待办，分级就只是个好看的标签 */
+function mtTodos(){ const out=[];
+  MCASES.filter(c=>!mtClosed(c)&&!['待定价','已开票'].includes(c.st)).forEach(c=>{
+    const r=mtResp(c); if(r.h==null) return;
+    const sla=priSla(c); if(r.h<=sla) return;
+    out.push({id:'mt-sla-'+c.id, dept:'mt', pj:c.code, p:'报修受理',
+      ev:priOf(c).k+' 超 SLA：'+c.id+' · '+((c.rep&&c.rep.sym)||''),
+      from:'运维（现算）',
+      act:c.job?('已排 '+c.job.d+' '+c.job.who+' 上门 —— 盯着别再拖')
+        :(rdReady(c)?'★还没派工 —— 去工程「派工排班」排人'
+                    :'★卡在研发排查 —— 先要结论，再派人'),
+      h:Math.round(r.h), sla}); });
+  return out; }
+/* ★项目备忘到期进待办（用户 2026-08-10 提）——记了不提醒，等于没记 */
+function noteTodos(){ return PJNOTE.filter(n=>!n.done).map(n=>{
+   const L=dayLeft(dOf(n.due));
+   if(L>3) return null;                       // 提前 3 天开始提醒
+   return {id:'note-'+n.id, dept:'eng', pj:n.pj, p:'项目详情',
+     ev:'项目备忘到期：'+n.txt,
+     from:'工程（'+n.by+' '+n.at.slice(0,10)+' 记的）',
+     act:L<0?('★已过 '+(-L)+' 天 —— 该跟进了'):(L===0?'就是今天':'还有 '+L+' 天'),
+     h:Math.max(0,-L)*24, sla:0}; }).filter(Boolean); }
+const allTodos=()=>[...preTodos(),...finTodos(),...mtTodos(),...noteTodos(),...TODOS];
 /* 十九轮：待办三动作 —— 已知悉(停止通知) / 处理(跳页并切到该项目) / 搁置(保留) */
 const todoState={};                    // id → 'ack' | 'hold'
 /* 用户定：已知悉只对「当前状态」有效 —— 项目状态一旦改变，清掉标记，通知重新启动 */
@@ -5954,6 +6227,18 @@ ${helpNote(`<b>工时占比＝已投入 ÷ 售前预计</b>，四档配色（充
  <div class="card"><div class="card-label">派过的班</div>
    <div class="card-value">${sch.length}</div>
    <div class="card-foot">${past.length} 次已过 · ${soon.length} 次待办 · 共 ${Math.round(sch.reduce((x,y)=>x+y.min,0)/60*10)/10} h</div></div>
+ <div class="card" style="cursor:pointer" onclick="pjLvSet('${code}')">
+   <div class="card-label">★项目分级</div>
+   <div class="card-value" style="color:${lvMeta(lvOf(code).lv).c}">${lvOf(code).lv}</div>
+   <div class="card-foot">${lvOf(code).why?lvOf(code).why:'<b>还没分级</b> —— 点这里定'}<br>
+     <span class="muted">${lvOf(code).by?lvOf(code).by+' '+lvOf(code).at:''}</span></div></div>
+ <div class="card"><div class="card-label">★下次跟进</div>
+   <div class="card-value" style="font-size:var(--fs-lg)${noteNext(code)&&noteLeft(noteNext(code))<=3?';color:var(--breach)':''}">${
+     noteNext(code)?noteNext(code).due.slice(5):'—'}</div>
+   <div class="card-foot">${noteNext(code)
+     ?(noteLeft(noteNext(code))<0?'★已过 '+(-noteLeft(noteNext(code)))+' 天':'还有 '+noteLeft(noteNext(code))+' 天')+
+       '：'+noteNext(code).txt
+     :'没有带日期的备忘'}</div></div>
 </div>
 <div class="split">
  <div class="panel"><div class="panel-head">这个项目是谁的</div>
@@ -5982,6 +6267,44 @@ ${helpNote(`<b>工时占比＝已投入 ÷ 售前预计</b>，四档配色（充
         <div class="hint">${q}%</div></td></tr>`;}).join('')
     ||'<tr><td colspan="3" class="muted" style="padding:var(--sp-4)">这个项目还没派过班</td></tr>'}</tbody></table>
  </div>
+</div>
+${(()=>{const r=instRow(p); const inst=engStage(p).k==='施工中';
+  return `<div class="panel"><div class="panel-head">安装调试
+   <span class="muted" style="font-weight:400">★并到这一页来了（原来单独一页，和「派工排班」两处都能派人，容易搞混）</span>
+   ${inst?`<button class="btn btn-primary" style="margin-left:auto" onclick="instO('${code}')">资源分配 →</button>`:''}</div>
+  <div class="panel-body">
+   <table><tbody>
+    <tr><td style="width:130px">工时占比</td>
+      <td><b style="color:${r.band.c};font-size:var(--fs-lg)">${r.pct!=null?r.pct+'%':'— —'}</b>
+        <span class="pill ${r.band.cls}" style="margin-left:6px">${r.band.k}</span>
+        <div style="background:var(--bg-elevated);border-radius:4px;height:12px;overflow:hidden;max-width:420px;margin-top:5px">
+          <div style="width:${Math.min(100,r.pct||0)}%;height:100%;background:${r.band.c}"></div></div></td></tr>
+    <tr><td>已投入 / 预计</td><td><b>${r.used} h</b> / ${r.est||'—'} h
+      ${r.left!=null?`　<span class="hint">${r.left>=0?'还剩 '+r.left+' h':'<b style="color:var(--breach)">已超 '+(-r.left)+' h</b>'}</span>`:''}</td></tr>
+    <tr><td>剩余工作量</td><td class="hint">${r.remain.txt}</td></tr>
+   </tbody></table>
+   <div class="hint" style="margin-top:8px">${inst
+     ?'点右上「资源分配」排人 —— 排完<b>直接写进派工排班表</b>并进本人 App 日程（不是两套人马）'
+     :'这个项目现在不在施工阶段（'+engStage(p).k+'），没有安装调试要排'}</div>
+  </div>
+ </div>`;})()}
+<div class="panel"><div class="panel-head">★项目备忘 · 带日期的事
+  <span class="muted" style="font-weight:400">到期自动进待办 —— 记了不提醒等于没记</span>
+  <button class="btn btn-primary" style="margin-left:auto" onclick="pjNoteAdd('${code}')">＋ 记一条</button></div>
+ <table>
+  <thead><tr><th style="width:110px">什么时候跟进</th><th>记的是什么</th>
+    <th style="width:150px">谁记的</th><th style="width:96px"></th></tr></thead>
+  <tbody>${noteOf(code).map(n=>{const L=noteLeft(n);
+   return `<tr${L<=0?' style="background:rgba(220,38,38,.06)"':(L<=3?' style="background:rgba(180,83,9,.06)"':'')}>
+    <td class="mono"><b>${n.due}</b>
+      <div class="hint"${L<=3?' style="color:var(--breach)"':''}>${L<0?'已过 '+(-L)+' 天':(L===0?'就是今天':'还有 '+L+' 天')}</div></td>
+    <td>${n.txt}</td>
+    <td class="hint">${n.by}<br>${n.at}</td>
+    <td style="text-align:right"><button class="btn" onclick="pjNoteDone('${n.id}')">已跟进</button></td>
+   </tr>`;}).join('')||'<tr><td colspan="4" class="muted" style="padding:var(--sp-4)">还没有带日期的备忘 —— Builder 说的话、业主什么时候回来，都记这儿</td></tr>'}</tbody></table>
+ <div class="panel-body hint">★<b>一个项目好几条时，最近的那条就是这个项目的「下次跟进」</b>（上面那张卡）——
+   项目列表里也按它排。到期前 3 天开始进待办（右上角 🔔）。<br>
+   标了「已跟进」就不再提醒，记录留着可查。</div>
 </div>
 <div class="panel"><div class="panel-head">★历史排班
   <span class="muted" style="font-weight:400">${sch.length} 条 · 过去与将来一起列，最近的在上面</span>
@@ -7277,7 +7600,16 @@ ${helpNote(`<b>报价原始单里的行永远不会消失</b>：现场"不要了
  schSeed();
  const p=PROJECTS[pj];
  const all=engLedger(p.code);
- const rows=all.filter(r=>(engLgF==='全部'||r.stage===engLgF)&&(!engLgBad||r.miss||r.ppl.some(q=>q.flag)));
+ const lq=engLgQ.trim().toLowerCase();
+ /* ★搜索（用户 2026-08-10）：一个项目跑几个月，几十行流水，翻不动。
+    人名 / 日期 / 阶段 / 事件 / 上报原文 / 回执 全都能搜 —— "阿强上周干了啥"一搜就出来 */
+ const lgHit=r=>[r.d,r.stage,
+   (r.ppl||[]).map(q=>(q.who||'')+' '+(q.type||'')+' '+(q.io||'')+' '+(q.note||'')).join(' '),
+   (r.ev||[]).map(e=>e.txt||'').join(' '),
+   (r.rep||[]).map(x=>(x.who||'')+' '+(x.kind||'')+' '+(x.txt||'')+' '+(x.remain||'')).join(' '),
+   (r.ack||[]).map(a=>(a.w||'')+' '+(a.how||'')).join(' ')].join(' ').toLowerCase();
+ const rows=all.filter(r=>(engLgF==='全部'||r.stage===engLgF)&&(!engLgBad||r.miss||r.ppl.some(q=>q.flag))
+   &&(!lq||lgHit(r).includes(lq)));
  const dayMin=all.reduce((a,r)=>a+r.min,0);
  const onDays=all.filter(r=>r.on).length;
  const missDays=all.filter(r=>r.miss).length;
@@ -7325,7 +7657,10 @@ ${!all.length?`<div class="warn-bar"><span class="grow"><b>${p.nick}（${p.code}
   <label style="display:flex;align-items:center;gap:5px;font-size:var(--fs-sm);margin-left:var(--sp-2)">
     <input type="checkbox" style="width:auto"${engLgBad?' checked':''} onchange="engLgBad=this.checked;renderAll()">
     只看异常（没打卡 / 围栏外）</label>
-  <span class="muted" style="font-size:var(--fs-xs);margin-left:auto">共 ${rows.length} 个入场天 · 最近的在最上</span>
+  <input id="englgq" class="search" placeholder="🔍 搜人名 / 日期 / 事件 / 上报原文 / 回执…" value="${engLgQ}"
+    style="width:280px;padding:6px var(--sp-2)" oninput="engLgQ=this.value;keepFocus('englgq')">
+  ${engLgQ?`<button class="btn" onclick="engLgQ='';renderAll()">清空</button>`:''}
+  <span class="muted" style="font-size:var(--fs-xs);margin-left:auto">显示 ${rows.length} / ${all.length} 个入场天 · 最近的在最上</span>
 </div>
 <div class="panel"><table>
  <thead><tr><th style="width:104px">日期</th><th style="width:52px">第 N 天</th><th style="width:92px">阶段</th>
@@ -8071,6 +8406,8 @@ ${ops([
  const rows=all.filter(p=>{const st=engStage(p);
    return (engPjF==='全部'||st.k===engPjF)
      &&(!q||`${p.code} ${p.nick} ${p.street} ${p.suburb} ${p.state}`.toLowerCase().includes(q));});
+ /* ★按分级置顶（用户 2026-08-10）：干不过来的时候先干 A —— 排序只影响看的顺序，不改任何门禁 */
+ rows.sort((a,b)=>'ABC'.indexOf(lvOf(a.code).lv)-'ABC'.indexOf(lvOf(b.code).lv));
  const cnt=k=>k==='全部'?all.length:all.filter(p=>engStage(p).k===k).length;
  return `<h2>项目列表 <span class="pill p-cyan">工程视角 · 只看进了工程线的项目</span></h2>
  <div class="page-sub">按<b>工程阶段</b>分类（不是收款阶段）· 金额一律不显示（工程不看钱）· 说明看左下「帮助」</div>
@@ -8078,6 +8415,8 @@ ${ops([
   ['按阶段筛选','六态：全部 / Site Meeting 阶段 / 施工中 / 项目交付 / 项目维护 / 已停服','—'],
   ['指定负责人（业主 / Builder / 电工）','候选＝售前采集的联系人与参建方 · 工程负责人拍板','保存即定为项目标注（全公司可见）· 通知财务（付款人候选）与库管（提货人）· 留痕'],
   ['进入 →','带着项目上下文进<b>项目详情</b>（六十九轮修：原来跳到 Site Meeting，是 bug）','—'],
+  ['分级','A 优先 / B 正常 / C 可后置 · <b>原因必填 ≥6 字</b>','列表按等级置顶 —— 干不过来的时候先干 A'],
+  ['资源用量','已投入 ÷ 售前预计 · <b>超 100% 直接标红</b>','—'],
  ])}
  ${helpNote(`<b>这页怎么用</b>：这张表只收<b>进了工程线</b>的项目——售前还在接洽、或已流失的根本不进来。
    「工程进度」列直接写明当前处于哪个阶段：<b>Site Meeting 阶段</b>（SM 还没走完，带下一场是第几场、排没排期）·
@@ -8096,8 +8435,11 @@ ${ops([
    <input id="epq" class="search" placeholder="🔍 搜编号 / 昵称 / 地址…" value="${engPjQ}"
      style="width:190px;margin-left:auto;padding:5px var(--sp-2)" oninput="engPjQ=this.value;keepFocus('epq')"></div>
   <table id="engpj">
-   <thead><tr><th>编号</th><th>立项时间</th><th>项目 · 地址</th><th>工程进度（当前阶段）</th>
-     <th style="text-align:right">停留</th><th>业主 / Builder / 电工</th><th></th></tr></thead>
+   <thead><tr><th style="width:120px">编号 · 分级</th><th style="width:88px">立项时间</th><th>项目 · 地址</th>
+     <th style="width:150px">工程进度（当前阶段）</th>
+     <th style="width:76px;text-align:right">停留</th>
+     <th style="width:130px">★资源用量</th><th style="width:130px">★下次跟进</th>
+     <th style="width:150px">业主 / Builder / 电工</th><th style="width:88px"></th></tr></thead>
    <tbody>${rows.map(p=>{
      const i=PROJECTS.indexOf(p); const st=engStage(p); const L=engLead(p.code);
      const since=ENG_SINCE[p.code]||p.opened; const days=daysSince(since);
@@ -8107,15 +8449,29 @@ ${ops([
      const sel=(id,opts,cur)=>`<select id="${id}" style="width:100%;font-size:11px;padding:2px 4px">
        ${[...new Set([cur,...opts])].filter(Boolean).map(o=>`<option${o===cur?' selected':''}>${o}</option>`).join('')}</select>`;
      return `<tr>
-      <td class="mono">${p.code}</td><td class="mono" style="font-size:11px">${p.opened}</td>
+      <td class="mono">${p.code}
+        <div style="margin-top:3px"><span class="pill" style="background:${lvMeta(lvOf(p.code).lv).c}18;color:${lvMeta(lvOf(p.code).lv).c}"
+          title="${lvOf(p.code).why||'还没分级'}">${lvOf(p.code).lv}</span>
+          <a style="color:var(--accent);cursor:pointer;font-size:11px" onclick="pjLvSet('${p.code}')">改</a></div></td>
+      <td class="mono" style="font-size:11px">${p.opened}</td>
       <td><b>${p.nick}</b><div class="hint">📍 ${p.street}, ${p.suburb} ${p.state}</div></td>
       <td><span class="pill ${st.cls}">${st.k}</span><div class="hint">${st.d}</div></td>
       <td class="num">${over?`<b style="color:var(--breach)">${days} 天 · 超 ${days-lim}</b>`:days+' 天'}</td>
+      <td>${(()=>{const r=instRow(p);
+        return `<b style="color:${r.band.c}">${r.pct!=null?r.pct+'%':'— —'}</b>
+        <div style="background:var(--bg-elevated);border-radius:4px;height:10px;overflow:hidden;margin-top:3px">
+          <div style="width:${Math.min(100,r.pct||0)}%;height:100%;background:${r.band.c}"></div></div>
+        <div class="hint"${r.pct>100?' style="color:var(--breach)"':''}>${r.used} / ${r.est||'—'} h · ${r.band.k}</div>`;})()}</td>
+      <td>${(()=>{const n=noteNext(p.code); if(!n) return '<span class="muted">—</span>';
+        const L=noteLeft(n);
+        return `<b class="mono"${L<=3?' style="color:var(--breach)"':''}>${n.due.slice(5)}</b>
+          <div class="hint">${L<0?'★已过 '+(-L)+' 天':(L===0?'就是今天':'还有 '+L+' 天')}</div>
+          <div class="hint">${n.txt.length>18?n.txt.slice(0,18)+'…':n.txt}</div>`;})()}</td>
       <td>${L.fixed?'📌 ':''}${L.owner}<div class="hint">B: ${L.builder}<br>E: ${L.elec}</div>
         ${L.fixed?`<div class="hint">工程指定 · ${L.by} ${L.at}</div>`:'<div class="hint" style="color:var(--warning)">未指定（用售前采集值）</div>'}
         <button class="btn" style="padding:2px 8px;font-size:11px;margin-top:4px" onclick="engLeadToggle('${p.code}')">${engLeadOpen===p.code?'收起':'指定'}</button></td>
       <td><button class="btn btn-primary" onclick="pickPj(${i});go('eng','项目详情')">进入 →</button></td></tr>
-     ${engLeadOpen===p.code?`<tr><td colspan="7" style="background:var(--bg-elevated);padding:10px 14px">
+     ${engLeadOpen===p.code?`<tr><td colspan="9" style="background:var(--bg-elevated);padding:10px 14px">
        <div style="font-weight:600;margin-bottom:6px">指定项目负责人 · ${p.nick}
          <span class="muted" style="font-weight:400">候选＝售前采集的联系人与参建方（同财务付款人机制）</span></div>
        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:820px">
@@ -10483,7 +10839,9 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
 },
 'mt/报修受理':()=>{
  const q=mtQ.trim().toLowerCase();
- const rows=MCASES.filter(c=>!q||`${c.id} ${c.code} ${pjNick(c.code)} ${pjAddr(c.code)} ${c.rep&&c.rep.sym||''} ${c.rep&&c.rep.note||''}`.toLowerCase().includes(q));
+ const rows=MCASES.filter(c=>(mtRepAll||!mtClosed(c))
+   &&(!q||`${c.id} ${c.code} ${pjNick(c.code)} ${pjAddr(c.code)} ${c.rep&&c.rep.sym||''} ${c.rep&&c.rep.note||''}`.toLowerCase().includes(q)));
+ const closedN=MCASES.filter(mtClosed).length;
  return `<h2>报修受理</h2>
  <div class="page-sub">客户打电话 / 微信 / 邮件来了，在这里建维护单 —— <b>只记事实，不记钱</b>（定价开票在财务）</div>
  ${ops([
@@ -10505,9 +10863,11 @@ ${helpNote(`★<b>两个时间是两件事</b>（用户 2026-08-10 纠正）：<
    任何计费都不用它 —— 实际金额以财务定价开出的发票为准。`)}
  <div style="display:flex;gap:var(--sp-2);align-items:center;margin-bottom:var(--sp-3);flex-wrap:wrap">
    <button class="btn btn-primary" onclick="mtNewOpen()">＋ 受理报修</button>
+   <button class="btn${mtRepAll?'':' btn-primary'}" onclick="mtRepAll=false;renderAll()">只看未关闭</button>
+   <button class="btn${mtRepAll?' btn-primary':''}" onclick="mtRepAll=true;renderAll()">全部（含已结案/作废 ${closedN}）</button>
    <input id="mtq" class="search" placeholder="🔍 搜单号 / 项目 / 地址 / 现象 / 客户原话…" value="${mtQ}"
      style="width:280px;padding:6px var(--sp-2)" oninput="mtQ=this.value;keepFocus('mtq')">
-   <span class="muted" style="font-size:var(--fs-xs);margin-left:auto">共 ${rows.length} 张单</span>
+   <span class="muted" style="font-size:var(--fs-xs);margin-left:auto">显示 ${rows.length} 张单</span>
  </div>
  <div class="panel"><table>
   <thead><tr><th style="width:104px">单号</th><th style="width:150px">项目 · 地址</th>
@@ -10516,7 +10876,9 @@ ${helpNote(`★<b>两个时间是两件事</b>（用户 2026-08-10 纠正）：<
     <th style="width:96px">响应时长</th><th style="width:96px">状态</th></tr></thead>
   <tbody>${rows.map(c=>{const r=mtResp(c),g=mtStage(c),rp=c.rep||{};
     return `<tr${c.st==='已作废'?' style="opacity:.5"':''}>
-     <td><b class="mono">${c.id}</b>${c.est?`<div class="hint">口头预估 ${A$(c.est)}<br><span class="muted">仅参考</span></div>`:''}</td>
+     <td><b class="mono">${c.id}</b>
+       <div style="margin-top:3px"><span class="pill ${priCls(priOf(c).k)}">${priOf(c).k}</span></div>
+       ${c.est?`<div class="hint">口头预估 ${A$(c.est)}<br><span class="muted">仅参考</span></div>`:''}</td>
      <td><b>${pjNick(c.code)}</b><div class="hint">📍 ${pjAddr(c.code)}</div></td>
      <td>${rp.at?`<span class="mono" style="font-size:11px">${rp.at}</span>`
        :'<span class="pill p-red">缺</span>'}
@@ -10529,7 +10891,8 @@ ${helpNote(`★<b>两个时间是两件事</b>（用户 2026-08-10 纠正）：<
      <td class="num">${r.h==null?(r.bad
        ?'<span class="pill p-red">时间对不上</span><div class="hint" style="color:var(--breach)">报修晚于上门</div>'
        :'<span class="muted">缺时间</span>')
-       :`<b${r.over?' style="color:var(--breach)"':''}>${r.h} h</b>${r.over?'<div class="hint" style="color:var(--breach)">超 SLA</div>':''}`}</td>
+       :`<b${r.over?' style="color:var(--breach)"':''}>${r.h} h</b>
+         <div class="hint"${r.over?' style="color:var(--breach)"':''}>${r.over?'超 ':''}${priOf(c).k} SLA ${r.sla}h</div>`}</td>
      <td><span class="pill ${g.cls}">${g.k}</span></td></tr>`;}).join('')
     ||'<tr><td colspan="9" class="muted" style="padding:var(--sp-4)">没有匹配的维护单</td></tr>'}</tbody></table>
   <div class="panel-body hint">响应时长＝从<b>报修时间</b>（客户告诉我们那一刻）到<b>上门开始</b> ——
@@ -10600,21 +10963,27 @@ ${helpNote(`<b>作废会连带删排班</b>：客户说不用来了、或者单�
  </div>`;
 },
 'mt/维护单跟踪':()=>{
- const F=['全部','已受理','已派工','上门完 · 三样不齐','待定价','已开票','已结案','已作废'];
+ const F=['未关闭','全部','已受理','已派工','上门完 · 三样不齐','待定价','已开票','已结案','已作废'];
  const q=mtQ.trim().toLowerCase();
- const rows=MCASES.filter(c=>(mtF==='全部'||mtStage(c).k===mtF)
+ const rows=MCASES.filter(c=>(mtF==='未关闭'?!mtClosed(c):(mtF==='全部'||mtStage(c).k===mtF))
    &&(!q||`${c.id} ${c.code} ${pjNick(c.code)} ${pjAddr(c.code)}`.toLowerCase().includes(q)));
  return `<h2>维护单跟踪</h2>
  <div class="page-sub">一张单从受理到结案走到哪一步了 —— <b>钱那几步只读</b>（财务在推），运维看的是"我的活儿卡在哪"</div>
  ${ops([
   ['按状态过滤 / 搜索','—','只影响显示'],
   ['展开明细','—','看报修原话、现场三样、成本构成（人工/物料）'],
-  ['推进单据','运维只能推到「待定价」；<b>定价、开票、收款在财务</b>','—'],
+  ['完结交财务','三样齐才能点 · <b>处理情况必填 ≥10 字</b>（财务照着往发票上写）',
+   '状态转「待定价」并把归因/在场时长/换件成本一次性交给财务 —— <b>运维这边到此为止</b>'],
+  ['默认只看未关闭','已结案/已作废的默认不上屏 —— 单子越堆越长，找不到手上的活','点「全部」才看得到历史单'],
  ])}
  ${helpNote(`<b>这页怎么用</b>：全部维护单一页看全，按状态过滤。状态链是——
    <b>已受理 → 已派工 → 上门完（三样齐）→ 待定价 → 已开票 → 已结案</b>，另有「已作废」。
    <b>后三步是财务在推</b>，运维这里只读显示进度：知道钱走到哪了，但按钮不在这儿。`)}
- ${helpNote(`成本一栏是<b>现算</b>：人工＝（在场+路上）× 该员工成本时薪（工时来自 App 打卡）；
+ ${helpNote(`★<b>这页不跟踪钱</b>（用户 2026-08-10 定）：是否开票、金额多少、收没收到，都是<b>财务</b>的事。
+   运维这边只做一件 —— 干完了点<b>「完结交财务」</b>，填一段处理情况，
+   系统把<b>归因 + 在场时长 + 换件成本</b>一次性同步给财务去定价开票。之后这单就不用运维再管了。<br>
+   「成本」那一列留着是给运维看<b>这单花了多少</b>（判断值不值得上门），不是给客户报的价。`)}
+${helpNote(`成本一栏是<b>现算</b>：人工＝（在场+路上）× 该员工成本时薪（工时来自 App 打卡）；
    物料＝维护出库的更换件，<b>从库管出库台账自动归集</b>（出库那刻单价已定格）。
    两样都不用手填 —— 手填的数字迟早跟台账对不上。`)}
  <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);flex-wrap:wrap;align-items:center">
@@ -10624,24 +10993,38 @@ ${helpNote(`<b>作废会连带删排班</b>：客户说不用来了、或者单�
    <span class="muted" style="font-size:var(--fs-xs);margin-left:auto">${rows.length} / ${MCASES.length} 张</span>
  </div>
  <div class="panel"><table>
-  <thead><tr><th style="width:104px">单号</th><th style="width:150px">项目 · 地址</th><th style="width:120px">当前状态</th>
-    <th>下一步等谁</th><th style="width:120px">归因</th><th style="width:90px">免不免</th>
-    <th style="width:100px">成本（现算）</th><th style="width:60px"></th></tr></thead>
+  <thead><tr><th style="width:118px">单号 · 分级</th><th style="width:150px">项目 · 地址</th><th style="width:126px">当前状态</th>
+    <th>下一步等谁</th><th style="width:112px">归因</th><th style="width:84px">免不免</th>
+    <th style="width:96px">成本（现算）</th><th style="width:118px">动作</th></tr></thead>
   <tbody>${rows.map(c=>{const g=mtStage(c);const t=mtThree(c);const open=mtSel===c.id;
     const cost=(c.site||c.travel)?mtCost(c):null;
     const main=`<tr${c.st==='已作废'?' style="opacity:.5"':''}>
-     <td><b class="mono">${c.id}</b></td>
+     <td><b class="mono">${c.id}</b>
+       <div style="margin-top:3px"><span class="pill ${priCls(priOf(c).k)}">${priOf(c).k}</span>
+         <span class="hint">SLA ${priSla(c)}h</span></div></td>
      <td><b>${pjNick(c.code)}</b><div class="hint">📍 ${pjAddr(c.code)}</div></td>
-     <td><span class="pill ${g.cls}">${g.k}</span></td>
+     <td><span class="pill ${g.cls}">${g.k}</span>
+       ${rdOf(c).st!=='none'?`<div class="hint">研发：${RD_ST[rdOf(c).st]}</div>`:''}</td>
      <td class="hint">${c.st==='已作废'?('作废原因：'+(c.voidWhy||'—')):g.next}</td>
      <td>${mtSite(c).cause?causeCn(mtSite(c).cause):'<span class="muted">现场还没确认</span>'}</td>
      <td>${c.free==null?'<span class="muted">—</span>'
        :c.free?'<span class="pill p-green">全免</span>':'<span class="pill p-amber">计费</span>'}</td>
      <td class="num">${cost==null?'—':(can('salary')&&can('stock')?A$2(cost):'— —')}</td>
-     <td><a style="color:var(--accent);cursor:pointer" onclick="mtSel=${open?'null':`'${c.id}'`};renderAll()">${open?'收起 ▴':'明细 ▸'}</a></td></tr>`;
+     <td>${(!mtClosed(c)&&!c.job&&rdOf(c).st==='none')
+       ?`<button class="btn btn-primary" style="padding:2px 8px;font-size:11px" onclick="mtRdStart('${c.id}')">转研发排查</button>
+         <div style="margin-top:3px"><a style="color:var(--accent);cursor:pointer;font-size:11px" onclick="mtRdSkip('${c.id}')">无需排查</a></div>`
+       :''}
+       ${rdOf(c).st==='doing'
+       ?`<button class="btn btn-primary" style="padding:2px 8px;font-size:11px" onclick="mtRdDone('${c.id}')">填排查结论</button>`
+       :''}
+       ${(c.job&&c.job.done&&t.ok&&!['待定价','已开票','已结案','已作废'].includes(c.st))
+       ?`<button class="btn btn-primary" style="padding:2px 8px;font-size:11px" onclick="mtFinish('${c.id}')">完结交财务</button>`
+       :(c.st==='待定价'?`<span class="hint">已交财务${c.finishAt?'<br>'+c.finishAt.slice(5,16):''}</span>`
+       :(c.job&&c.job.done&&!t.ok?'<span class="hint" style="color:var(--breach)">三样不齐<br>完结不了</span>':'<span class="muted">—</span>'))}
+       <div style="margin-top:3px"><a style="color:var(--accent);cursor:pointer" onclick="mtSel=${open?'null':`'${c.id}'`};renderAll()">${open?'收起 ▴':'明细 ▸'}</a></div></td></tr>`;
     if(!open) return main;
     const rp=c.rep||{}, sr=mtSite(c), j=freeJudge(c.code,sr.cause);
-    return main+`<tr><td colspan="8" style="background:var(--bg-elevated);padding:var(--sp-3)">
+    return main+`<tr><td colspan="9" style="background:var(--bg-elevated);padding:var(--sp-3)">
       <div class="split" style="gap:var(--sp-3)">
        <div><b style="font-size:var(--fs-sm)">① 报修受理</b>
         <div class="hint" style="line-height:1.9;margin-top:5px">
@@ -10650,6 +11033,12 @@ ${helpNote(`<b>作废会连带删排班</b>：客户说不用来了、或者单�
            :'<b>【未知】</b>（客户说不清，留空不猜 · <b>不影响响应统计</b>）'}<br>
          渠道：${rp.ch||'—'} ｜ 接单：${rp.by||'—'} ｜ 现象：${rp.sym||'—'}<br>
          客户原话：${rp.note||'—'}${c.est?`<br>口头预估：${A$(c.est)} <span class="muted">（仅参考，不参与计费）</span>`:''}</div>
+        <b style="font-size:var(--fs-sm);display:block;margin-top:10px">①′ 研发远程排查</b>
+        <div class="hint" style="line-height:1.9;margin-top:5px">
+         ${rdOf(c).st==='none'?'<b style="color:#b45309">还没排查</b> —— 上门之前先远程看一眼，白跑一趟最贵'
+          :RD_ST[rdOf(c).st]+(rdOf(c).ask?'<br>要看什么：'+rdOf(c).ask:'')+
+           (rdOf(c).eng?'<br>研发：'+rdOf(c).eng:'')+
+           (rdOf(c).note?'<br><b>结论：'+rdOf(c).note+'</b>':'')}</div>
         <b style="font-size:var(--fs-sm);display:block;margin-top:10px">② 上门</b>
         <div class="hint" style="line-height:1.9;margin-top:5px">
          ${c.job?`${c.job.who} · ${c.job.d} ${c.job.st}–${c.job.et}`:'还没派工'}<br>
@@ -10658,7 +11047,11 @@ ${helpNote(`<b>作废会连带删排班</b>：客户说不用来了、或者单�
          ${sr.summary?`服务内容：${sr.summary}<br>`:''}
          ${sr.signBy?`客户签字：<b>${sr.signBy}</b> · ${sr.signAt}${sr.photos?` · 现场照片 ${sr.photos} 张`:''}`:''}</div>
        </div>
-       <div><b style="font-size:var(--fs-sm)">③ 免责判定（结案时定格）</b>
+       <div>${c.finishNote?`<b style="font-size:var(--fs-sm)">★ 完结时交给财务的处理情况</b>
+         <div class="hint" style="line-height:1.9;margin-top:5px;background:var(--bg-panel);border:1px solid var(--border);
+           border-radius:6px;padding:8px 10px">${c.finishNote}
+           <div class="muted">${c.finishBy||''} ${c.finishAt||''} 提交 —— 财务照这段开票</div></div>`:''}
+        <b style="font-size:var(--fs-sm);display:block;${c.finishNote?'margin-top:10px':''}">③ 免责判定（结案时定格）</b>
         <div class="hint" style="line-height:1.9;margin-top:5px">${j.why}</div>
         <b style="font-size:var(--fs-sm);display:block;margin-top:10px">④ 成本构成（现算 · 不手填）</b>
         ${(can('salary')&&can('stock'))?`<table style="margin-top:5px"><tbody>
@@ -10676,6 +11069,114 @@ ${helpNote(`<b>作废会连带删排班</b>：客户说不用来了、或者单�
       </div></td></tr>`;}).join('')
     ||'<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">这个筛选下没有维护单</td></tr>'}</tbody></table>
  </div>`;
+},
+'mt/故障分析':()=>{
+ /* ★M7（用户 2026-08-10 提：「故障的归因汇总看不到」）——
+    归因一直只记在<b>单张维护单</b>上，从来没有汇总过。于是这两个问题谁也答不上来：
+      · 哪类功能最爱坏？（→ 该在方案设计和验收环节盯哪一项）
+      · 哪个型号最爱坏？（→ 该换供应商 / 该找厂家索赔）
+    这是<b>唯一能反过来管住采购选型和供应商的数字</b>。全部现算，不落库。 */
+ const R={'3':'近 3 个月','6':'近 6 个月','12':'近 12 个月','all':'全部'};
+ const cut=mtAnaR==='all'?null:new Date(Date.now()-parseInt(mtAnaR,10)*30*864e5);
+ const inRange=c=>{ const t=c.rep&&c.rep.at; if(!t) return mtAnaR==='all'; return !cut||dOf(t)>=cut; };
+ const rows=MCASES.filter(c=>c.st!=='已作废'&&inRange(c));
+ const N=rows.length||1;
+ const bar=(n,tot,color)=>`<div style="background:var(--bg-elevated);border-radius:4px;height:12px;overflow:hidden">
+   <div style="width:${Math.round(n/(tot||1)*100)}%;height:100%;background:${color||'var(--accent)'}"></div></div>`;
+ const group=(fn)=>{ const m={}; rows.forEach(c=>{ const k=fn(c); if(!k) return; m[k]=(m[k]||0)+1; });
+   return Object.keys(m).map(k=>({k,n:m[k]})).sort((a,b)=>b.n-a.n); };
+ const byCause=MT_CAUSE.map(x=>({...x,n:rows.filter(c=>mtSite(c).cause===x.k).length}))
+   .concat([{k:'',cn:'现场还没确认归因',n:rows.filter(c=>!mtSite(c).cause).length,note:'★上门完还没填归因的单 —— 财务定不了价，也进不了这张分析表'}])
+   .filter(x=>x.n>0).sort((a,b)=>b.n-a.n);
+ const bySym=group(c=>c.rep&&c.rep.sym);
+ const byPj=group(c=>c.code);
+ /* 按型号：换过的件从维护单的 parts 里来（出库那刻已定格），配上"其中多少是产品缺陷" */
+ const partM={};
+ rows.forEach(c=>(c.parts||[]).forEach(p=>{ const k=p.name;
+   const o=partM[k]=partM[k]||{k,n:0,def:0,pj:new Set()};
+   o.n+=(p.qty||1); o.pj.add(c.code);
+   if(mtSite(c).cause==='product_defect') o.def+=(p.qty||1); }));
+ const byPart=Object.values(partM).sort((a,b)=>b.n-a.n);
+ const defN=rows.filter(c=>mtSite(c).cause==='product_defect').length;
+ const noCause=rows.filter(c=>c.job&&c.job.done&&!mtSite(c).cause).length;
+ return `
+<h2>故障分析</h2>
+<div class="page-sub">同样的毛病<b>反复出现</b>，才是真问题 —— 这页把归因、现象、型号、项目四个角度汇总起来
+  <span class="muted">· 全部现算，随维护单实时变</span></div>
+${ops([
+ ['换时间范围','近 3 / 6 / 12 个月 / 全部 · 按<b>报修时间</b>切','四张表一起跟着变'],
+])}
+${helpNote(`★<b>为什么要这一页</b>（用户 2026-08-10 提）：归因原来只记在<b>单张维护单</b>上，从来没汇总过。
+  于是两个最该问的问题谁也答不上来 —— <b>哪类功能最爱坏</b>（该在方案和验收时盯哪一项）、
+  <b>哪个型号最爱坏</b>（该换供应商，或者找厂家索赔）。<br>
+  这是<b>唯一能反过来管住采购选型和供应商的数字</b>：没有它，"这个牌子不行"永远只是一句感觉。`)}
+${helpNote(`<b>「产品缺陷」那一格最值钱</b>：它同时意味着三件事 ——
+  ①免责期内<b>我们免费修</b>（成本我们出）②物料还在保修期就能<b>找供应商退换</b>（去采购「RMA 退换」）
+  ③同一型号反复出现，就该<b>停用这个型号</b>（在采购「物料主表」里停用，历史照旧可查）。`)}
+${helpNote(`★<b>没填归因的单不进这张表</b>，但会单独标出来：上门完了没填归因，
+  财务定不了价，这单也永远不会出现在任何分析里 —— <b>坏得最多的那个型号，可能就藏在这几单里</b>。`)}
+<div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);flex-wrap:wrap;align-items:center">
+  ${Object.keys(R).map(k=>`<button class="btn${mtAnaR===k?' btn-primary':''}" onclick="mtAnaR='${k}';renderAll()">${R[k]}</button>`).join('')}
+  <span class="muted" style="font-size:var(--fs-xs);margin-left:auto">${rows.length} 张维护单进入统计（已作废的不算）</span>
+</div>
+<div class="cards">
+ <div class="card"><div class="card-label">维护单总数</div><div class="card-value">${rows.length}</div>
+   <div class="card-foot">${R[mtAnaR]} · 按报修时间切</div></div>
+ <div class="card"><div class="card-label">★产品缺陷</div>
+   <div class="card-value"${defN?' style="color:var(--breach)"':''}>${defN}</div>
+   <div class="card-foot">${defN?'占 '+Math.round(defN/N*100)+'% —— 我们免费修，且可找供应商退换':'没有产品缺陷 ✓'}</div></div>
+ <div class="card"><div class="card-label">★没填归因</div>
+   <div class="card-value"${noCause?' style="color:var(--warning)"':''}>${noCause}</div>
+   <div class="card-foot">${noCause?'上门完了还没填 —— 财务定不了价，也进不了分析':'都填了 ✓'}</div></div>
+ <div class="card"><div class="card-label">出问题最多的项目</div>
+   <div class="card-value" style="font-size:var(--fs-lg)">${byPj.length?pjNick(byPj[0].k):'—'}</div>
+   <div class="card-foot">${byPj.length?byPj[0].n+' 单 —— 同一家反复报修，多半是方案或施工留的尾巴':'—'}</div></div>
+</div>
+<div class="split">
+ <div class="panel"><div class="panel-head">按归因 <span class="muted" style="font-weight:400">谁的责任 · 决定收不收钱</span></div>
+  <table><thead><tr><th style="width:130px">归因</th><th style="width:60px;text-align:right">次数</th>
+    <th style="width:150px">占比</th><th>说明</th></tr></thead>
+   <tbody>${byCause.map(x=>`<tr>
+     <td><b>${x.cn}</b></td><td class="num">${x.n}</td>
+     <td>${bar(x.n,rows.length,x.k==='product_defect'?'#dc2626':(x.k===''?'#b45309':'var(--accent)'))}
+       <div class="hint">${Math.round(x.n/N*100)}%</div></td>
+     <td class="hint">${x.note||''}</td></tr>`).join('')
+    ||'<tr><td colspan="4" class="muted" style="padding:var(--sp-4)">这个时间范围内没有维护单</td></tr>'}</tbody></table>
+ </div>
+ <div class="panel"><div class="panel-head">按现象 <span class="muted" style="font-weight:400">哪类功能最爱坏</span></div>
+  <table><thead><tr><th>故障现象</th><th style="width:60px;text-align:right">次数</th><th style="width:150px">占比</th></tr></thead>
+   <tbody>${bySym.map(x=>`<tr><td>${x.k}</td><td class="num">${x.n}</td>
+     <td>${bar(x.n,bySym[0].n)}<div class="hint">${Math.round(x.n/N*100)}%</div></td></tr>`).join('')
+    ||'<tr><td colspan="3" class="muted" style="padding:var(--sp-4)">—</td></tr>'}</tbody></table>
+  <div class="panel-head" style="border-top:1px solid var(--border)">按项目
+    <span class="muted" style="font-weight:400">同一家反复报修＝方案或施工留的尾巴</span></div>
+  <table><thead><tr><th>项目</th><th style="width:60px;text-align:right">次数</th><th style="width:150px">占比</th></tr></thead>
+   <tbody>${byPj.map(x=>`<tr><td><b>${pjNick(x.k)}</b><div class="hint mono">${x.k}</div></td>
+     <td class="num">${x.n}</td>
+     <td>${bar(x.n,byPj[0].n)}<div class="hint">${Math.round(x.n/N*100)}%</div></td></tr>`).join('')
+    ||'<tr><td colspan="3" class="muted" style="padding:var(--sp-4)">—</td></tr>'}</tbody></table>
+ </div>
+</div>
+<div class="panel"><div class="panel-head">★按型号 · 哪个设备最爱坏
+  <span class="muted" style="font-weight:400">换过的件从维护单归集（出库那刻单价已定格）</span></div>
+ <table>
+  <thead><tr><th>换过的件</th><th style="width:80px;text-align:right">换过几次</th>
+    <th style="width:110px;text-align:right">其中产品缺陷</th><th style="width:150px">缺陷占比</th>
+    <th style="width:110px">涉及几个项目</th><th>这说明什么</th></tr></thead>
+  <tbody>${byPart.map(x=>{const pct=Math.round(x.def/(x.n||1)*100);
+   return `<tr${pct>=50&&x.n>=2?' style="background:rgba(220,38,38,.06)"':''}>
+    <td><b>${x.k}</b></td><td class="num">${x.n}</td>
+    <td class="num"${x.def?' style="color:var(--breach)"':''}>${x.def}</td>
+    <td>${bar(x.def,x.n,'#dc2626')}<div class="hint">${pct}%</div></td>
+    <td class="hint">${x.pj.size} 个（${[...x.pj].map(c=>pjNick(c)).join('、')}）</td>
+    <td class="hint">${x.def===0?'目前都不是产品本身的问题'
+      :(x.pj.size>1?'★<b>不同项目都坏</b> —— 多半是型号本身的毛病：去采购「RMA 退换」找供应商，考虑停用这个型号'
+      :'同一个项目里坏 —— 先看是不是安装或环境问题')}</td>
+   </tr>`;}).join('')||'<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">这个范围内还没有换过件</td></tr>'}</tbody></table>
+ <div class="panel-body hint">★<b>同一型号在不同项目都出问题</b>，就不是个案了：去采购「物料主表」把它<b>停用</b>
+   （历史照旧可查、已装的照旧能查到），并在「RMA 退换」里跟供应商要说法。<br>
+   这一列是<b>次数</b>不是金额 —— 一个 200 块的件坏十次，比一个 2000 块的件坏一次更值得管。</div>
+</div>`;
 },
 'mt/维保状态':()=>{
  const rows=Object.keys(MTWAR).map(code=>({code,w:warOf(code)}));
@@ -10738,6 +11239,15 @@ ${helpNote(`订阅年费<b>改价只影响以后</b>：新签和下一次续费�
      <input class="mono" style="width:90px" value="${mtSet.slaH}" onchange="mtSetVal('slaH','响应 SLA 小时',this.value)">
      <div class="hint">超了在报修受理页标红、进总览卡点。<b>每一单都参与统计</b> ——
        SLA 从<b>报修时间</b>（客户告诉我们那一刻）起算；客户说不清的「问题出现时间」不影响它</div></div>
+   <div class="field"><label>★分级 SLA（每档不一样 · 小时）</label>
+     ${MT_PRI.map(x=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+       <span class="pill ${priCls(x.k)}" style="width:32px;text-align:center">${x.k}</span>
+       <input class="mono" style="width:70px" value="${mtSet.pri[x.k]}"
+         onchange="mtPriVal('${x.k}',this.value)">
+       <span class="hint" style="flex:1">${x.note}　·　现有 ${MCASES.filter(c=>!mtClosed(c)&&priOf(c).k===x.k).length} 张未关闭</span>
+     </div>`).join('')}
+     <div class="hint">★超过本档 SLA 的单<b>自动进待办</b>（右上角 🔔）——
+       不自动推，分级就只是个好看的标签。数字改完立即按新阈值现算</div></div>
    <div class="field"><label>免责维保到期提前提醒（天）</label>
      <input class="mono" style="width:90px" value="${mtSet.freeRemindDays}" onchange="mtSetVal('freeRemindDays','免责维保提醒天数',this.value)">
      <div class="hint">当前 ${Object.keys(MTWAR).map(warOf).filter(w=>w.fLeft>=0&&w.fLeft<=mtSet.freeRemindDays).length} 个项目在提醒窗口内</div></div>
@@ -10827,7 +11337,8 @@ ${helpNote(`订阅年费<b>改价只影响以后</b>：新签和下一次续费�
   <tbody>${SUBS.map(x=>{const st=subState(x);const w=warOf(x.code);
     return `<tr${x.cancelled?' style="opacity:.55"':''}>
      <td><b>${pjNick(x.code)}</b><div class="hint">📍 ${pjAddr(x.code)}</div></td>
-     <td><select style="width:auto;font-size:11px" onchange="subTier('${x.code}',this.value)"${x.cancelled?' disabled':''}>
+     <td><select style="width:auto;font-size:11px" onchange="subTier('${x.code}',this.value)"${
+       subCanTier(x)?'':` disabled title="${subTierWhy(x)}"`}>
        ${[1,2,3,4,5].map(t=>`<option value="${t}"${x.tier===t?' selected':''}>第 ${t} 档${t===5?' · 不订阅':''}</option>`).join('')}</select></td>
      <td class="num">${x.tier===5?'<span class="muted">—</span>':(can('customer')?A$(x.fee):'— —')}</td>
      <td class="mono" style="font-size:11px">${x.cancelled?('已退订 '+x.cancelled):(x.from?x.from+' → '+x.to:'—')}
