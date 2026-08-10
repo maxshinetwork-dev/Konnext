@@ -460,11 +460,11 @@ function secSet(k,label,v){ const nv=parseInt(v,10);
   renderAll(); uiAlert('已保存：'+label+' '+old+' → '+nv+' 分钟'); }
 function senderSms(v){ const nv=(v||'').trim();
   if(WHO[me].tier!==1){ uiAlert('门禁：只有决策管理员能改发送人身份'); renderAll(); return; }
-  if(!/^[+0][0-9 ]{7,}$/.test(nv)){
-    uiAlert('门禁：号码格式不对 —— 澳洲号请写 +61 开头或 0 开头的手机号。\n'+
-      '发件号填错＝所有短信发不出去，而且系统不会报错，只是没人收到'); renderAll(); return; }
-  const old=SENDER.sms.num; if(old===nv){ renderAll(); return; }
-  SENDER.sms.num=nv;
+  const pc=phoneChk(nv,{sms:true});
+  if(!pc.ok){ uiAlert(phoneWhy(nv,{sms:true})+'\n\n★这是<b>全公司唯一的发件号</b>：填错＝所有短信发不出去，'+
+    '而且系统不会报错，只是没人收到'); renderAll(); return; }
+  const old=SENDER.sms.num; if(old===pc.val){ renderAll(); return; }
+  SENDER.sms.num=pc.val;
   opLog('','修改发送人身份','短信统一号码 '+old+' → '+nv+
     '（催款/排班/交付/告知——之后所有短信改从新号发出，回 Y 回执也走新号）',['fin','eng','presales','proc','wh','mt']);
   renderAll(); uiAlert('已保存：短信统一号码 '+old+' → '+nv+'\n之后所有短信都从新号发出；已发出的记录保留当时的号'); }
@@ -853,7 +853,7 @@ const PARTY_CONTACT={
  'Mike':{phone:'0422 000 111',email:'mike@buildco.com.au'},
  'Sam' :{phone:'0422 300 400',email:'sam@northbuild.com.au'},
  'Ken' :{phone:'0422 500 600',email:'ken@metrocon.com.au'},
- 'Tony':{phone:'0422 000 222',email:'tony@spark.com.au'},
+ 'Tony':{phone:'+61 422 000 222',email:'tony@spark.com.au'},
  'Leo' :{phone:'0422 700 800',email:'leo@voltpro.com.au'}};
 /* 付款人单元格：姓名/电话/邮箱/公司/title 全显示（有则显）+ 下拉换人 + 保存留痕 */
 function payerCell(f){ const ppl=finPeople(f.code); const cur=(f.payerSrc||'')+'|'+f.payer;
@@ -1470,7 +1470,8 @@ function suppEdit(id){ const isNew=!id; const x=isNew?{}:suppOf(id);
      '<input id="sp-name" style="width:100%" placeholder="如：Shenzhen ABC Electronics"></div>':'')+
    '<div class="split" style="gap:10px">'+
    '<div class="field"><label>联系人</label><input id="sp-c" value="'+(x.contact||'')+'" style="width:100%"></div>'+
-   '<div class="field"><label>电话</label><input id="sp-p" value="'+(x.phone||'')+'" style="width:100%"></div></div>'+
+   '<div class="field"><label>电话（境外供应商写 +国家码）</label>'+
+     '<input id="sp-p" class="mono" value="'+(x.phone||'')+'" style="width:100%" placeholder="+86 755 1234 5678"></div></div>'+
    '<div class="field"><label>邮箱（催货、对账都发这里）</label><input id="sp-e" value="'+(x.email||'')+'" style="width:100%"></div>'+
    '<div class="split" style="gap:10px">'+
    '<div class="field"><label>结算币种</label><select id="sp-cur">'+
@@ -1498,7 +1499,10 @@ function suppSave(id){ const isNew=!id; const v=i=>((document.getElementById(i)|
   const ld=parseInt(v('sp-l'),10);
   if(!(ld>0)){ uiAlert('门禁：标准交期必须是正整数天 —— 下单时的预计到货按它算'); return; }
   const before=(x.contact||'')+'/'+(x.phone||'')+'/'+(x.email||'')+'/'+(x.cur||'')+'/'+(x.leadDays||'');
-  Object.assign(x,{contact:v('sp-c'),phone:v('sp-p'),email:em,cur:v('sp-cur'),leadDays:ld,
+  const sp=v('sp-p');
+  if(sp){ const pc=phoneChk(sp,{intl:true});
+    if(!pc.ok){ uiAlert(phoneWhy(sp,{intl:true})); return; } }
+  Object.assign(x,{contact:v('sp-c'),phone:sp?phoneChk(sp,{intl:true}).val:'',email:em,cur:v('sp-cur'),leadDays:ld,
     terms:v('sp-t'),note:v('sp-n')});
   if(isNew) opLog('','新建供应商','「'+x.name+'」· '+x.contact+' · '+x.email+' · '+x.cur+
     ' · 标准交期 '+x.leadDays+' 天',['proc']);
@@ -2057,7 +2061,45 @@ function takerList(code){
   return STAFF.filter(x=>x.active).map(x=>({name:x.name,role:'我方工程人员',phone:x.phone||'',type:'own'}))
     .concat(partyOf(code).map(x=>({name:x.name,role:x.role,phone:x.phone||'',type:'third'}))); }
 const takerOf=(code,name)=>takerList(code).find(x=>x.name===name)||{};
-const phoneOk=v=>/^(\+?61|0)[\d ]{8,}$/.test((v||'').trim());
+/* ══════════ 手机号格式：全站统一（用户 2026-08-10 定）══════════
+   ★为什么值得单独写一个函数、并且在【填的那一刻】就卡住：
+     号码错了系统<b>不会报错</b> —— 短信照发，只是永远发不到；
+     Twilio 那边的失败回执是异步的，我们在界面上根本看不见。
+     等到"货堆在仓库没人来拉""客户说从没收到催款短信"才发现，已经晚了。
+   三条规矩：
+     ①能收短信的号（提货人 / 员工 / 发件号）必须是<b>澳洲手机号</b> ——
+       座机收不到短信，填了座机＝永远收不到，而且不报错
+     ②供应商可以是<b>境外号</b>（深圳、马来…），因为催货走邮件+打电话，不发短信
+     ③存进去<b>一律normalise 成标准写法</b>（+61 4xx xxx xxx）——
+       同一个人被记成 0412345678 / +61412345678 / 0412 345 678 三份，去重就永远对不上 */
+function phoneChk(v,opt){
+  const o=opt||{}; const raw=(v||'').trim();
+  if(!raw) return {ok:false,val:'',why:'手机号必填'};
+  if(/[A-Za-z]/.test(raw)) return {ok:false,val:'',why:'号码里不能有字母'};
+  let d=raw.replace(/[\s\-()]/g,'');
+  if(o.intl&&d.startsWith('+')&&!d.startsWith('+61')){
+    const n=d.slice(1);
+    if(!/^\d{7,15}$/.test(n)) return {ok:false,val:'',why:'境外号请写「+国家码 号码」，只留数字（7~15 位）'};
+    return {ok:true,val:'+'+n,why:''};                       // 境外号原样留，只清掉分隔符
+  }
+  if(d.startsWith('+61')) d='0'+d.slice(3);
+  else if(d.startsWith('61')&&d.length===11) d='0'+d.slice(2);
+  if(!/^0\d{9}$/.test(d))
+    return {ok:false,val:'',why:'澳洲号一共 10 位（04xx xxx xxx），或写成 +61 4xx xxx xxx —— 现在是 '+
+      d.replace(/\D/g,'').length+' 位'};
+  const isMob=d[1]==='4';
+  if(o.sms&&!isMob) return {ok:false,val:'',why:'这个号要收短信，必须是<b>手机号</b>（0<b>4</b> 开头）——'+
+    '座机收不到短信，填了就永远收不到，而且系统不会报错'};
+  if(!isMob&&!'2378'.includes(d[1])) return {ok:false,val:'',why:'澳洲号第二位应该是 4（手机）或 2/3/7/8（座机）'};
+  const t=d.slice(1);
+  return {ok:true,val:isMob?('+61 '+t.slice(0,3)+' '+t.slice(3,6)+' '+t.slice(6))
+                          :('+61 '+t.slice(0,1)+' '+t.slice(1,5)+' '+t.slice(5)),why:''};
+}
+const phoneOk=v=>phoneChk(v,{sms:true}).ok;      // 默认口径＝要能收短信
+const phoneFmt=v=>phoneChk(v,{sms:true}).val||((v||'').trim());
+/* 填错时给的那句话：原因 + 例子，不要只说"格式不对" */
+const phoneWhy=(v,opt)=>'门禁：手机号'+phoneChk(v,opt).why+'\n\n正确写法：+61 412 345 678　或　0412 345 678'+
+  ((opt&&opt.intl)?'\n境外供应商可写 +86 755 1234 5678':'');
 /* 加一个"其他工种"临时提货人（泥水/木工/防水…都可能来拉货） */
 function partyAddOpen(code){ pcDlg={m:'party',code};
   pcShow('<div style="font-weight:600;margin-bottom:2px">加一个提货人 · '+pjNick(code)+'</div>'+
@@ -2075,18 +2117,20 @@ function partyAddSave(code){
   const n=g('pa-n'), r=g('pa-r'), ph=g('pa-p');
   if(n.length<2){ uiAlert('门禁：姓名必填'); return; }
   if(r.length<2){ uiAlert('门禁：工种必填 —— 三个月后翻这张单，得看得出货交给了干什么的'); return; }
-  if(!phoneOk(ph)){ uiAlert('门禁：手机号格式不对 —— 澳洲号，+61 开头或 0 开头。\\n'+
-    '填错＝短信发不出去，而系统不会报错，货就一直堆在仓库没人来拉'); return; }
+  const pc=phoneChk(ph,{sms:true});
+  if(!pc.ok){ uiAlert(phoneWhy(ph,{sms:true})+'\n\n★填错＝短信发不出去，而系统不会报错，'+
+    '货就一直堆在仓库没人来拉'); return; }
   if(takerList(code).some(x=>x.name===n)){ uiAlert('这个名字已经在提货人名单里了'); return; }
-  partyOf(code).push({name:n,role:r,phone:ph});
-  opLog(code,'新增提货人',n+' · '+r+' · '+ph+'（第三方 · 其他工种）',['wh','eng']);
+  partyOf(code).push({name:n,role:r,phone:pc.val});          // ★存标准写法
+  opLog(code,'新增提货人',n+' · '+r+' · '+pc.val+'（第三方 · 其他工种）',['wh','eng']);
   pcClose(); renderAll(); uiAlert('已加入本项目提货人名单 ✓ '+n+' · '+r); }
 function partyPhone(code,name){
   const t=takerOf(code,name);
-  uiPrompt('补 '+name+'（'+t.role+'）的手机号\\n★没号码不能通知也不能出库 —— 短信发不出去等于没发，而且不报错',v=>{
-    if(!phoneOk(v)){ uiAlert('门禁：手机号格式不对 —— 澳洲号，+61 开头或 0 开头'); return; }
+  uiPrompt('补 '+name+'（'+t.role+'）的手机号\n★没号码不能通知也不能出库 —— 短信发不出去等于没发，而且不报错',v=>{
+    const pc=phoneChk(v,{sms:true});
+    if(!pc.ok){ uiAlert(phoneWhy(v,{sms:true})); return; }
     const rec=partyOf(code).find(x=>x.name===name);
-    if(rec){ rec.phone=(v||'').trim(); }
+    if(rec){ rec.phone=pc.val; }
     opLog(code,'补提货人手机号',name+' · '+rec.role+' → '+rec.phone,['wh']);
     renderAll(); uiAlert('已补上 ✓ 现在可以通知他来提货了'); }); }
 
@@ -2114,17 +2158,17 @@ const callLate=c=>c.days>=whSet.callDays;
 /* 短信模版：★两类分开写（用户定）——第三方看不懂中文，发中文等于没发 */
 function callSms(t,pjCode,items,when){
   const p=PROJECTS.find(x=>x.code===pjCode)||{};
-  if(t==='third') return 'KONNEXT: Materials for '+(p.suburb||'')+' ('+pjCode+') are ready for collection.\\n'+
-    'Items: '+items+'\\nPickup: '+whSet.addr+'\\nHours: '+whSet.hours+
-    (when?'\\nAgreed time: '+when:'')+'\\nReply YES to confirm.\\n——\\n'+
-    'KONNEXT：'+(p.nick||p.name)+'（'+pjCode+'）的物料已备好，请来提货。\\n'+
-    '清单：'+items+'\\n仓库：'+whSet.addr+'\\n营业：'+whSet.hours+(when?'\\n约定：'+when:'')+'\\n收到请回 YES。';
-  return 'KONNEXT：'+(p.nick||p.name)+'（'+pjCode+'）物料已备好，来办公室提货。\\n'+
-    '清单：'+items+(when?'\\n约定：'+when:'')+'\\n（App 里也能看到，出库单开出来后记得回 YES）';
+  if(t==='third') return 'KONNEXT: Materials for '+(p.suburb||'')+' ('+pjCode+') are ready for collection.\n'+
+    'Items: '+items+'\nPickup: '+whSet.addr+'\nHours: '+whSet.hours+
+    (when?'\nAgreed time: '+when:'')+'\nReply YES to confirm.\n——\n'+
+    'KONNEXT：'+(p.nick||p.name)+'（'+pjCode+'）的物料已备好，请来提货。\n'+
+    '清单：'+items+'\n仓库：'+whSet.addr+'\n营业：'+whSet.hours+(when?'\n约定：'+when:'')+'\n收到请回 YES。';
+  return 'KONNEXT：'+(p.nick||p.name)+'（'+pjCode+'）物料已备好，来办公室提货。\n'+
+    '清单：'+items+(when?'\n约定：'+when:'')+'\n（App 里也能看到，出库单开出来后记得回 YES）';
 }
 function whCallOpen(pj){
   const rows=bomRows(pj).filter(r=>r.rsv>0||r.stock>0);
-  if(!rows.length){ uiAlert('这个项目现在没有可提的货 ——\\n'+
+  if(!rows.length){ uiAlert('这个项目现在没有可提的货 ——\n'+
     '要么还没备料（去上面那张「项目备料」表），要么仓库确实没有，等采购到货'); return; }
   const tl=takerList(pj);
   pcDlg={m:'call',pj};
@@ -2174,8 +2218,8 @@ function whCallSend(pj){
   const who=((document.getElementById('ca-who')||{}).value||'');
   const t=takerOf(pj,who);
   if(!t.name){ uiAlert('门禁：先选一个提货人'); return; }
-  if(!phoneOk(t.phone)){ uiAlert('门禁：'+t.name+'（'+t.role+'）没有手机号，通知发不出去 ——\\n'+
-    '不补号码就点"已通知"，货会一直堆在仓库没人来拉，而且系统不会报错。\\n'+
+  if(!phoneOk(t.phone)){ uiAlert('门禁：'+t.name+'（'+t.role+'）没有手机号，通知发不出去 ——\n'+
+    '不补号码就点"已通知"，货会一直堆在仓库没人来拉，而且系统不会报错。\n'+
     '关掉这个框，在提货人名单里点他的名字补号码'); return; }
   const picked=callPick(pj);
   if(!picked.length){ uiAlert('门禁：至少勾一样货 —— 空着通知人家来拉什么？'); return; }
@@ -2190,13 +2234,13 @@ function whCallSend(pj){
     (when?' · 约 '+when:'')+' · '+how+' · 发件 '+fromTxt('wh','sms')+(note?'（'+note+'）':''),['wh','eng']);
   notifAdd(pj,'请来提货：'+items+' → '+t.name,[{who:t.name,how:how,ok:false}]);
   pcClose(); renderAll();
-  uiAlert('已通知 ✓ 第 '+n+' 次 · '+t.name+'\\n'+
+  uiAlert('已通知 ✓ 第 '+n+' 次 · '+t.name+'\n'+
     (t.type==='third'?'发的是<b>中英双语</b>短信，带仓库地址和营业时间':'发了 App 推送 + 短信')+
-    '\\n他来了之后在「出库」页开单 —— 那时才真正扣库存'); }
+    '\n他来了之后在「出库」页开单 —— 那时才真正扣库存'); }
 function whCallAgain(pj,who){
   const t=takerOf(pj,who); const last=callsOf(pj,who)[0]||{};
-  uiConfirm('再催一次 '+t.name+'（'+t.role+'）？\\n'+
-    '上次通知：'+(last.at||'—')+'　已过 '+Math.max(0,Math.floor((Date.now()-dOf((last.at||nowTs()).slice(0,10)).getTime())/864e5))+' 天\\n'+
+  uiConfirm('再催一次 '+t.name+'（'+t.role+'）？\n'+
+    '上次通知：'+(last.at||'—')+'　已过 '+Math.max(0,Math.floor((Date.now()-dOf((last.at||nowTs()).slice(0,10)).getTime())/864e5))+' 天\n'+
     '内容照上次那条重发（'+(last.items||'')+'）',ok=>{ if(!ok) return;
     const n=callsOf(pj,who).length+1;
     WHCALL.unshift({...last,id:'CALL-'+pj.slice(-4)+'-'+String(WHCALL.length+1).padStart(2,'0'),
@@ -2215,10 +2259,10 @@ let WHOUT=[
   lines:[{mat:'M-KNX-P4W', qty:12,unit:137.10,back:6},
          {mat:'M-KNX-DIM4',qty:6, unit:224.96,back:2},
          {mat:'M-CBL-KNX', qty:8, unit:97.13, back:5}]},
- {id:'OUT-2026-0142-02',pj:'KX-2026-0142',taker:'小陈',role:'我方工程人员',phone:'0433 100 220',
+ {id:'OUT-2026-0142-02',pj:'KX-2026-0142',taker:'小陈',role:'我方工程人员',phone:'+61 433 100 220',
   at:'2026/07/22 09:10',ack:true,ackAt:'2026/07/22 09:41',chase:[],
   lines:[{mat:'M-SEN-PIR',qty:6,unit:37.80,back:6}]},
- {id:'OUT-2026-0188-01',pj:'KX-2026-0188',taker:'小陈',role:'我方工程人员',phone:'0433 100 220',
+ {id:'OUT-2026-0188-01',pj:'KX-2026-0188',taker:'小陈',role:'我方工程人员',phone:'+61 433 100 220',
   at:'2026/07/28 08:30',ack:true,ackAt:'2026/07/28 09:02',chase:[],
   lines:[{mat:'M-KNX-P4W',  qty:18,unit:137.10,back:0},
          {mat:'M-CBL-CAT6',qty:3, unit:210.00,back:0}]},
@@ -2404,15 +2448,15 @@ function whOutSave(){
     if(!sm2Ready(code)){ uiAlert('门禁：'+pjNick(code)+' 的 SM2 还没排期，谈不上 SM2 预提'); return; }
     if(o.s2===true){ uiAlert('提示：'+pjNick(code)+' 的 S2 已经结清了 —— 直接走<b>正常出库</b>就行，不用走预提通道'); return; }
     use=((document.getElementById('wo-use')||{}).value||'').trim();
-    if(use.length<4){ uiAlert('门禁：SM2 预提必须写清楚带去干什么（≥4 字）——\\n'+
+    if(use.length<4){ uiAlert('门禁：SM2 预提必须写清楚带去干什么（≥4 字）——\n'+
       '这是钱还没到就先放货，三个月后翻这张单得看得出为什么'); return; } }
   const taker=((document.getElementById('wo-taker')||{}).value||'').trim();
   if(!taker){ uiAlert('门禁：必须选提货人 —— 物料既跟项目走，也跟提货人走，少一个就查不出货在谁手里'); return; }
   const tk=takerOf(code,taker);
-  if(sm2&&tk.type!=='own'){ uiAlert('门禁：SM2 预提只能<b>我方人员</b>提 ——\\n'+
+  if(sm2&&tk.type!=='own'){ uiAlert('门禁：SM2 预提只能<b>我方人员</b>提 ——\n'+
     '钱还没到就把货交给第三方，出了事连个内部责任人都没有'); return; }
-  if(!phoneOk(tk.phone)){ uiAlert('门禁：'+taker+'（'+tk.role+'）没有手机号 ——\\n'+
-    '提货清单短信发不出去，就永远等不到那句 YES，这批货等于没人认领。\\n'+
+  if(!phoneOk(tk.phone)){ uiAlert('门禁：'+taker+'（'+tk.role+'）没有手机号 ——\n'+
+    '提货清单短信发不出去，就永远等不到那句 YES，这批货等于没人认领。\n'+
     '先在「项目出库状态」的提货人名单里补号码'); return; }
   const lines=[];
   for(let i=0;i<3;i++){ const m=((document.getElementById('wo-m'+i)||{}).value||'').trim();
@@ -3547,13 +3591,13 @@ function schSave(){ const o=schOpen; if(!o) return;
   const rk=srqKind(ty);
   if(rk&&(rk==='mt'?srqLines.length>0:srqOn)){
     if(!srqLines.length){
-      uiAlert('提示：勾了「提醒去办提货」却一样都没列 —— 排班已保存，但<b>没有生成出货单</b>。\\n'+
+      uiAlert('提示：勾了「提醒去办提货」却一样都没列 —— 排班已保存，但<b>没有生成出货单</b>。\n'+
         '要提料的话重新打开这条任务，把要提的列上'); }
     else if(rk==='sm2'&&srqLines.some(l=>matOf(l.mat).cat!=='cable')){
       uiAlert('提示：SM2 预提<b>只能带线材</b>，出货单没生成 —— 面板模块这些要等 S2 物料款结清'); }
     else{
       const dup=MATREQ.find(x=>x.pj===pjc&&x.kind===rk&&['待库管核对','可出货','缺货待采购'].includes(x.st));
-      if(dup){ uiAlert('提示：这个项目已经有一张没走完的'+MREQ_KIND[rk]+'出货单（'+dup.id+'）——\\n'+
+      if(dup){ uiAlert('提示：这个项目已经有一张没走完的'+MREQ_KIND[rk]+'出货单（'+dup.id+'）——\n'+
         '排班已保存，<b>没有重复生成</b>。要改内容去库管那张表看'); }
       else{
         const rid='PR-'+pjc.slice(-4)+'-'+String(mreqOf(pjc).length+1).padStart(2,'0');
@@ -3568,7 +3612,7 @@ function schSave(){ const o=schOpen; if(!o) return;
         notifAdd(pjc,'工程提了出货单 '+rid+'（'+MREQ_KIND[rk]+'）：'+
           srqLines.map(l=>matOf(l.mat).name+' ×'+l.qty).join('、'),
           [{who:'库管 老张',how:'待办',ok:false},{who:o.who,how:'App',ok:false}]);
-        setTimeout(()=>uiAlert('出货单 '+rid+' 已交库管 ✓\\n'+
+        setTimeout(()=>uiAlert('出货单 '+rid+' 已交库管 ✓\n'+
           '库里有货 → 库管安排出货；<b>缺货 → 采购和你会同时收到提醒</b>，别让 '+o.who+' 白跑一趟'),60); } } }
   srqOn=false; srqLines=[]; srqQ='';
   schClose(); renderAll(); }
@@ -4722,11 +4766,11 @@ function expImgOk(id){ imgClose(); expOk(id); }
 function expImgNo(id){ imgClose(); expNo(id); }
 /* 工资演示（真发工资在外部系统——这里只整理总结） */
 const STAFF=[
- {name:'小陈', sys:'月薪',   base:'A$5,800/月', costHr:34.9, ot:'加班→倒休', phone:'0433 880 001', join:'2025/03/03', active:true},
- {name:'老李', sys:'月薪',   base:'A$6,200/月', costHr:37.3, ot:'加班→倒休', phone:'0433 880 002', join:'2025/06/16', active:true},
- {name:'阿强', sys:'时薪',   base:'A$42/h',     costHr:42,   ot:'按倍数付(现 1.0)', phone:'0433 880 003', join:'2025/09/01', active:true,
+ {name:'小陈', sys:'月薪',   base:'A$5,800/月', costHr:34.9, ot:'加班→倒休', phone:'+61 433 880 001', join:'2025/03/03', active:true},
+ {name:'老李', sys:'月薪',   base:'A$6,200/月', costHr:37.3, ot:'加班→倒休', phone:'+61 433 880 002', join:'2025/06/16', active:true},
+ {name:'阿强', sys:'时薪',   base:'A$42/h',     costHr:42,   ot:'按倍数付(现 1.0)', phone:'+61 433 880 003', join:'2025/09/01', active:true,
   rateHist:[{from:'2026/08/01',costHr:42},{from:'',costHr:40}]},   // 阶段时薪演示：08/01 起 40→42
- {name:'Tony', sys:'外包日薪',base:'A$510/天',  costHr:51,   ot:'无加班概念', ref:'参考时间 10h', phone:'0422 000 222', join:'2025/10/01', active:true},
+ {name:'Tony', sys:'外包日薪',base:'A$510/天',  costHr:51,   ot:'无加班概念', ref:'参考时间 10h', phone:'+61 422 000 222', join:'2025/10/01', active:true},
 ];
 /* ── 三十一轮：工资数据=数据平台 ──
    倒休不存余额存流水（只增不改）——余额现算；负数=休假扣减，forced=财务强制（红字留痕） */
@@ -4852,8 +4896,16 @@ function finStaffAdd(){ const v=id=>{const e=document.getElementById(id);return 
   if(!name){ uiAlert('姓名未填写，无法添加人员'); return; }
   if(STAFF.some(s=>s.name===name)){ uiAlert('已有同名人员「'+name+'」——请区分姓名（如加姓氏或编号）'); return; }
   if(!(cost>0)){ uiAlert('人工换算时薪（成本时薪）未填写，人员无法建立 —— 项目人力成本核算全靠它'); return; }
+  /* ★手机号必填且必须能收短信：排班、提货清单、休假回 Y 全靠它；
+     填错不会报错，只会"这个人怎么从来不回消息" */
+  const pc=phoneChk(v('stf-phone'),{sms:true});
+  if(!pc.ok){ uiAlert(phoneWhy(v('stf-phone'),{sms:true})+'\n\n★这个号是排班通知、提货清单、休假回 Y 的唯一通道 ——'+
+    '填错了不会报错，只会变成"这个人怎么从来不回消息"'); return; }
+  if(STAFF.some(x=>x.phone&&phoneChk(x.phone,{sms:true}).val===pc.val)){
+    uiAlert('门禁：这个号码已经登记在「'+STAFF.find(x=>x.phone&&phoneChk(x.phone,{sms:true}).val===pc.val).name+
+      '」名下 ——\n两个人共用一个号，短信回 Y 分不清是谁回的'); return; }
   STAFF.push({name,sys:v('stf-sys')||'时薪',base:v('stf-base')||'—',costHr:cost,ot:'跟全局倍数',
-    phone:v('stf-phone'),join:todayS(),active:true});
+    phone:pc.val,join:todayS(),active:true});
   opLog('','添加工资人员',name+' · '+v('stf-sys')+' · 成本时薪 A$'+cost,['fin','eng']); renderAll();
   uiAlert('已添加 '+name+'（演示）——正式系统同步建施工端 App 账号（三级 · 只有上报权限）'); }
 function finStaffToggle(i){ const s=STAFF[i]; if(!s) return;
@@ -5152,20 +5204,27 @@ function secConflict(what){
 setInterval(()=>{ if(!SEC.locked&&document.getElementById('app').style.display!=='none'
   &&secIdleLeft()<=0) secLock(false); },30000);
 ['click','keydown'].forEach(ev=>document.addEventListener(ev,()=>{ if(!SEC.locked) secTouch(); },true));
+/* ★提示框里的 <b> 原来是原样显示成标签的（textContent）——23 条提示都这样，
+   看起来像乱码。直接换 innerHTML 又等于把任意文本当 HTML 执行，所以：
+   全部转义，然后只放行 <b> 与 <br> 两个标签。 */
+function uiSafe(msg){ return String(msg==null?'':msg)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  .replace(/&lt;(\/?b)&gt;/g,'<$1>')
+  .replace(/&lt;br\s*\/?&gt;/g,'<br>'); }
 function uiAlert(msg){ const box=document.getElementById('toasts'); if(!box) return;
   const d=document.createElement('div');
   d.style.cssText='background:#243447;color:#f5f8fa;font-size:12.5px;line-height:1.7;padding:10px 14px;'+
     'border-radius:8px;box-shadow:0 8px 24px rgba(16,24,40,.3);white-space:pre-wrap';
-  d.textContent=msg; box.appendChild(d);
+  d.innerHTML=uiSafe(msg); box.appendChild(d);
   setTimeout(()=>{d.style.transition='opacity .4s';d.style.opacity='0';setTimeout(()=>d.remove(),450);},4200); }
 let uiCb=null;
 function uiConfirm(msg,cb){ uiCb=cb;
-  document.getElementById('uimsg').textContent=msg;
+  document.getElementById('uimsg').innerHTML=uiSafe(msg);
   document.getElementById('uiinput').style.display='none';
   document.getElementById('uiback').style.display='block';
   document.getElementById('uibox').style.display='block'; }
 function uiPrompt(msg,cb){ uiCb=v=>cb(v);
-  document.getElementById('uimsg').textContent=msg;
+  document.getElementById('uimsg').innerHTML=uiSafe(msg);
   const i=document.getElementById('uiinput'); i.style.display='block'; i.value='';
   document.getElementById('uiback').style.display='block';
   document.getElementById('uibox').style.display='block'; setTimeout(()=>i.focus(),50); }
@@ -9853,12 +9912,15 @@ ${helpNote(`这里的每个数都是全公司生效的口径：超期天数决�
   <div class="panel-head" style="padding:6px 0">＋ 添加人员</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
     <div class="field" style="margin:0"><label>姓名</label><input id="stf-name" style="width:90px"></div>
-    <div class="field" style="margin:0"><label>手机</label><input id="stf-phone" style="width:120px" placeholder="04xx xxx xxx"></div>
+    <div class="field" style="margin:0"><label>手机（必填）</label><input id="stf-phone" class="mono" style="width:150px" placeholder="+61 412 345 678"></div>
     <div class="field" style="margin:0"><label>制度</label><select id="stf-sys" style="width:auto"><option>月薪</option><option>时薪</option><option>外包日薪</option></select></div>
     <div class="field" style="margin:0"><label>基准（月薪/时薪/日薪）</label><input id="stf-base" style="width:110px" placeholder="如 A$42/h"></div>
     <div class="field" style="margin:0"><label>成本时薪 A$（必填）</label><input id="stf-cost" class="mono" style="width:90px"></div>
     <button class="btn btn-primary" onclick="finStaffAdd()">添加</button></div>
-  <div class="hint" style="margin-top:8px">成本时薪不填 → 建人直接被拒（项目人力成本核算全靠它）·
+  <div class="hint" style="margin-top:8px">★<b>手机号必填、必须是能收短信的澳洲手机号</b>（0<b>4</b> 开头）——
+    排班通知、提货清单、休假回 Y 全走这个号；填错不报错，只会"这个人怎么从来不回消息"。
+    存进去自动转成标准写法 <span class="mono">+61 4xx xxx xxx</span>，同一个号不许两个人共用 ·
+    成本时薪不填 → 建人直接被拒（项目人力成本核算全靠它）·
     有日结历史的人不能删除，只能<b>停用</b>留痕——历史工资与项目成本照算 · 外包日薪填参考时间，成本时薪=日薪÷参考时间 ·
     添加后正式系统同步建施工端 App 账号（三级 · 只有上报权限）· 增删与改动全进操作日志并通知工程管理</div>
  </div></div>

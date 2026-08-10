@@ -610,17 +610,62 @@ const { chromium } = require('playwright');
     document.getElementById('stf-name').value='测试工';
     document.getElementById('stf-cost').value='45';
     document.getElementById('stf-base').value='A$45/h';
+    /* ★六十八轮：手机号必填、必须能收短信、不许两人共用（用户 2026-08-10 定） */
+    finStaffAdd(); const gPh=STAFF.length===n0;
+    document.getElementById('stf-phone').value='02 9876 5432';   // 座机收不到短信
+    finStaffAdd(); const gLand=STAFF.length===n0;
+    document.getElementById('stf-phone').value='0433 880 001';   // 小陈已经在用
+    finStaffAdd(); const gDup=STAFF.length===n0;
+    document.getElementById('stf-phone').value='0412345678';     // 没空格也认，存进去转标准写法
     finStaffAdd();
-    const added=STAFF.length===n0+1&&STAFF[n0].name==='测试工'&&OPLOG[0].action==='添加工资人员';
+    const added=STAFF.length===n0+1&&STAFF[n0].name==='测试工'&&OPLOG[0].action==='添加工资人员'
+      &&STAFF[n0].phone==='+61 412 345 678';
     finStaffToggle(n0); uiOk();
     const off=STAFF[n0].active===false;
     const dim=document.getElementById('main').innerHTML.includes('已停用');
     STAFF.splice(n0,1); renderAll();
-    return JSON.stringify({has,gate,added,off,dim,restore:STAFF.length===n0});});
+    document.getElementById('stf-phone').value='';
+    /* 纯函数口径也测一遍 */
+    const P=(v,o)=>phoneChk(v,o);
+    const pf={
+      ok1:P('+61 412 345 678',{sms:true}).val==='+61 412 345 678',
+      ok2:P('0412345678',{sms:true}).val==='+61 412 345 678',
+      ok3:P('61412345678',{sms:true}).val==='+61 412 345 678',
+      short:!P('0412 3456',{sms:true}).ok,
+      alpha:!P('KONNEXT',{sms:true}).ok,
+      land:!P('0298765432',{sms:true}).ok&&P('0298765432',{}).ok,
+      intl:P('+86 755 1234 5678',{intl:true}).val==='+8675512345678',
+      intlOff:!P('+86 755 1234 5678',{sms:true}).ok,
+      empty:!P('',{sms:true}).ok};
+    return JSON.stringify({has,gate,gPh,gLand,gDup,added,off,dim,pf,restore:STAFF.length===n0});});
+  // ★六十八轮：提示框里的 <b> 原来原样显示成标签（23 条提示都这样）
+  const uis=await page.evaluate(()=>{ const R={};
+    uiAlert('门禁：必须是<b>手机号</b>');
+    const box=document.getElementById('toasts');
+    const d=box.lastChild;
+    R.bold = d.innerHTML.includes('<b>手机号</b>')&&!d.textContent.includes('<b>');
+    R.esc  = (()=>{ uiAlert('危险 <img src=x onerror=alert(1)> 文本');
+      const e=box.lastChild; return e.innerHTML.includes('&lt;img')&&!e.querySelector('img'); })();
+    R.br   = (()=>{ uiAlert('上一行<br>下一行');
+      return box.lastChild.querySelector('br')!==null; })();
+    box.innerHTML='';
+    return JSON.stringify(R);});
+  const U68=JSON.parse(uis);
+  ok(U68.bold,'★提示框里的 <b> 原样显示成标签了（看起来像乱码）');
+  ok(U68.esc,'★提示框把任意文本当 HTML 执行了 —— 只该放行 <b> 与 <br>');
+  ok(U68.br,'提示框里的 <br> 没换行');
+
   const f31=JSON.parse(w31f);
   ok(f31.has,'设置页缺「工资发放人员」管理面板');
   ok(f31.gate,'成本时薪不填建人未被拒（门禁）');
-  ok(f31.added,'添加人员未生效/未进日志');
+  ok(f31.gPh,'★手机号空着竟能建人（排班通知、提货清单、休假回 Y 全走这个号）');
+  ok(f31.gLand,'★填座机竟能建人（座机收不到短信，填了就永远收不到，而且不报错）');
+  ok(f31.gDup,'★两个人共用一个号竟能建（短信回 Y 分不清是谁回的）');
+  ok(f31.added,'添加人员未生效/未进日志/手机号没转成标准写法');
+  ok(f31.pf.ok1&&f31.pf.ok2&&f31.pf.ok3,'★同一个号的三种写法没归一成 +61 4xx xxx xxx（去重就永远对不上）');
+  ok(f31.pf.short&&f31.pf.alpha&&f31.pf.empty,'手机号校验漏放（位数不够 / 有字母 / 空）');
+  ok(f31.pf.land,'座机口径不对：要收短信的必须拒座机，不发短信的场合应当放行');
+  ok(f31.pf.intl&&f31.pf.intlOff,'★境外号口径不对：供应商可以是 +86，但要收短信的场合必须拒');
   ok(f31.off&&f31.dim,'停用留痕未生效（应标已停用置灰）');
   ok(f31.restore,'人员测试后未还原');
   const w31g=await page.evaluate(()=>{
