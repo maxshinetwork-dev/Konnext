@@ -1,0 +1,179 @@
+<title>KONNEXT 原型 · 第三轮试用指引</title>
+<style>
+:root{
+  --bg:#f4f6f9; --panel:#fff; --border:#dde4ec; --text:#1f2933; --muted:#5f6b76;
+  --accent:#2563eb; --accent-soft:#e8effc; --ok:#047857; --ok-soft:#e6f4ef;
+  --warn:#b45309; --warn-soft:#fdf3e2; --bad:#dc2626; --bad-soft:#fdecec;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f151b; --panel:#161d25; --border:#27313c; --text:#e7edf3; --muted:#95a3b1;
+  --accent-soft:#16283f; --ok-soft:#12261f; --warn-soft:#2a2013; --bad-soft:#2b1719;}}
+:root[data-theme="dark"]{
+  --bg:#0f151b; --panel:#161d25; --border:#27313c; --text:#e7edf3; --muted:#95a3b1;
+  --accent-soft:#16283f; --ok-soft:#12261f; --warn-soft:#2a2013; --bad-soft:#2b1719;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.85 -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;
+  padding:32px 16px 72px}
+.wrap{max-width:880px;margin:0 auto}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:14px;margin:0 0 26px}
+h2{font-size:19px;margin:34px 0 10px;padding-bottom:7px;border-bottom:2px solid var(--border)}
+h3{font-size:15.5px;margin:20px 0 6px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin:14px 0}
+.big{background:var(--accent-soft);border-color:var(--accent)}
+.ok{background:var(--ok-soft);border-color:var(--ok)}
+.warn{background:var(--warn-soft);border-color:var(--warn)}
+.bad{background:var(--bad-soft);border-color:var(--bad)}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12.5px}
+code,.mono{font-family:var(--mono);font-size:13px;background:var(--bg);padding:1px 5px;border-radius:4px}
+ul,ol{margin:8px 0;padding-left:22px} li{margin:5px 0}
+.tag{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;
+  background:var(--accent-soft);color:var(--accent);margin-right:5px}
+.tag.new{background:var(--ok-soft);color:var(--ok)}
+.q{font-weight:600;margin-top:12px}
+.scroll{overflow-x:auto}
+</style>
+
+<div class="wrap">
+<h1>KONNEXT 原型 · 第三轮试用指引</h1>
+<p class="sub">2026-08-10 版　·　六部门共 <b>121 个页面</b>　·　
+<b class="mono">这一轮界面没有新增页面 —— 变的是底下的数据库</b></p>
+
+<div class="card big">
+  <b>这一轮跟上一轮有什么不同</b><br><br>
+  上一轮指引最后写着一句：<i>「数据库还没跟上这几轮的改动（欠一版契约更新）——
+  界面上的新规矩暂时只在原型里。」</i><br>
+  <b>这句话现在可以划掉了。</b> 这两天把两版契约做完了（v0.37 + v0.38），
+  你们在界面上看到的每一条规矩，现在数据库里都真的拦得住了。<br><br>
+  所以这一轮<b>不用重新学界面</b> —— 页面和上次一模一样。
+  请你继续按上一轮的清单走你那条线，<b>把上次没走完的、没提的接着提</b>。
+</div>
+
+<h2>数据库这两天补了什么（不用记，知道有这回事就行）</h2>
+<div class="scroll">
+<table>
+  <tr><th style="width:96px">在哪条线</th><th>现在真的拦得住了</th></tr>
+  <tr><td><b>采购 · 库管 · 工程</b></td><td>
+    报价原始单只读、版本化（<b>行永远不删，只能把数量调 0</b>）·
+    现场变更暂存→提交→审批 · <b>SM2 之后只能增不能减</b> ·
+    待审的变更不算进应采 · <b>库管备料只占住不扣库存</b>（真正扣是在开出库单那一刻）·
+    <b>买多了整行标红</b>（工程后来减了量，那批货的钱已经花出去了）</td></tr>
+  <tr><td><b>库管</b></td><td>
+    提货人<b>没有澳洲手机号就不许通知、不许出库</b> ·
+    三种写法的号码自动归一成 <span class="mono">+61 4xx xxx xxx</span> ·
+    <b>SM2 预提线材四道锁</b>（只我方 · 只线材 · 用途必填 · 照样按 S4 结算）——
+    而且开了这个口子之后，<b>S2 没结清的普通出库照旧卡死</b></td></tr>
+  <tr><td><b>运维</b></td><td>
+    报修时间<b>必填、默认「现在」</b>（问题什么时候开始的才可以留空）·
+    P0~P3 四档 SLA，超了自动进待办 · <b>派人上门前必须先有排查结论</b> ·
+    远程排查的时间算进项目成本 · 完结交财务要写清处理情况</td></tr>
+  <tr><td><b>工程管理</b></td><td>
+    项目分级 A/B/C <b>原因必填</b> · 项目备忘<b>跟进日期必填</b>（没日期就不会提醒＝等于没记）·
+    <b>派工排班整张表落库了</b>：同一人同一天两段<b>不许时间重叠</b>、
+    倒休<b>余额不足直接拦</b>、维护<b>上次没填剩余工作这次派不了工</b></td></tr>
+</table>
+</div>
+
+<div class="card ok">
+  <b>为什么这些值得花两天做</b>：这类错误的共同点是<b>不会报错，只是数字悄悄错了</b>。
+  备料就扣库存 → 货还在架子上账面却没了；工程把 18 件改成 0 → 那 18 件的钱悄悄留在项目成本里；
+  提货人号码填成座机 → 短信永远发不到，货就一直堆在仓库没人来拉。
+  这些没人会发现，直到年底对账。所以宁可当场拦住你，也不让它悄悄过去。
+</div>
+
+<h2>★这一轮特别请你拍板的两件事</h2>
+
+<div class="card warn">
+  <b>① 运维缺料要不要单独走采购需求？</b><br><br>
+  之前定的是：<b>项目料由工程人员提单</b>（方案和现场情况他最清楚），
+  库管只提常备件补货 —— 这两档没问题。<br>
+  但<b>运维换件</b>那些料不在项目报价单里，按原来的四档它没地方落。
+  我落库时给它单独加了一档「<b>运维缺料</b>」。<br><br>
+  <b>请确认：</b>运维缺的料，是走独立的采购需求（现在这样），
+  还是并到别的档里去？
+</div>
+
+<div class="card warn">
+  <b>② 「不能给过去的日期排班」这条会不会卡到你？</b><br><br>
+  排班表现在拦死了「<b>给上周补一条排班</b>」这种操作。
+  理由是：排班是<b>计划</b>，事后补一条，「计划 vs 实际」就永远对得上，
+  再也看不出「派了工没去」——而工程流水账里那一列全靠这个对比。
+  过去的活要补记，走「每日工时管理」的补录。<br><br>
+  <b>请确认：</b>实际工作里会不会真的需要事后补排班？<br>
+  如果会（比如系统上线时要把过去几个月的排班导进来），我再做一个
+  <b>一次性的导入通道</b>（像期初库存盘点那样，只能做一遍、全程留痕）。
+</div>
+
+<h2>各部门看哪几页</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:100px">身份</th><th style="width:60px">页数</th><th>重点走这几页</th></tr></thead>
+  <tbody>
+    <tr><td><b>售前</b><br><span class="mono">小林</span></td><td>4</td>
+      <td>项目列表（一页长大表 · 6+1 状态勾）· 项目状态表（图全部按数据现算）</td></tr>
+    <tr><td><b>工程管理</b><br><span class="mono">陈工</span></td><td>13</td>
+      <td><span class="tag new">新</span>项目详情（含<b>历史排班</b>、安装调试、<b>项目备忘</b>）·
+        <span class="tag new">新</span>出货单 · <span class="tag new">新</span>物料变更审批 ·
+        项目列表（<b>分级</b>、<b>资源用量超支标红</b>）· 派工排班</td></tr>
+    <tr><td><b>采购</b><br><span class="mono">老张</span></td><td>10</td>
+      <td>采购需求（<b>两层：项目总览 → 点进去看完整清单 → 勾选分批下单</b>）·
+        采购单 · 供应商 · 物料主表 · 调价历史 · RMA 退换</td></tr>
+    <tr><td><b>库管</b><br><span class="mono">老张</span></td><td>10</td>
+      <td><span class="tag new">新</span>项目出库状态（<b>八个状态页签，点一个只看一类</b>）·
+        出库（含 <b>SM2 预提</b>）· 入库 · 退库与拒收 · 盘点</td></tr>
+    <tr><td><b>财务</b><br><span class="mono">王姐</span></td><td>11</td>
+      <td>财务节点 · 项目收款 S1-S3 · 尾款结算 S4 与 Var · 催账和停服 · 工资数据 · 成本与利润率</td></tr>
+    <tr><td><b>运维</b><br><span class="mono">小周</span></td><td>9</td>
+      <td>报修受理（<b>两个时间</b>、<b>P0~P3 分级</b>）· 维护单跟踪（<b>研发排查</b>、<b>完结交财务</b>）·
+        <span class="tag new">新</span>故障分析 · 业主订阅</td></tr>
+    <tr><td><b>陈总</b><br><span class="mono">核心管理员</span></td><td>全部</td>
+      <td>所有部门 ＋ 决策页（决策看板 / 风险看板 / 审计日志 / 全局参数）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>上一轮请你验的那些，还是照样验</h2>
+<p class="sub" style="margin:6px 0 14px">下面这些上一轮已经列过，没走完的接着走：</p>
+<div class="card">
+  <b>运维</b>：报修两个时间分得对不对 · P0~P3 的四档 SLA 小时数合不合适 ·
+  「上门前必须有排查结论」这道卡是不是太严 · 故障分析页有没有用<br>
+  <b>工程管理</b>：安装调试并进项目详情合不合习惯 · 资源用量预警线（默认 90%）合不合适 ·
+  <b>请你给手上的项目实际分一次 A/B/C 级，看看好不好用</b><br>
+  <b>采购</b>：「采购需求」两层结构（项目总览 → 点进去看完整清单 → 勾选分批下单）顺不顺手<br>
+  <b>库管</b>：「项目出库状态」八个状态页签<b>分得对不对、够不够</b> ·
+  「没手机号不能出库」会不会卡到你
+</div>
+
+<h2>怎么反馈</h2>
+<p>看到问题就记一条，越具体越好。最有用的三种：</p>
+<div class="scroll">
+<table>
+  <tr><th style="width:120px">类型</th><th>怎么写</th></tr>
+  <tr><td><b>做错了</b></td><td>「XX 页点 YY，跳到了 ZZ，应该去 WW」——说清楚在哪一页、点了什么、期望什么</td></tr>
+  <tr><td><b>不合工作实际</b></td><td>「这里要求必填 XX，但我们平时这个时候根本拿不到」——说清楚你平时是怎么做的</td></tr>
+  <tr><td><b>少了东西</b></td><td>「我还需要看到 XX，不然我判断不了 YY」——说清楚你要拿它做什么决定</td></tr>
+</table>
+</div>
+
+<div class="card bad">
+  <b>两件事先说在前面，免得你白提</b><br>
+  · <b>金额在工程和库管那边一律不显示</b> —— 不是漏了，是故意的。钱的数字只在财务和管理层能看到。<br>
+  · <b>「— —」不是 0，是「你没权限看」</b>。看到 — — 说明这个数字对你这个身份是遮住的。
+</div>
+
+<div class="card">
+  <b>还没做的（不用提）</b><br>
+  · <b>正式系统还没有</b> —— 这只是界面原型。真的能登录、能发短信，
+    要等 Twilio 账号和服务器配好（三份注册指南已经发过了）。<br>
+  · 负责人不建档、直接填联系人手机号 —— 老板说先放一放。<br>
+  · 上线时导入历史排班的通道 —— 等上面第 ② 条你拍板之后再做。
+</div>
+
+<p class="sub" style="margin-top:30px">
+有任何看不懂的，页面左下角都有<b>「帮助（本页说明）」</b> —— 每一页都写了「这页怎么用」和「最容易搞错的地方」。
+</p>
+</div>
