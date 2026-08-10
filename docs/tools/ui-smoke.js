@@ -2248,7 +2248,7 @@ const { chromium } = require('playwright');
       &&nw.ack===false&&stockOf('M-KNX-P4W')===12-2
       &&WHMOVE[0].kind==='出库'&&WHMOVE[0].qty===-2
       &&OPLOG.some(l=>l.action==='物料出库')
-      &&NOTIF[0].to.some(t=>t.how==='短信')&&NOTIF[0].to.some(t=>t.how==='邮件');   // 提货人短信 + Builder 告知
+      &&NOTIF[0].to.some(t=>t.how.includes('短信'))&&NOTIF[0].to.some(t=>t.how==='邮件');   // 提货人短信 + Builder 告知
     R.frozen=Math.abs(nw.lines[0].unit-matAud(matOf('M-KNX-P4W')))<0.01;   // 出库单价定格
     // ⑧ 催提货确认
     whAckChase(nw.id); R.chase=nw.chase.length===1&&OPLOG[0].action==='催提货确认';
@@ -2695,6 +2695,225 @@ const { chromium } = require('playwright');
   ok(S64.appWaitNotCount,'★待审的变更进了应采（必须审完才算数）');
   ok(S64.gPending,'★还有物料没建档竟能提交变更（应拦 —— 不然改了半天最后发现少了几个料）');
   ok(S64.restored,'六十四轮测试后演示态未还原');
+
+  // ═══ 六十五轮：提货人两类 · 通知来提货（出库前）· SM2 预提线材 ═══
+  const r65=await page.evaluate(()=>{ const R={};
+    const l0=OPLOG.length, n0=NOTIF.length;
+    const c0=JSON.parse(JSON.stringify(WHCALL)), o0=JSON.parse(JSON.stringify(WHOUT));
+    const p0=JSON.parse(JSON.stringify(PARTY)), m0=WHMOVE.length;
+    loginAs('warehouse');
+    const pj='KX-2026-0188', pj2='KX-2026-0203';
+    // ① 提货人两类：我方全员 + 本项目参建方，类型分得清
+    const tl=takerList(pj);
+    R.twoKinds = tl.some(t=>t.type==='own'&&t.name==='小陈')
+      && tl.some(t=>t.type==='third'&&t.name==='Sam'&&t.role.includes('Builder'))
+      && tl.some(t=>t.type==='third'&&t.name==='Ken');           // 其他工种（木工）
+    R.phoneCheck = phoneOk('+61 401 220 118')&&phoneOk('0433 880 001')
+      && !phoneOk('')&&!phoneOk('12345')&&!phoneOk('401220118');
+    // ★缺号码的第三方要被列出来并能补
+    go('wh','项目出库状态');
+    const hw=document.getElementById('main').innerHTML;
+    R.missUI = hw.includes('提货人缺手机号')&&hw.includes('Raj')&&hw.includes('partyPhone');
+    R.callBtn = hw.includes('通知提货')&&hw.includes('whCallOpen');
+    // ② 通知来提货
+    const nc=WHCALL.length;
+    whCallOpen(pj2);
+    document.getElementById('ca-who').value='Raj';               // 没手机号的那个
+    whCallSend(pj2); R.gNoPhone = WHCALL.length===nc;            // ★发不出去 → 拦
+    document.getElementById('ca-who').value='Mike';
+    bomRows(pj2).filter(r=>r.rsv>0||r.stock>0).forEach((r,i)=>{
+      const c=document.getElementById('ca-c'+i); if(c) c.checked=false; });
+    whCallSend(pj2); R.gNoItem = WHCALL.length===nc;             // 一样没勾 → 拦
+    document.getElementById('ca-c0').checked=true;
+    document.getElementById('ca-when').value='2026/08/12 上午';
+    renderCallPrev();
+    const prev=document.getElementById('ca-prev').textContent;
+    R.smsThird = prev.includes('ready for collection')&&prev.includes('Reply YES')
+      && prev.includes(whSet.addr)&&prev.includes(whSet.hours)&&prev.includes('2026/08/12 上午');
+    whCallSend(pj2);
+    R.called = WHCALL.length===nc+1&&WHCALL[0].who==='Mike'&&WHCALL[0].type==='third'
+      && OPLOG.some(l=>l.action==='通知来提货')
+      && NOTIF.some(x=>(x.what||'').includes('请来提货')&&x.to.some(t=>t.how.includes('中英双语')));
+    // 我方那条模版不一样（App 推送 + 短信、中文）
+    whCallOpen(pj);
+    document.getElementById('ca-who').value='小陈';
+    renderCallPrev();
+    const prev2=document.getElementById('ca-prev').textContent;
+    R.smsOwn = prev2.includes('来办公室提货')&&!prev2.includes('Reply YES');
+    pcClose();
+    // ★叫了没来：开了出库单就该从待提表里消失
+    R.pendHas = callPend().some(c=>c.pj===pj2&&c.who==='Mike');
+    const days=callPend().find(c=>c.pj===pj&&c.who==='Sam');
+    R.pendDays = !!days&&days.days>=1;                            // 演示种子 08/08 通知的
+    // 再催一次
+    const before=callsOf(pj,'Sam').length;
+    whCallAgain(pj,'Sam'); uiOk();
+    R.again = callsOf(pj,'Sam').length===before+1&&OPLOG.some(l=>l.action==='再催提货');
+    // ③ SM2 预提：只有 SM2 排了期、且 S2 还没结清的项目才走这条
+    R.sm2Scope = sm2Can(pj2)&&!sm2Can(pj);                        // 罗宅 SM2 已排期且 S2 未清；林宅 S2 已清
+    woKind='sm2'; whOutOpen();
+    document.getElementById('wo-pj').value=pj2; whOutTaker();
+    const opts=[...document.getElementById('wo-taker').options].map(o=>o.value);
+    R.sm2OwnOnly = opts.includes('小陈')&&!opts.includes('Mike');  // ★第三方不许走预提
+    const mo=[...document.getElementById('wo-m0').options].map(o=>o.value).filter(Boolean);
+    R.sm2CableOnly = mo.includes('M-CBL-KNX')&&!mo.includes('M-KNX-P4W');
+    const on=WHOUT.length;
+    document.getElementById('wo-m0').value='M-CBL-KNX';
+    document.getElementById('wo-q0').value='3';
+    whOutSave(); R.gSm2Use = WHOUT.length===on;                   // 用途没填 → 拦
+    document.getElementById('wo-use').value='SM2 现场按布线图预布 KNX 总线主干';
+    whOutSave();
+    const nw=WHOUT[0];
+    R.sm2Done = WHOUT.length===on+1&&nw.kind==='sm2'&&nw.pj===pj2
+      && nw.ttype==='own'&&nw.use.length>=4
+      && WHMOVE[0].kind==='出库'&&WHMOVE[0].qty===-3                 // ★照样扣库存
+      && nw.lines[0].unit>0                                          // ★单价照样定格
+      && outUnret(nw)===3                                            // ★照样进未退料台账（S4 要结）
+      && OPLOG.some(l=>l.action==='SM2 预提出库');
+    // 正常出库这条路，S2 没结清照样拦
+    woKind='normal'; whOutOpen();
+    const pool=[...document.getElementById('wo-pj').options].filter(o=>o.value===pj2);
+    R.normalStillGated = pool.length===1&&pool[0].disabled;
+    pcClose();
+    // 还原
+    woKind='normal';
+    WHOUT.length=0; o0.forEach(x=>WHOUT.push(x));
+    WHCALL.length=0; c0.forEach(x=>WHCALL.push(x));
+    WHMOVE.splice(0,WHMOVE.length-m0);
+    Object.keys(PARTY).forEach(k=>delete PARTY[k]);
+    Object.keys(p0).forEach(k=>PARTY[k]=p0[k]);
+    OPLOG.splice(0,OPLOG.length-l0); NOTIF.splice(0,NOTIF.length-n0);
+    renderAll();
+    R.restored = WHOUT.length===o0.length&&WHCALL.length===c0.length
+      && WHMOVE.length===m0&&stockOf('M-CBL-KNX')===14;
+    return JSON.stringify(R);});
+  const S65=JSON.parse(r65);
+  ok(S65.twoKinds,'提货人没分成两类（第三方 Builder/电工/其他工种 · 我方工程人员）');
+  ok(S65.phoneCheck,'手机号校验不对（澳洲号 +61 或 0 开头）');
+  ok(S65.missUI,'★缺手机号的第三方提货人没单独列出来 —— 没号码短信发不出去，而且不报错');
+  ok(S65.callBtn,'「项目出库状态」上没有「通知提货」按钮');
+  ok(S65.gNoPhone,'★没手机号的提货人竟能发通知（发不出去等于没发，货就一直堆在仓库）');
+  ok(S65.gNoItem,'一样货都没勾竟能发通知（应拦 —— 通知人家来拉什么？）');
+  ok(S65.smsThird,'★第三方短信不是中英双语 / 没带仓库地址与营业时间（他们照着这个来拉货）');
+  ok(S65.called,'通知提货没留痕 / 没按第三方口径发');
+  ok(S65.smsOwn,'★我方那条模版没分开写（应当是中文 + App 推送，不是英文 Reply YES）');
+  ok(S65.pendHas&&S65.pendDays,'「已通知、人还没来提」表没算出来');
+  ok(S65.again,'「再催」没重发也没记第几次');
+  ok(S65.sm2Scope,'SM2 预提的适用范围不对（应＝SM2 已排期/已完成 且 S2 还没结清）');
+  ok(S65.sm2OwnOnly,'★SM2 预提竟能选第三方（钱还没到就把货交给外人，出了事没有内部责任人）');
+  ok(S65.sm2CableOnly,'★SM2 预提竟能提面板模块（只放线材 —— 主材是钱的大头，照旧卡 S2）');
+  ok(S65.gSm2Use,'SM2 预提没写用途竟能出库（应拦 —— 钱还没到就放货，得看得出为什么）');
+  ok(S65.sm2Done,'★SM2 预提没照常扣库存 / 定格单价 / 进未退料台账 —— 那这批线材的钱就悄悄丢了');
+  ok(S65.normalStillGated,'★开了预提口子之后，正常出库的 S2 门禁跟着松了（必须照旧卡死）');
+  ok(S65.restored,'六十五轮测试后演示态未还原');
+
+  // ═══ 六十六轮：排班里提料（出货单）→ 库管核对 → 出货 / 缺货找采购 ═══
+  const r66=await page.evaluate(()=>{ const R={};
+    const l0=OPLOG.length, n0=NOTIF.length, m0=WHMOVE.length;
+    const q0=JSON.parse(JSON.stringify(MATREQ)), o0=JSON.parse(JSON.stringify(WHOUT));
+    // ① 工程：排班浮窗里能提料（施工首次出库 / SM2 只线材 / 运维带件）
+    loginAs('eng'); go('eng','派工排班'); schSeed();
+    schAdd('阿强','2026/09/22');                                 // ★挑一个没排过班的人和日子，免得撞上重叠门禁
+    document.getElementById('sc-t').value='安装'; schPjToggle();
+    document.getElementById('sc-pj').value='KX-2026-0203'; schMatPaint();
+    const hw=document.getElementById('sc-matwrap').innerHTML;
+    R.schBlock = hw.includes('提醒他去仓库办提货');
+    R.firstFlag = hw.includes('还没出过库');                    // 罗宅还没出过库＝首次进场
+    document.getElementById('sc-pj').value='KX-2026-0188'; schMatPaint();   // 林宅备过料
+    srqOn=false; srqTog();                                      // 勾上 → 自动带出已备料
+    R.autoFill = srqLines.length>0&&srqLines.some(l=>l.mat==='M-CBL-KNX');
+    srqOn=false; srqLines=[];
+    // SM2 那档只列线材
+    document.getElementById('sc-t').value='Site Meeting'; schPjToggle();
+    srqLines=[]; srqQ='网线'; srqOn=true; schMatPaint();
+    const h2=document.getElementById('sc-matwrap').innerHTML;
+    R.sm2Cable = h2.includes('M-CBL-CAT6')&&!h2.includes('M-KNX-P4W');
+    // 提一张施工出货单
+    // ★这张走完整链条：用林宅（S2 已结清，施工出库才放行）
+    document.getElementById('sc-t').value='安装'; schPjToggle();
+    document.getElementById('sc-pj').value='KX-2026-0188'; schMatPaint();
+    srqOn=true; srqLines=[{mat:'M-CBL-CAT6',qty:2}]; srqQ=''; schMatPaint();
+    document.getElementById('sc-st').value='08:00';
+    document.getElementById('sc-et').value='16:00';
+    document.getElementById('sc-note').value='一层布线';
+    const nq=MATREQ.length; schSave();
+    const rq=MATREQ[0];
+    R.reqMade = MATREQ.length===nq+1&&rq.kind==='build'&&rq.pj==='KX-2026-0188'
+      &&rq.who==='阿强'&&rq.st==='待库管核对'
+      &&OPLOG.some(l=>l.action==='提出货单（排班时）')
+      &&NOTIF.some(x=>(x.what||'').includes('工程提了出货单'));
+    R.srqReset = srqLines.length===0&&srqOn===false;             // 提完就清空，不会带到下一条
+    // ② 库管：核对库存 —— 够
+    loginAs('warehouse'); go('wh','项目出库状态');
+    R.whBlock = document.getElementById('main').innerHTML.includes('工程提来的出货单');
+    mreqCheck(rq.id);
+    R.okEnough = rq.st==='可出货'&&rq.chk.short.length===0
+      &&NOTIF.some(x=>(x.what||'').includes('库里有货'));
+    // ③ 库管：安排出货 —— ★这一刻才扣库存
+    const st0=stockOf('M-CBL-CAT6'), on=WHOUT.length;
+    mreqOutOpen(rq.id); mreqOutSave(rq.id);
+    R.outDone = WHOUT.length===on+1&&WHOUT[0].reqId===rq.id&&rq.st==='已出库'
+      &&stockOf('M-CBL-CAT6')===st0-2&&WHMOVE[0].kind==='出库'
+      &&OPLOG.some(l=>l.action==='按出货单出库');
+    R.gone = !MATREQ.filter(r=>['待库管核对','可出货','缺货待采购'].includes(r.st)).some(r=>r.id===rq.id);
+    // ④ 缺货那条路：运维出货单，库里不够 → 同时提醒采购与工程 + 进采购需求
+    const mt=MATREQ.find(r=>r.kind==='mt');
+    mt.lines=[{mat:'M-KNX-GW',qty:99}];                          // 库存只有 3
+    mreqCheck(mt.id);
+    R.shortFlag = mt.st==='缺货待采购'&&mt.chk.short[0].need===99&&mt.chk.short[0].stock===3;
+    R.shortNotif = NOTIF.some(x=>(x.what||'').includes('库里无货、需要采购')
+      &&x.to.some(t=>t.who.includes('采购'))&&x.to.some(t=>t.who.includes('工程')));
+    R.intoProc = pcReqAll().some(r=>r.src==='运维提货'&&r.mat==='M-KNX-GW'&&r.qty===96);
+    // 缺货的不许直接出货
+    const on2=WHOUT.length; mreqOutOpen(mt.id);
+    R.gShortOut = WHOUT.length===on2;
+    // ⑤ 工程：问采购要交期（必填 ≥4 字）
+    loginAs('eng'); go('eng','出货单');
+    R.engPage = document.getElementById('main').innerHTML.includes('库里无货，需要采购');
+    mreqLead(mt.id); document.getElementById('uiinput').value='快'; uiOk();
+    R.gLead = !mt.lead;
+    mreqLead(mt.id); document.getElementById('uiinput').value='供应商说 08/25 到，海运'; uiOk();
+    R.leadOK = !!mt.lead&&mt.lead.txt.includes('08/25')
+      &&OPLOG.some(l=>l.action==='回填采购交期')
+      &&pcReqAll().some(r=>r.src==='运维提货'&&r.why.includes('08/25'));
+    // ⑥ 作废：原因必填
+    const sm=MATREQ.find(r=>r.kind==='sm2');
+    mreqCancel(sm.id); document.getElementById('uiinput').value='不'; uiOk();
+    R.gCancel = sm.st!=='已取消';
+    mreqCancel(sm.id); document.getElementById('uiinput').value='SM2 改期，线材下次再提'; uiOk();
+    R.cancelOK = sm.st==='已取消'&&OPLOG.some(l=>l.action==='作废出货单');
+    // 还原
+    MATREQ.length=0; q0.forEach(x=>MATREQ.push(x));
+    WHOUT.length=0; o0.forEach(x=>WHOUT.push(x));
+    WHMOVE.splice(0,WHMOVE.length-m0);
+    SCH=SCH.filter(x=>x.d!=='2026/09/22');
+    srqOn=false; srqLines=[]; srqQ='';
+    OPLOG.splice(0,OPLOG.length-l0); NOTIF.splice(0,NOTIF.length-n0);
+    pcClose(); renderAll();
+    R.restored = MATREQ.length===q0.length&&WHOUT.length===o0.length
+      &&WHMOVE.length===m0&&stockOf('M-CBL-CAT6')===3;
+    return JSON.stringify(R);});
+  const S66=JSON.parse(r66);
+  ok(S66.schBlock,'★排班浮窗里没有提料这一块（排完人再单独去提料，十次八次会忘）');
+  ok(S66.firstFlag,'没标出「这个项目还没出过库＝首次进场」');
+  ok(S66.autoFill,'勾了提料却没把库管已备的自动带出来（要工程再抄一遍）');
+  ok(S66.sm2Cable,'★SM2 那一档竟能选面板模块（只放线材 —— 主材要等 S2 结清）');
+  ok(S66.reqMade,'排班保存后没生成出货单 / 没留痕没通知库管');
+  ok(S66.srqReset,'★提完一张出货单后状态没清空 —— 会带到下一条排班上（悄悄多提一批货）');
+  ok(S66.whBlock,'库管「项目出库状态」上看不到工程提来的出货单');
+  ok(S66.okEnough,'核对库存"够"这条路没走通 / 没通知工程与提货人');
+  ok(S66.outDone,'★按出货单出库没扣库存 / 没回写出货单状态');
+  ok(S66.gone,'出库之后那张出货单还赖在待办列表里');
+  ok(S66.shortFlag,'缺货没算出来（要多少、库存多少）');
+  ok(S66.shortNotif,'★缺货时没有同时提醒采购与工程 —— 工程不知道就会派人白跑一趟');
+  ok(S66.intoProc,'运维缺的料没进采购需求（维护料不在物料账里，不单独进来就没人买）');
+  ok(S66.gShortOut,'★缺货的出货单竟能直接安排出货（应拦）');
+  ok(S66.engPage,'工程「出货单」页没显示缺货详情');
+  ok(S66.gLead,'交期只填一个字竟能存（应拦 ≥4 字 —— 现场要的是哪天到，不是"快了"）');
+  ok(S66.leadOK,'交期回填没生效 / 采购需求那边看不到');
+  ok(S66.gCancel,'作废原因太短竟能存（应拦 —— 库管已经在按这张单备货了）');
+  ok(S66.cancelOK,'作废没生效或没留痕');
+  ok(S66.restored,'六十六轮测试后演示态未还原');
 
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
