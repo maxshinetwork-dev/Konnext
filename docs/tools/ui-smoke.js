@@ -2357,7 +2357,8 @@ const { chromium } = require('playwright');
     const low=whLow().map(m=>m.code).sort().join(',');
     const rs=pcRestock().map(r=>r.mat).sort().join(',');
     R.lowSame=low===rs;
-    R.reqSrc=pcReqAll().every(r=>['库管补货','项目需求'].includes(r.src));   // 没有"采购自己提的"
+    // 六十三轮口径：项目料改由工程人员提（不再是库管），来源两档都不是采购自己提的
+    R.reqSrc=pcReqAll().every(r=>['库管补货','项目物料'].includes(r.src));
 
     // ⑥ 采购到货 / 退换换回 ⇄ 库管待入库
     const pend=whInPend().map(x=>x.id).sort().join(',');
@@ -2404,7 +2405,7 @@ const { chromium } = require('playwright');
   ok(CH.s2Wh,'财务 S2 结清与库管能否出库判断不一致');
   ok(CH.unretSame,'库管未退料金额与财务 S4 未退料对不上（同一批货两个数）');
   ok(CH.lowSame,'库存低于红线的物料与采购补货建议对不上');
-  ok(CH.reqSrc,'采购需求里出现了不是库管下达的来源（采购不能自己决定买什么）');
+  ok(CH.reqSrc,'采购需求出现了采购自己提的来源（只能是 库管补货 / 项目物料 两档）');
   ok(CH.inSame,'采购到货/退换换回 与 库管待入库 对不上');
   ok(CH.stockOne,'库存不是唯一真相（期初+流水）—— 出现了第二个来源');
   ok(CH.mtSch,'工程排班里的维护任务指向了不存在的维护单');
@@ -2437,14 +2438,15 @@ const { chromium } = require('playwright');
     // ③ ★买多了要标红：CB-SW6 已下单 18、应采 0
     const cb=rows.find(r=>r.mat==='M-CB-SW6');
     R.overFlag = cb.over===18&&cb.gap===0;
-    go('proc','项目物料与采购'); bomPj=pj; renderAll();      // 默认落在第一个施工中项目，这里点名 0188
+    go('proc','采购需求'); bomPj=pj; renderAll();            // 合页之后：选了项目就是那个项目的整本账
     const h=document.getElementById('main').innerHTML;
     R.overUI = h.includes('买多 18')&&h.includes('已下单超出应采');
     R.threeSeg = h.includes('报价原始单')&&h.includes('SM2')&&h.includes('施工中');
+    R.backBtn = h.includes('返回项目总览');
     R.waitNotIn = h.includes('待审的还没进这本账');
     // ④ Excel 上传：版本不覆盖，认不上的挂起
     R.pending = qbomPending().length===1&&qbomPending()[0].code==='M-KNX-SW8';
-    go('proc','采购需求');
+    bomPj=''; go('proc','采购需求'); renderAll();             // 回到项目总览这一层
     const h2=document.getElementById('main').innerHTML;
     R.pendUI = h2.includes('挂起')&&h2.includes('M-KNX-SW8')&&h2.includes('去建档');
     const v0=qbomOf(pj).ver;
@@ -2490,6 +2492,7 @@ const { chromium } = require('playwright');
   ok(S62.overFlag,'已下单超出应采（买多了）没算出来');
   ok(S62.overUI,'★买多了的行没在界面上标红 —— 绿油油写着"齐了"，那笔钱就悄悄没了');
   ok(S62.threeSeg,'项目物料账没把三段来源分清（报价原始单 / SM2 / 施工中）');
+  ok(S62.backBtn,'项目明细里没有「返回项目总览」');
   ok(S62.waitNotIn,'没提示"待审的变更还没进这本账"');
   ok(S62.pending,'Excel 认不上的物料没挂起');
   ok(S62.pendUI,'采购需求页没把挂起的物料单独列出来并给「去建档」');
@@ -2501,6 +2504,42 @@ const { chromium } = require('playwright');
   ok(S62.ordered,'按物料账下单未生成采购单或未留痕');
   ok(S62.leftInLedger,'★没勾的物料从账里消失了（应当留着，支持分期采购）');
   ok(S62.restored,'项目物料账测试后演示态未还原');
+
+  // ═══ 六十三轮：采购需求与项目物料合成一页（先总览 → 点进去 → 分批采购）═══
+  const mrg=await page.evaluate(()=>{ const R={};
+    loginAs('warehouse');
+    R.onePage = !DEPT.proc.pages.includes('项目物料与采购')
+      && DEPT.proc.pages.includes('采购需求')
+      && !PAGES['proc/项目物料与采购'];
+    bomPj=''; go('proc','采购需求');
+    const a=document.getElementById('main').innerHTML;
+    R.landing = a.includes('项目总览')&&a.includes('进入 →')&&a.includes('现在卡在哪');
+    R.restBlock = a.includes('公司级补货')&&a.includes('不属于任何项目');   // 库管补货进不了项目账
+    bomPj='KX-2026-0188'; renderAll();
+    const b=document.getElementById('main').innerHTML;
+    R.detail = b.includes('物料账')&&b.includes('返回项目总览')&&b.includes('勾选下单');
+    R.noLanding = !b.includes('进入 →');                                   // 明细层不再重复总览表
+    // ★项目需求只有一份数据：PCREQ 里不再单独存，全部现算
+    R.oneSource = PCREQ.length===0
+      && pcReqAll().some(r=>r.src==='项目物料'&&r.by==='项目物料账')
+      && pcReqAll().filter(r=>r.pj).every(r=>r.at==='现算');
+    // 现算真的跟着变：把一张已批变更退回待审，需求立刻少
+    const before=pcReqAll().filter(r=>r.pj==='KX-2026-0188').reduce((x,r)=>x+r.qty,0);
+    const c=BOMCHG.find(x=>x.id==='CHG-0188-01'); const st=c.st; c.st='待审';
+    const after=pcReqAll().filter(r=>r.pj==='KX-2026-0188').reduce((x,r)=>x+r.qty,0);
+    c.st=st;
+    R.live = before!==after;
+    bomPj=''; renderAll();
+    return JSON.stringify(R);});
+  const S63=JSON.parse(mrg);
+  ok(S63.onePage,'两页没合成一页（「项目物料与采购」应当已并入「采购需求」）');
+  ok(S63.landing,'落地不是项目总览表（用户定：先总览 → 点进去 → 分批采购）');
+  ok(S63.restBlock,'公司级库管补货没有单独一块（它不属于任何项目，进不了项目账）');
+  ok(S63.detail,'点进项目后看不到完整物料清单或分批下单入口');
+  ok(S63.noLanding,'项目明细层还在重复显示项目总览表');
+  ok(S63.oneSource,'★项目需求还存着第二份数据（应当全部由物料账现算）');
+  ok(S63.live,'现算没有真的跟着变（改了变更状态，待下单需求应立刻变）');
+
 
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
