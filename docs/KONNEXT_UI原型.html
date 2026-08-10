@@ -2235,6 +2235,7 @@ let whSet={ackH:72, ctDiffPct:2, callDays:3,
   addr:'Unit 5, 12 Salisbury Rd, Castle Hill NSW 2154',
   hours:'周一至周五 08:00–16:30（周末需提前一天预约）'};
 let whQ='', whKind='全部';   /* 库存流水页的搜索与类型筛选 */
+let whTab='s2';              /* ★项目出库状态：点哪个状态就只看哪一类（六十七轮，用户提"别从头堆到尾"） */
 let whFrom='';               /* 从「项目出库状态」点去出库时带过来的项目，只影响高亮 */
 function whGoOut(i){ pickPj(i); go('wh','出库'); whFrom=PROJECTS[i].code; renderAll(); }
 const outOf=pj=>WHOUT.filter(o=>o.pj===pj);
@@ -8681,22 +8682,191 @@ ${helpNote(`<b>这页怎么用</b>：三个阈值——<b>到货预警</b>（还
    采购的项目采购状态一到货就是办理入库；项目真正需要的是<b>出库</b>：
    把物料交到<b>指定提货人</b>手里。★物料既跟着项目走，也跟着提货人走。 */
 'wh/项目出库状态':()=>{
+ /* ★六十七轮重做（用户 2026-08-10）：原来六块表从头堆到尾，同一个项目在好几块里重复出现，
+    看起来很乱。改成【点哪个状态就只看哪一类】—— 一次只出一张表，不重复。 */
  const live=PROJECTS.filter(p=>p.status==='施工中');
  const rows=live.map(p=>({p,...whPjOut(p.code)}));
- /* 施工期已过、货还在别人手里的 —— 不列出来等于把 S4 的钱悄悄丢了 */
  const tail=PROJECTS.filter(p=>p.status!=='施工中')
    .map(p=>({p,...whPjOut(p.code)})).filter(r=>r.unret>0||r.wait.length);
- const canOut=rows.filter(r=>r.s2===true), waitS2=rows.filter(r=>r.s2!==true);
- const lateAll=rows.concat(tail).reduce((x,r)=>x+r.late.length,0);
+ const bomOf=p=>bomRows(p.code);
+ const T=(rs,k)=>rs.reduce((x,r)=>x+r[k],0);
+ const rq=MATREQ.filter(r=>['待库管核对','可出货','缺货待采购'].includes(r.st));
+ const pend=callPend();
+ const miss=[]; live.forEach(p=>takerList(p.code).forEach(t=>{
+   if(t.type==='third'&&!phoneOk(t.phone)) miss.push({p,t}); }));
+ const rsvRows=live.map(p=>({p,rs:bomOf(p)})).filter(x=>x.rs.length&&(T(x.rs,'gap')>0||T(x.rs,'rsv')>0));
+ const G={
+  s2:   rows.filter(r=>r.s2!==true),
+  out:  rows.filter(r=>r.s2===true),
+  rsv:  rsvRows,
+  req:  rq,
+  call: pend,
+  ack:  rows.concat(tail).filter(r=>r.late.length),
+  miss: miss,
+  tail: tail,
+ };
+ const TABS=[
+  {k:'s2',  t:'等 S2 物料款',   n:G.s2.length,   bad:G.s2.length>0,       foot:'卡在财务，不在库管'},
+  {k:'out', t:'可以出库',       n:G.out.length,  good:true,               foot:'S2 已结清，随时能开单'},
+  {k:'rsv', t:'待备料',         n:G.rsv.length,  warn:G.rsv.some(x=>T(x.rs,'gap')>0), foot:'先看现货，别让采购白买'},
+  {k:'req', t:'工程提的出货单', n:G.req.length,  warn:G.req.some(r=>r.st==='待库管核对'),
+    bad:G.req.some(r=>r.st==='缺货待采购'), foot:'排班时提的 —— 先核对库存'},
+  {k:'call',t:'叫了没来提',     n:G.call.length, bad:G.call.some(callLate),foot:'货占着仓位，工地还在等'},
+  {k:'ack', t:'提货没回执',     n:G.ack.reduce((x,r)=>x+r.late.length,0), bad:G.ack.length>0,
+    foot:'超 '+whSet.ackH+' 小时没回 YES'},
+  {k:'miss',t:'提货人缺号码',   n:G.miss.length, bad:G.miss.length>0,     foot:'没号码通知不了也不能出库'},
+  {k:'tail',t:'货还没回来',     n:G.tail.length, bad:G.tail.length>0,     foot:'施工期已过，料还在外面'},
+ ];
+ if(!TABS.some(x=>x.k===whTab)) whTab='s2';
+ const cur=TABS.find(x=>x.k===whTab);
  const step=r=>r.s2!==true?['等财务 S2 物料款结清','var(--breach)']
    :(!r.pos.length&&!r.os.length?['等采购下单到货','var(--warning)']
    :(r.late.length?['催提货确认（超 '+whSet.ackH+' 小时没回 YES）','var(--breach)']
    :(!r.os.length?['货已到 · 可以出库','var(--healthy)']
    :(r.unret?['施工中 · 有 '+r.unret+' 件在提货人手里','var(--text-muted)']
    :['出库已完成 · 无未退料','var(--healthy)']))));
+ const pjCell=p=>`<td><b class="mono" style="color:var(--accent)">${p.code}</b></td>
+   <td><b>${p.nick||p.name}</b><div class="hint">📍 ${p.street}, ${p.suburb} ${p.state}</div></td>`;
+ const HEAD=`<tr><th style="width:118px">项目编号</th><th style="width:165px">项目 · 地址</th>`;
+
+ /* ── 每个状态一张表，只出一张 ── */
+ const T_s2=()=>`<table><thead>${HEAD}<th style="width:150px">S2 物料款</th>
+   <th style="width:130px">采购到货</th><th>为什么出不了库</th><th style="width:96px"></th></tr></thead>
+  <tbody>${G.s2.map(r=>`<tr>${pjCell(r.p)}
+   <td>${r.s2===false?'<span class="pill p-red">未结清 · 不能出库</span>'
+     :'<span class="pill p-grey">财务还没建收款计划</span>'}</td>
+   <td class="hint">${r.pos.length?`采购单 ${r.pos.length} 张 · 已到 <b>${r.arrived.length}</b> 张`:'<span class="muted">还没下单</span>'}</td>
+   <td class="hint">S2 物料款到账才放货 —— <b>这一步卡在财务，不在库管</b>，别去催工地。
+     ${sm2Can(r.p.code)?'<br>★这个项目 SM2 已排期：现场要带线材的话，走<b>出库页的「SM2 预提」</b>':''}</td>
+   <td style="text-align:right"><button class="btn" disabled title="S2 物料款没结清，出库门禁不放行">去出库</button></td>
+  </tr>`).join('')||`<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">没有卡在 S2 的项目 ✓</td></tr>`}</tbody></table>`;
+
+ const T_out=()=>`<table><thead>${HEAD}<th style="width:120px">S2 物料款</th>
+   <th style="width:200px">已出库 · 提货确认</th><th style="width:160px">未退料（在谁手里）</th>
+   <th>下一步</th><th style="width:96px"></th></tr></thead>
+  <tbody>${G.out.map(r=>{const i=PROJECTS.indexOf(r.p); const st=step(r);
+   return `<tr>${pjCell(r.p)}
+   <td><span class="pill p-green">已结清</span><div class="hint mono">${r.s2At||''}</div></td>
+   <td>${r.os.length?r.os.map(o=>`<div style="margin-bottom:4px"><span class="mono" style="font-size:11px">${o.id}</span>
+       ${o.kind==='sm2'?'<span class="pill p-amber">SM2 预提</span>':''}${o.kind==='mt'?'<span class="pill p-amber">运维</span>':''}
+       ${o.ack?'<span class="pill p-green">已回 YES</span>'
+         :`<span class="pill ${outLate(o)?'p-red':'p-amber'}">待确认 ${outAckH(o)}h</span>`}
+       <div class="hint">${o.taker} · ${outQty(o)} 件 · ${o.at}</div></div>`).join('')
+       :'<span class="muted">还没出过库</span>'}</td>
+   <td>${r.unret?`<b style="color:var(--warning)">${r.unret} 件</b>
+       <div class="hint">${can('stock')?A$2(r.unretAmt):'— —'} · 在 <b>${r.holders.join('、')}</b> 手里</div>`
+       :(r.os.length?'<span class="pill p-green">已退清</span>':'<span class="muted">—</span>')}</td>
+   <td class="hint" style="color:${st[1]}">${st[0]}</td>
+   <td style="text-align:right"><button class="btn" onclick="whGoOut(${i})">去出库</button></td>
+  </tr>`;}).join('')||`<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">现在没有可以出库的项目</td></tr>`}</tbody></table>
+  <div class="panel-body hint">出库单价在<b>出库那一刻定格</b>，之后采购再涨价也不动它 ——
+    未退料要按这个价结进 S4，重新询价就成了两笔账。</div>`;
+
+ const T_rsv=()=>`<table><thead>${HEAD}<th style="width:90px;text-align:right">应采</th>
+   <th style="width:90px;text-align:right">已下单</th><th style="width:90px;text-align:right">我已备</th>
+   <th style="width:90px;text-align:right">还要买</th><th>仓库能顶哪些</th><th style="width:100px"></th></tr></thead>
+  <tbody>${G.rsv.map(x=>{const cov=x.rs.filter(r=>r.canCover>0); const nc=callsOf(x.p.code).length;
+   return `<tr>${pjCell(x.p)}
+   <td class="num">${T(x.rs,'need')}</td><td class="num">${T(x.rs,'ord')}</td>
+   <td class="num"${T(x.rs,'rsv')?' style="color:var(--healthy)"':''}>${T(x.rs,'rsv')||'<span class="muted">0</span>'}</td>
+   <td class="num"${T(x.rs,'gap')?' style="color:var(--warning);font-weight:600"':''}>${
+     T(x.rs,'gap')||'<span class="pill p-green">齐了</span>'}</td>
+   <td class="hint">${cov.length?cov.map(r=>`${matOf(r.mat).name} <b style="color:var(--healthy)">可顶 ${r.canCover}</b>
+     <span class="muted">（还要 ${r.gap}、库存 ${r.stock}）</span>`).join('<br>')
+     :(T(x.rs,'gap')?'<span style="color:var(--warning)">仓库一件都顶不上 —— 全都得买</span>':'—')}</td>
+   <td style="text-align:right">${cov.length
+     ?`<button class="btn btn-primary" onclick="whRsvOpen('${x.p.code}')">备料</button>`
+     :`<button class="btn" disabled title="仓库没有可顶的现货 —— 只能等采购买回来">备料</button>`}
+     ${T(x.rs,'rsv')||x.rs.some(r=>r.stock>0)
+     ?`<button class="btn" style="margin-top:4px" onclick="whCallOpen('${x.p.code}')">通知提货</button>
+       ${nc?`<div class="hint">已通知 ${nc} 次</div>`:''}`:''}</td>
+  </tr>`;}).join('')||`<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">没有待备的料 ✓</td></tr>`}</tbody></table>
+  <div class="panel-body hint">★<b>备料只是占住，不扣库存</b>：真正扣是在<b>出库</b>那一刻。
+    这一步的意义是<b>让采购别再去买</b> —— 仓库明明有货还下单，这笔钱就白花了，而且没人会发现。<br>
+    反过来也一样：<b>不许先占后补</b>（现货不够还硬占），占了采购就不买，到时候两头都没有。</div>`;
+
+ const T_req=()=>`<table><thead>${HEAD}<th style="width:130px">出货单 · 类型</th>
+   <th style="width:110px">谁来提</th><th>要什么 · 够不够</th><th style="width:110px">状态</th>
+   <th style="width:118px"></th></tr></thead>
+  <tbody>${G.req.map(r=>{const p=PROJECTS.find(x=>x.code===r.pj)||{}; const t=takerOf(r.pj,r.who);
+   return `<tr${r.st==='缺货待采购'?' style="background:rgba(220,38,38,.06)"':(r.st==='可出货'?' style="background:rgba(4,120,87,.05)"':'')}>
+   <td><b class="mono" style="color:var(--accent)">${r.pj}</b></td>
+   <td><b>${p.nick||pjNick(r.pj)}</b><div class="hint">📍 ${pjAddr(r.pj)}</div></td>
+   <td><b class="mono">${r.id}</b><div style="margin-top:3px">
+     <span class="pill ${r.kind==='mt'?'p-amber':(r.kind==='sm2'?'p-cyan':'p-b')}">${MREQ_KIND[r.kind]}</span></div>
+     ${r.mtId?`<div class="hint mono">${r.mtId}</div>`:''}</td>
+   <td><b>${r.who}</b><div class="hint">${t.role||'我方工程人员'}</div>
+     <div class="hint mono">${t.phone||'<b style="color:#c62828">★没手机号</b>'}</div></td>
+   <td class="hint">${r.lines.map(l=>`${matOf(l.mat).name} <b>×${l.qty}</b>
+     <span class="muted">（库存 ${stockOf(l.mat)}）</span>`).join('<br>')}
+     ${r.chk?`<div style="margin-top:4px">${r.chk.short.length
+       ?`<b style="color:var(--breach)">★不够，已提醒采购与工程</b><br>${mreqShortTxt(r)}`
+       :'<span style="color:var(--healthy)">核对过：够 ✓</span>'}</div>`:''}
+     ${r.lead?`<div class="hint" style="margin-top:3px;color:var(--accent)">工程回填的采购交期：<b>${r.lead.txt}</b></div>`:''}</td>
+   <td><span class="pill ${mreqPill(r.st)}">${r.st}</span><div class="hint">${r.by} ${r.at.slice(5,10)}</div></td>
+   <td style="text-align:right">${r.st==='可出货'
+     ?`<button class="btn btn-primary" onclick="mreqOutOpen('${r.id}')">安排出货</button>`
+     :`<button class="btn btn-primary" onclick="mreqCheck('${r.id}')">${r.chk?'重新核对':'核对库存'}</button>`}</td>
+  </tr>`;}).join('')||`<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">工程没有提来的出货单 ✓</td></tr>`}</tbody></table>
+  <div class="panel-body hint">★<b>核对这一步不能省</b>：工程看不到库存（也不该看），库管不知道工地什么时候要人到场。
+    不核对就让人来拉，白跑一趟没人会报错。库里<b>不够</b>时系统同时提醒<b>采购</b>（去买）和<b>工程</b>（别派人白跑）。</div>`;
+
+ const T_call=()=>`<table><thead>${HEAD}<th style="width:170px">通知了谁</th><th>叫他来提什么</th>
+   <th style="width:130px">什么时候通知的</th><th style="width:96px"></th></tr></thead>
+  <tbody>${G.call.map(c=>{const p=PROJECTS.find(x=>x.code===c.pj)||{};
+   return `<tr${callLate(c)?' style="background:rgba(220,38,38,.06)"':''}>
+   <td><b class="mono" style="color:var(--accent)">${c.pj}</b></td>
+   <td><b>${p.nick||pjNick(c.pj)}</b><div class="hint">📍 ${pjAddr(c.pj)}</div></td>
+   <td><b>${c.who}</b><div class="hint">${c.role}</div>
+     <span class="pill ${c.type==='third'?'p-amber':'p-cyan'}">${TKIND[c.type]}</span></td>
+   <td class="hint">${c.items}${c.when?`<br>约定 <b>${c.when}</b>`:''}${c.note?`<br>${c.note}`:''}</td>
+   <td class="hint">${c.at}<br>已过 <b${callLate(c)?' style="color:var(--breach)"':''}>${c.days}</b> 天
+     ${c.n>1?`· 催过 ${c.n} 次`:''}</td>
+   <td style="text-align:right"><button class="btn" onclick="whCallAgain('${c.pj}','${c.who}')">再催</button></td>
+  </tr>`;}).join('')||`<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">没有叫了还没来的 ✓</td></tr>`}</tbody></table>
+  <div class="panel-body hint">通知过、但<b>还没给他开出库单</b>的才会列在这儿 —— 开了单就自动消失。<br>
+    ★<b>为什么不做自动催</b>：什么时候叫人来拉，看工地进度和车什么时候有空，系统不知道，库管知道。</div>`;
+
+ const T_ack=()=>`<table><thead>${HEAD}<th style="width:150px">出库单</th><th style="width:150px">提货人</th>
+   <th style="width:120px">挂了多久</th><th>为什么必须回执</th><th style="width:96px"></th></tr></thead>
+  <tbody>${G.ack.flatMap(r=>r.late.map(o=>`<tr style="background:rgba(220,38,38,.06)">
+   <td><b class="mono" style="color:var(--accent)">${r.p.code}</b></td>
+   <td><b>${r.p.nick||r.p.name}</b><div class="hint">📍 ${r.p.street}, ${r.p.suburb} ${r.p.state}</div></td>
+   <td><b class="mono">${o.id}</b><div class="hint">${o.at}</div></td>
+   <td><b>${o.taker}</b><div class="hint mono">${o.phone}</div>
+     ${(o.chase&&o.chase.length)?`<div class="hint">已催 ${o.chase.length} 次</div>`:''}</td>
+   <td class="num"><b style="color:var(--breach)">${outAckH(o)} h</b><div class="hint">超 ${whSet.ackH}h</div></td>
+   <td class="hint"><b>没回执＝没人认领这批货</b> —— 将来现场丢了料、或者要按未退料结进 S4，谁也说不清货交给谁了</td>
+   <td style="text-align:right"><button class="btn btn-primary" onclick="whAckChase('${o.id}')">催确认</button></td>
+  </tr>`)).join('')||`<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">回执都齐了 ✓</td></tr>`}</tbody></table>`;
+
+ const T_miss=()=>`<table><thead>${HEAD}<th style="width:170px">提货人</th><th>为什么必须补</th>
+   <th style="width:100px"></th></tr></thead>
+  <tbody>${G.miss.map(x=>`<tr>${pjCell(x.p)}
+   <td><b>${x.t.name}</b><div class="hint">${x.t.role}</div></td>
+   <td class="hint">提货通知和提货清单<b>都是短信发的</b>。没号码＝发不出去，
+     而系统<b>不会报错</b>：货堆在仓库没人来拉，出库单也永远等不到那句 YES</td>
+   <td style="text-align:right"><button class="btn btn-primary" onclick="partyPhone('${x.p.code}','${x.t.name}')">补号码</button></td>
+  </tr>`).join('')||`<tr><td colspan="5" class="muted" style="padding:var(--sp-4)">提货人号码都齐了 ✓</td></tr>`}</tbody></table>`;
+
+ const T_tail=()=>`<table><thead>${HEAD}<th style="width:110px">现在状态</th><th style="width:140px">未退料</th>
+   <th style="width:140px">在谁手里</th><th>为什么还列在这</th></tr></thead>
+  <tbody>${G.tail.map(r=>`<tr>${pjCell(r.p)}
+   <td><span class="pill ${r.p.band}">${r.p.status}</span></td>
+   <td>${r.unret?`<b style="color:var(--breach)">${r.unret} 件</b><div class="hint">${can('stock')?A$2(r.unretAmt):'— —'}</div>`
+     :'<span class="muted">—</span>'}</td>
+   <td class="hint">${r.holders.length?'<b>'+r.holders.join('、')+'</b>'
+     :(r.wait.length?r.wait.map(o=>o.taker).join('、')+'（还没回执）':'—')}</td>
+   <td class="hint">${r.unret?'这批料要按<b>出库单价</b>结进 S4 —— 催退库，或让财务按未退料结算':''}
+     ${r.wait.length?(r.unret?'<br>':'')+'还有 '+r.wait.length+' 张出库单没回 YES —— 没回执就没人认领这批货':''}</td>
+  </tr>`).join('')||`<tr><td colspan="6" class="muted" style="padding:var(--sp-4)">这张表空了才是正常 ✓</td></tr>`}</tbody></table>
+  <div class="panel-body hint">施工期已过、货还在别人手里的 —— 不列出来就等于<b>把 S4 的钱悄悄丢了，而且不会报错</b>。</div>`;
+
+ const BODY={s2:T_s2,out:T_out,rsv:T_rsv,req:T_req,call:T_call,ack:T_ack,miss:T_miss,tail:T_tail}[whTab]();
+
  return `
 <h2>项目出库状态</h2>
-<div class="page-sub">只列<b>施工中</b>的项目 —— 项目物料的出库只发生在施工期，别的状态没有项目出库，不上屏</div>
+<div class="page-sub">★<b>点上面的状态，只看那一类</b> —— 一次只出一张表，同一个项目不会在好几处重复出现</div>
 ${ops([
  ['核对库存','工程排班时提来的出货单 · 一键算够不够','够→通知工程与提货人；★不够→同时提醒采购与工程，别让人白跑'],
  ['安排出货','只有核对过、且够的才能点','开出库单 —— <b>那一刻才真正扣库存</b>'],
@@ -8704,204 +8874,30 @@ ${ops([
  ['通知提货','★库管主动、手工发 —— 货备齐了才叫人来拉','第三方发中英双语短信（带仓库地址+营业时间）· 我方发 App 推送+短信'],
  ['再催','通知过 '+whSet.callDays+' 天还没来开单的标红','照上次那条重发并记第几次'],
  ['补号码','第三方提货人没手机号','补上才能通知、才能开出库单'],
- ['去出库','点行尾「去出库」带着这个项目跳到出库页','出库单一开：提货人收清单短信回 YES · Builder 收发放告知 · 未退料进台账'],
- ['催提货确认','超过 '+whSet.ackH+' 小时没回 YES 的标红','重发中英对照清单短信'],
+ ['催确认','出库后超 '+whSet.ackH+' 小时没回 YES','重发提货清单短信并留痕第几次'],
+ ['去出库','带着这个项目跳到出库页','出库单一开：提货人收清单回 YES · Builder 收发放告知 · 未退料进台账'],
 ])}
-${helpNote(`<b>「通知提货」和「催提货确认」不是一回事</b>（两条都在这页，别混）：<br>
-  ·【通知提货】在<b>出库之前</b> —— 货备齐了，叫人来拉。库管<b>主动、手工</b>发，什么时候叫看工地进度；<br>
-  ·【催提货确认】在<b>出库之后</b> —— 清单已经发出去了，等提货人回 YES 认领这批货。<br>
+${helpNote(`<b>这页怎么用</b>：上面八个状态就是库管每天要处理的八类事，<b>点一个只看一类</b>。
+  数字是现算的，处理完一件那一类就少一个。八类都清零＝今天没有卡着的货。`)}
+${helpNote(`<b>「通知提货」和「催确认」不是一回事</b>（分在两个状态里，别混）：<br>
+  ·【通知提货】在<b>出库之前</b> —— 货备齐了，叫人来拉（在「待备料」那一类里点）；<br>
+  ·【催确认】在<b>出库之后</b> —— 清单已经发出去了，等提货人回 YES 认领（「提货没回执」那一类）。<br>
   中间隔着的就是「开出库单」那一下 —— <b>那一刻才真正扣库存</b>。`)}
-${helpNote(`<b>提货人分两类</b>（用户 2026-08-10 定）：<br>
-  ①<b>第三方</b> —— Builder / 电工 / 其他工种（泥水、木工、防水…），我们把货交给他们拉到工地。
-  他们多半不看中文，短信<b>中英双语</b>，还要写清仓库地址和营业时间；<br>
-  ②<b>我方</b> —— 自己的工程人员，施工中从办公室提货，<b>SM2 那天从办公室提线材</b>。有 App，推送+短信。<br>
-  Builder 和电工立项时就录进来了；其他工种谁来拉货就现加一个，<b>但必须有手机号</b>。`)}
-${helpNote(`<b>为什么只列施工中</b>：物料在「出库」这一刻才落到具体项目上，而项目出库<b>只发生在施工期</b>——
-  链条是 <b>财务 S2 物料款结清 → 采购到货 → 库管入库 → 库管出库给提货人 → 工程安装</b>。
-  接洽中/设计中根本没有物料可发；交付之后与维护期的领料走<b>维护单</b>，不走项目出库。
-  所以这页把别的状态全去掉了 —— 列出来只是噪音。`)}
-${helpNote(`★<b>唯一的例外在最下面那张小表</b>：施工期已经过去、货却还在提货人手里的项目。
-  它们不该混在"在施工的项目"里，但<b>更不能不显示</b>——那些料是要按出库单价结进 S4 的，
-  不列出来就等于<b>把钱悄悄丢了，而且不会报错</b>。`)}
+${helpNote(`<b>提货人分两类</b>：①<b>第三方</b>（Builder / 电工 / 其他工种）—— 货交给他们拉到工地，
+  短信<b>中英双语</b>并带仓库地址与营业时间；②<b>我方</b> —— 自己的工程人员，施工中从办公室提货、
+  <b>SM2 那天提线材</b>，发 App 推送+短信。<b>没有手机号的一律不能通知、不能出库</b>。`)}
 <div class="cards">
- <div class="card"><div class="card-label">施工中的项目</div><div class="card-value">${live.length}</div>
-   <div class="card-foot">只有它们会发生项目出库</div></div>
- <div class="card"><div class="card-label">可以出库（S2 已结清）</div>
-   <div class="card-value" style="color:var(--healthy)">${canOut.length}</div>
-   <div class="card-foot">物料款到账才放货 —— 这是硬门禁</div></div>
- <div class="card"><div class="card-label">★卡在 S2 没结清</div>
-   <div class="card-value"${waitS2.length?' style="color:var(--breach)"':''}>${waitS2.length}</div>
-   <div class="card-foot">${waitS2.length?'卡点在财务，不在库管 —— 别去催工地':'都结清了 ✓'}</div></div>
- <div class="card"><div class="card-label">★提货没回执</div>
-   <div class="card-value"${lateAll?' style="color:var(--breach)"':''}>${lateAll}</div>
-   <div class="card-foot">${lateAll?'超 '+whSet.ackH+' 小时没回 YES':'回执都齐了 ✓'}</div></div>
- <div class="card"><div class="card-label">★叫了还没来提</div>
-   <div class="card-value"${callPend().filter(callLate).length?' style="color:var(--breach)"':''}>${callPend().length}</div>
-   <div class="card-foot">${callPend().filter(callLate).length
-     ?'<b style="color:var(--breach)">'+callPend().filter(callLate).length+' 个超过 '+whSet.callDays+' 天没来</b> —— 货占着仓位，工地还在等'
-     :(callPend().length?'都在 '+whSet.callDays+' 天内':'没有待提的 ✓')}</div></div>
+ ${TABS.map(x=>`<div class="card" style="cursor:pointer${whTab===x.k?';border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset':''}"
+   onclick="whTab='${x.k}';renderAll()">
+   <div class="card-label">${whTab===x.k?'▸ ':''}${x.t}</div>
+   <div class="card-value"${x.n&&x.bad?' style="color:var(--breach)"':(x.n&&x.warn?' style="color:var(--warning)"':(x.n&&x.good?' style="color:var(--healthy)"':''))}>${x.n}</div>
+   <div class="card-foot">${x.foot}</div></div>`).join('')}
 </div>
-<div class="panel"><div class="panel-head">施工中 · 出库进度
-  <span class="muted" style="font-weight:400">${live.length} 个项目 · 全部现算</span></div>
- <table>
-  <thead><tr><th style="width:118px">项目编号</th><th style="width:165px">项目 · 地址</th>
-    <th style="width:130px">S2 物料款</th><th style="width:105px">采购到货</th>
-    <th style="width:200px">已出库 · 提货确认</th><th style="width:165px">未退料（在谁手里）</th>
-    <th>下一步</th><th style="width:86px"></th></tr></thead>
-  <tbody>${rows.map(r=>{const i=PROJECTS.indexOf(r.p); const st=step(r);
-   return `<tr>
-    <td><b class="mono" style="color:var(--accent)">${r.p.code}</b></td>
-    <td><b>${r.p.nick||r.p.name}</b><div class="hint">📍 ${r.p.street}, ${r.p.suburb} ${r.p.state}</div></td>
-    <td>${r.s2===true?`<span class="pill p-green">已结清</span><div class="hint mono">${r.s2At||''}</div>`
-        :r.s2===false?'<span class="pill p-red">未结清 · 不能出库</span>'
-        :'<span class="pill p-grey">财务还没建收款计划</span>'}</td>
-    <td class="hint">${r.pos.length?`采购单 ${r.pos.length} 张<br>已到 <b>${r.arrived.length}</b> 张`
-        :'<span class="muted">还没下单</span>'}</td>
-    <td>${r.os.length?r.os.map(o=>`<div style="margin-bottom:4px"><span class="mono" style="font-size:11px">${o.id}</span>
-        ${o.ack?'<span class="pill p-green">已回 YES</span>'
-          :`<span class="pill ${outLate(o)?'p-red':'p-amber'}">待确认 ${outAckH(o)}h</span>`}
-        <div class="hint">${o.taker} · ${outQty(o)} 件 · ${o.at}</div></div>`).join('')
-        :'<span class="muted">还没出过库</span>'}</td>
-    <td>${r.unret?`<b style="color:var(--warning)">${r.unret} 件</b>
-        <div class="hint">${can('stock')?A$2(r.unretAmt):'— —'} · 在 <b>${r.holders.join('、')}</b> 手里</div>`
-        :(r.os.length?'<span class="pill p-green">已退清</span>':'<span class="muted">—</span>')}</td>
-    <td class="hint" style="color:${st[1]}">${st[0]}</td>
-    <td style="text-align:right">${r.s2===true
-      ?`<button class="btn" onclick="whGoOut(${i})">去出库</button>`
-      :`<button class="btn" disabled title="S2 物料款没结清，出库门禁不放行 —— 这一步卡在财务">去出库</button>`}</td>
-   </tr>`;}).join('')||'<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">现在没有施工中的项目 —— 没有项目出库要办 ✓</td></tr>'}</tbody></table>
- <div class="panel-body hint">出库单价在<b>出库那一刻定格</b>，之后采购再涨价也不动它 ——
-   未退料要按这个价结进 S4，重新询价就成了两笔账。</div>
-</div>
-${(()=>{const need=live.map(p=>({p,rs:bomRows(p.code)})).filter(x=>x.rs.length);
-  if(!need.length) return '';
-  const T=(rs,k)=>rs.reduce((x,r)=>x+r[k],0);
-  return `<div class="panel"><div class="panel-head">★项目备料 · 工程审完了，先看仓库有没有现货
-   <span class="muted" style="font-weight:400">能出的直接拨过去，不够的差额才交采购</span></div>
-  <table>
-   <thead><tr><th style="width:118px">项目编号</th><th style="width:165px">项目 · 地址</th>
-     <th style="width:100px;text-align:right">应采</th><th style="width:100px;text-align:right">已下单</th>
-     <th style="width:100px;text-align:right">我已备</th><th style="width:100px;text-align:right">还要买</th>
-     <th>仓库能顶哪些</th><th style="width:96px"></th></tr></thead>
-   <tbody>${need.map(x=>{const cov=x.rs.filter(r=>r.canCover>0);
-    return `<tr>
-     <td><b class="mono" style="color:var(--accent)">${x.p.code}</b></td>
-     <td><b>${x.p.nick||x.p.name}</b><div class="hint">📍 ${x.p.street}, ${x.p.suburb} ${x.p.state}</div></td>
-     <td class="num">${T(x.rs,'need')}</td>
-     <td class="num">${T(x.rs,'ord')}</td>
-     <td class="num"${T(x.rs,'rsv')?' style="color:var(--healthy)"':''}>${T(x.rs,'rsv')||'<span class="muted">0</span>'}</td>
-     <td class="num"${T(x.rs,'gap')?' style="color:var(--warning);font-weight:600"':''}>${
-       T(x.rs,'gap')||'<span class="pill p-green">齐了</span>'}</td>
-     <td class="hint">${cov.length?cov.map(r=>`${matOf(r.mat).name} <b style="color:var(--healthy)">可顶 ${r.canCover}</b>
-       <span class="muted">（还要 ${r.gap}、库存 ${r.stock}）</span>`).join('<br>')
-       :(T(x.rs,'gap')?'<span style="color:var(--warning)">仓库一件都顶不上 —— 全都得买</span>':'—')}</td>
-     <td style="text-align:right">${cov.length
-       ?`<button class="btn btn-primary" onclick="whRsvOpen('${x.p.code}')">备料</button>`
-       :`<button class="btn" disabled title="${T(x.rs,'gap')?'仓库没有可顶的现货 —— 只能等采购买回来':'这个项目的料已经齐了，没有待备的'}">备料</button>`}
-       ${T(x.rs,'rsv')||x.rs.some(r=>r.stock>0)
-       ?`<button class="btn" style="margin-top:4px" onclick="whCallOpen('${x.p.code}')">通知提货</button>
-         ${callsOf(x.p.code).length?`<div class="hint">已通知 ${callsOf(x.p.code).length} 次</div>`:''}`
-       :`<button class="btn" style="margin-top:4px" disabled title="仓库里没有这个项目可提的货 —— 先备料，或等采购到货">通知提货</button>`}</td>
-    </tr>`;}).join('')}</tbody></table>
-   <div class="panel-body hint">★<b>备料只是占住，不扣库存</b>：真正扣是在<b>出库</b>那一刻（要 S2 结清、要提货人签收）。
-     这一步的意义是<b>让采购别再去买</b> —— 仓库明明有货还下单，这笔钱就白花了，而且没人会发现。<br>
-     反过来也一样：<b>不许先占后补</b>（现货不够还硬占），占了采购就不买，到时候两头都没有。</div>
-  </div>`;})()}
-${(()=>{const rq=MATREQ.filter(r=>['待库管核对','可出货','缺货待采购'].includes(r.st));
-  if(!rq.length) return '';
-  return `<div class="panel"><div class="panel-head">★工程提来的出货单
-   <span class="muted" style="font-weight:400">${rq.length} 张 · 工程排班时提的 —— 先<b>核对库存</b>，别让人白跑一趟</span></div>
-  <table>
-   <thead><tr><th style="width:118px">项目编号</th><th style="width:150px">项目 · 地址</th>
-     <th style="width:130px">出货单 · 类型</th><th style="width:110px">谁来提</th>
-     <th>要什么 · 够不够</th><th style="width:110px">状态</th><th style="width:118px"></th></tr></thead>
-   <tbody>${rq.map(r=>{const p=PROJECTS.find(x=>x.code===r.pj)||{}; const t=takerOf(r.pj,r.who);
-    return `<tr${r.st==='缺货待采购'?' style="background:rgba(220,38,38,.06)"':(r.st==='可出货'?' style="background:rgba(4,120,87,.05)"':'')}>
-     <td><b class="mono" style="color:var(--accent)">${r.pj}</b></td>
-     <td><b>${p.nick||pjNick(r.pj)}</b><div class="hint">📍 ${pjAddr(r.pj)}</div></td>
-     <td><b class="mono">${r.id}</b><div style="margin-top:3px">
-       <span class="pill ${r.kind==='mt'?'p-amber':(r.kind==='sm2'?'p-cyan':'p-b')}">${MREQ_KIND[r.kind]}</span></div>
-       ${r.mtId?`<div class="hint mono">${r.mtId}</div>`:''}</td>
-     <td><b>${r.who}</b><div class="hint">${t.role||'我方工程人员'}</div>
-       <div class="hint mono">${t.phone||'<b style="color:#c62828">★没手机号</b>'}</div></td>
-     <td class="hint">${r.lines.map(l=>`${matOf(l.mat).name} <b>×${l.qty}</b>
-       <span class="muted">（库存 ${stockOf(l.mat)}）</span>`).join('<br>')}
-       ${r.chk?`<div style="margin-top:4px">${r.chk.short.length
-         ?`<b style="color:var(--breach)">★不够，已提醒采购与工程</b><br>${mreqShortTxt(r)}`
-         :'<span style="color:var(--healthy)">核对过：够 ✓</span>'}</div>`:''}
-       ${r.lead?`<div class="hint" style="margin-top:3px;color:var(--accent)">工程回填的采购交期：<b>${r.lead.txt}</b></div>`:''}
-       ${r.note?`<div class="hint" style="margin-top:3px">${r.note}</div>`:''}</td>
-     <td><span class="pill ${mreqPill(r.st)}">${r.st}</span>
-       <div class="hint">${r.by} ${r.at.slice(5,10)}</div></td>
-     <td style="text-align:right">
-       ${r.st==='可出货'
-         ?`<button class="btn btn-primary" onclick="mreqOutOpen('${r.id}')">安排出货</button>`
-         :`<button class="btn btn-primary" onclick="mreqCheck('${r.id}')">${r.chk?'重新核对':'核对库存'}</button>`}
-     </td>
-    </tr>`;}).join('')}</tbody></table>
-   <div class="panel-body hint">★<b>核对这一步不能省</b>：工程看不到库存（也不该看），库管不知道工地什么时候要人到场。
-     不核对就让人来拉，白跑一趟没人会报错。<br>
-     库里<b>不够</b>的时候，系统同时提醒<b>采购</b>（去买）和<b>工程</b>（别派人白跑），
-     工程去问到交期会填回来，这一栏就能看到。</div>
-  </div>`;})()}
-${(()=>{const pend=callPend(); if(!pend.length) return '';
-  return `<div class="panel"><div class="panel-head">★已通知、人还没来提
-   <span class="muted" style="font-weight:400">${pend.length} 个 · 超过 ${whSet.callDays} 天标红</span></div>
-  <table>
-   <thead><tr><th style="width:118px">项目编号</th><th style="width:150px">项目 · 地址</th>
-     <th style="width:170px">通知了谁</th><th>叫他来提什么</th>
-     <th style="width:130px">什么时候通知的</th><th style="width:110px"></th></tr></thead>
-   <tbody>${pend.map(c=>`<tr${callLate(c)?' style="background:rgba(220,38,38,.06)"':''}>
-     <td><b class="mono">${c.pj}</b></td>
-     <td><b>${pjNick(c.pj)}</b><div class="hint">📍 ${pjAddr(c.pj)}</div></td>
-     <td><b>${c.who}</b><div class="hint">${c.role}</div>
-       <span class="pill ${c.type==='third'?'p-amber':'p-cyan'}">${TKIND[c.type]}</span></td>
-     <td class="hint">${c.items}${c.when?`<br>约定 <b>${c.when}</b>`:''}${c.note?`<br>${c.note}`:''}</td>
-     <td class="hint">${c.at}<br>已过 <b${callLate(c)?' style="color:var(--breach)"':''}>${c.days}</b> 天
-       ${c.n>1?`· 催过 ${c.n} 次`:''}</td>
-     <td style="text-align:right"><button class="btn" onclick="whCallAgain('${c.pj}','${c.who}')">再催</button></td>
-    </tr>`).join('')}</tbody></table>
-   <div class="panel-body hint">通知过、但<b>还没给他开出库单</b>的才会列在这儿 —— 开了单就自动从这张表消失。<br>
-     ★<b>为什么不做自动催</b>：什么时候叫人来拉，看工地进度和车什么时候有空，系统不知道，库管知道。
-     自动发只会变成没人看的短信。</div>
-  </div>`;})()}
-${(()=>{const miss=[]; live.forEach(p=>takerList(p.code).forEach(t=>{
-    if(t.type==='third'&&!phoneOk(t.phone)) miss.push({p,t}); }));
-  if(!miss.length) return '';
-  return `<div class="panel"><div class="panel-head">⚠ 提货人缺手机号
-   <span class="muted" style="font-weight:400">${miss.length} 个 · 没号码就通知不了，也不能开出库单</span></div>
-  <table>
-   <thead><tr><th style="width:118px">项目编号</th><th style="width:150px">项目 · 地址</th>
-     <th style="width:170px">提货人</th><th>为什么必须补</th><th style="width:110px"></th></tr></thead>
-   <tbody>${miss.map(x=>`<tr>
-     <td><b class="mono">${x.p.code}</b></td>
-     <td><b>${x.p.nick||x.p.name}</b><div class="hint">📍 ${x.p.street}, ${x.p.suburb} ${x.p.state}</div></td>
-     <td><b>${x.t.name}</b><div class="hint">${x.t.role}</div></td>
-     <td class="hint">提货通知和提货清单<b>都是短信发的</b>。没号码＝发不出去，
-       而系统<b>不会报错</b>：货堆在仓库没人来拉，出库单也永远等不到那句 YES</td>
-     <td style="text-align:right"><button class="btn btn-primary" onclick="partyPhone('${x.p.code}','${x.t.name}')">补号码</button></td>
-    </tr>`).join('')}</tbody></table>
-  </div>`;})()}
-${tail.length?`<div class="panel"><div class="panel-head">⚠ 施工期已过、货还没回来
-  <span class="muted" style="font-weight:400">${tail.length} 个 · 不属于"在施工"，但必须盯着</span></div>
- <table>
-  <thead><tr><th style="width:118px">项目编号</th><th style="width:165px">项目 · 地址</th>
-    <th style="width:110px">现在状态</th><th style="width:140px">未退料</th>
-    <th style="width:140px">在谁手里</th><th>为什么还列在这</th></tr></thead>
-  <tbody>${tail.map(r=>`<tr>
-    <td><b class="mono">${r.p.code}</b></td>
-    <td><b>${r.p.nick||r.p.name}</b><div class="hint">📍 ${r.p.street}, ${r.p.suburb} ${r.p.state}</div></td>
-    <td><span class="pill ${r.p.band}">${r.p.status}</span></td>
-    <td>${r.unret?`<b style="color:var(--breach)">${r.unret} 件</b><div class="hint">${can('stock')?A$2(r.unretAmt):'— —'}</div>`
-        :'<span class="muted">—</span>'}</td>
-    <td class="hint">${r.holders.length?'<b>'+r.holders.join('、')+'</b>'
-        :(r.wait.length?r.wait.map(o=>o.taker).join('、')+'（还没回执）':'—')}</td>
-    <td class="hint">${r.unret?'这批料要按<b>出库单价</b>结进 S4 —— 催退库，或让财务按未退料结算':''}
-      ${r.wait.length?(r.unret?'<br>':'')+'还有 '+r.wait.length+' 张出库单没回 YES —— 没回执就没人认领这批货':''}</td>
-   </tr>`).join('')}</tbody></table>
- <div class="panel-body hint">这张表<b>空了才是正常</b> —— 有行就说明有货没归位。</div>
-</div>`:''}`;},
-
+<div class="panel"><div class="panel-head">${cur.t}
+  <span class="muted" style="font-weight:400">${cur.n} 项 · 全部现算 · ${cur.foot}</span></div>
+ ${BODY}
+</div>`;
+},
 'wh/入库':()=>{
  const pend=whInPend();
  const hist=WHMOVE.filter(m=>m.kind==='入库');

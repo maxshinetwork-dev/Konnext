@@ -2206,12 +2206,23 @@ const { chromium } = require('playwright');
       &&stockOf('M-CB-SW6')===22&&stockOf('M-SEN-PIR')===9&&stockOf('M-CBL-KNX')===14;
     // ④ 项目出库状态只列施工中；施工期已过还有未退料的进"尾巴表"
     go('wh','项目出库状态');
+    /* ★六十七轮：一次只出一张表 —— 断言要先点到那一类（页签本身也是被测对象） */
+    whTab='out'; renderAll();
     let h=document.getElementById('main').innerHTML;
+    whTab='s2'; renderAll();
+    h+=document.getElementById('main').innerHTML;
     const live=PROJECTS.filter(p=>p.status==='施工中');
     R.onlyLive=live.every(p=>h.includes(p.code))
       &&PROJECTS.filter(p=>['接洽当中','已流失','已烂尾'].includes(p.status)).every(p=>!h.includes(p.code));
-    R.tail=h.includes('施工期已过、货还没回来')&&h.includes('KX-2026-0142');   // 维护中但还有 13 件未退
     R.s2gate=h.includes('未结清 · 不能出库');
+    whTab='tail'; renderAll();
+    const ht=document.getElementById('main').innerHTML;
+    R.tail=ht.includes('KX-2026-0142')&&ht.includes('把 S4 的钱悄悄丢了');   // 维护中但还有 13 件未退
+    /* ★同一个项目不许在两类里同时出现（用户 2026-08-10 提：从头堆到尾还重复，很乱） */
+    whTab='s2'; renderAll(); const hs2=document.getElementById('main').innerHTML;
+    whTab='out'; renderAll(); const hout=document.getElementById('main').innerHTML;
+    R.noDup=!PROJECTS.some(p=>hs2.includes(p.code)&&hout.includes(p.code));
+    whTab='s2'; renderAll();
     // ⑤ 未退料两个视角要对得上（按项目 vs 按提货人）
     const byPj=PROJECTS.reduce((x,p)=>x+whPjOut(p.code).unret,0);
     const byMan=whHolders().reduce((x,q)=>x+q.qty,0);
@@ -2296,6 +2307,7 @@ const { chromium } = require('playwright');
   ok(S61.calc,'库存不是「期初 + 流水」现算，或算出来的数与原口径对不上');
   ok(S61.onlyLive,'项目出库状态没有只列施工中');
   ok(S61.tail,'施工期已过但还有未退料的项目被静默丢掉了（这等于把 S4 的钱丢了）');
+  ok(S61.noDup,'★同一个项目在两类状态里同时出现了 —— 点状态就该只看那一类，不然又变成从头堆到尾');
   ok(S61.s2gate,'S2 未结清的项目没标"不能出库"');
   ok(S61.sameSum,'未退料按项目看与按提货人看对不上（同一批货两个视角必须相等）');
   ok(S61.unretAmt,'库管现算的未退料金额与财务 f.unret 对不上');
@@ -2552,9 +2564,9 @@ const { chromium } = require('playwright');
     R.rsvCuts = before.need===14&&before.rsv===0&&before.gap===14
       && bomRows(pj).find(r=>r.mat==='M-CBL-KNX').rsv===8      // 演示种子里已备 8
       && bomRows(pj).find(r=>r.mat==='M-CBL-KNX').gap===0;     // 备了 → 不用买了
-    go('wh','项目出库状态');
+    go('wh','项目出库状态'); whTab='rsv'; renderAll();
     const hw=document.getElementById('main').innerHTML;
-    R.rsvUI = hw.includes('项目备料')&&hw.includes('whRsvOpen')&&hw.includes('备料只是占住');
+    R.rsvUI = hw.includes('待备料')&&hw.includes('whRsvOpen')&&hw.includes('备料只是占住');
     // 门禁：拨的比还要的多 / 现货不够 / 填了非数字
     const rows=bomRows(pj).filter(r=>r.gap>0);
     const iP4W=rows.findIndex(r=>r.mat==='M-KNX-P4W');       // 还要 14、库存 12
@@ -2711,9 +2723,11 @@ const { chromium } = require('playwright');
     R.phoneCheck = phoneOk('+61 401 220 118')&&phoneOk('0433 880 001')
       && !phoneOk('')&&!phoneOk('12345')&&!phoneOk('401220118');
     // ★缺号码的第三方要被列出来并能补
-    go('wh','项目出库状态');
+    go('wh','项目出库状态'); whTab='miss'; renderAll();
+    const hm=document.getElementById('main').innerHTML;
+    R.missUI = hm.includes('提货人缺号码')&&hm.includes('Raj')&&hm.includes('partyPhone');
+    whTab='rsv'; renderAll();
     const hw=document.getElementById('main').innerHTML;
-    R.missUI = hw.includes('提货人缺手机号')&&hw.includes('Raj')&&hw.includes('partyPhone');
     R.callBtn = hw.includes('通知提货')&&hw.includes('whCallOpen');
     // ② 通知来提货
     const nc=WHCALL.length;
@@ -2776,7 +2790,7 @@ const { chromium } = require('playwright');
     R.normalStillGated = pool.length===1&&pool[0].disabled;
     pcClose();
     // 还原
-    woKind='normal';
+    woKind='normal'; whTab='s2';
     WHOUT.length=0; o0.forEach(x=>WHOUT.push(x));
     WHCALL.length=0; c0.forEach(x=>WHCALL.push(x));
     WHMOVE.splice(0,WHMOVE.length-m0);
@@ -2845,7 +2859,9 @@ const { chromium } = require('playwright');
     R.srqReset = srqLines.length===0&&srqOn===false;             // 提完就清空，不会带到下一条
     // ② 库管：核对库存 —— 够
     loginAs('warehouse'); go('wh','项目出库状态');
-    R.whBlock = document.getElementById('main').innerHTML.includes('工程提来的出货单');
+    whTab='req'; renderAll();
+    R.whBlock = document.getElementById('main').innerHTML.includes('工程提的出货单')
+      &&document.getElementById('main').innerHTML.includes('核对这一步不能省');
     mreqCheck(rq.id);
     R.okEnough = rq.st==='可出货'&&rq.chk.short.length===0
       &&NOTIF.some(x=>(x.what||'').includes('库里有货'));
