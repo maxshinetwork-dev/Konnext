@@ -1,0 +1,162 @@
+<title>KONNEXT 原型 · 第二轮试用指引</title>
+<style>
+:root{
+  --bg:#f4f6f9; --panel:#fff; --border:#dde4ec; --text:#1f2933; --muted:#5f6b76;
+  --accent:#2563eb; --accent-soft:#e8effc; --ok:#047857; --ok-soft:#e6f4ef;
+  --warn:#b45309; --warn-soft:#fdf3e2; --bad:#dc2626; --bad-soft:#fdecec;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f151b; --panel:#161d25; --border:#27313c; --text:#e7edf3; --muted:#95a3b1;
+  --accent-soft:#16283f; --ok-soft:#12261f; --warn-soft:#2a2013; --bad-soft:#2b1719;}}
+:root[data-theme="dark"]{
+  --bg:#0f151b; --panel:#161d25; --border:#27313c; --text:#e7edf3; --muted:#95a3b1;
+  --accent-soft:#16283f; --ok-soft:#12261f; --warn-soft:#2a2013; --bad-soft:#2b1719;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.85 -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;
+  padding:32px 16px 72px}
+.wrap{max-width:880px;margin:0 auto}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:14px;margin:0 0 26px}
+h2{font-size:19px;margin:34px 0 10px;padding-bottom:7px;border-bottom:2px solid var(--border)}
+h3{font-size:15.5px;margin:20px 0 6px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin:14px 0}
+.big{background:var(--accent-soft);border-color:var(--accent)}
+.ok{background:var(--ok-soft);border-color:var(--ok)}
+.warn{background:var(--warn-soft);border-color:var(--warn)}
+.bad{background:var(--bad-soft);border-color:var(--bad)}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12.5px}
+code,.mono{font-family:var(--mono);font-size:13px;background:var(--bg);padding:1px 5px;border-radius:4px}
+ul,ol{margin:8px 0;padding-left:22px} li{margin:5px 0}
+.tag{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;
+  background:var(--accent-soft);color:var(--accent);margin-right:5px}
+.tag.new{background:var(--ok-soft);color:var(--ok)}
+.q{font-weight:600;margin-top:12px}
+.scroll{overflow-x:auto}
+</style>
+
+<div class="wrap">
+<h1>KONNEXT 原型 · 第二轮试用指引</h1>
+<p class="sub">2026-08-10 版　·　六部门共 <b>121 个页面</b>，第一轮反馈 14 条已全部处理　·　这份给各部门负责人</p>
+
+<div class="card big">
+  <b>先说清楚这是什么</b>：这是一个<b>可以点、可以填、会拦你</b>的界面原型，用的是演示数据。
+  它不是正式系统 —— 你在里面做的任何操作都不会真的发出短信、不会真的改账。
+  <b>但里面所有的门禁、算法、提示语，就是正式系统将来的规矩。</b><br><br>
+  所以请你<b>当成真的来用</b>：按你平时的顺序走一遍你那条线，卡住的地方就是我们要改的地方。
+</div>
+
+<h2>怎么进</h2>
+<ol>
+  <li>手机或电脑浏览器打开链接（不用装任何东西）</li>
+  <li>登录页点<b>「获取验证码」</b> → 直接点你的身份进去（不需要真验证码）</li>
+  <li>右上角可以随时<b>切换身份</b>，看看同一件事在别的部门那边长什么样</li>
+</ol>
+
+<h2>各部门看哪几页</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th style="width:100px">身份</th><th style="width:60px">页数</th><th>重点走这几页</th></tr></thead>
+  <tbody>
+    <tr><td><b>售前</b><br><span class="mono">小林</span></td><td>4</td>
+      <td>项目列表（一页长大表 · 6+1 状态勾）· 项目状态表（图全部按数据现算）</td></tr>
+    <tr><td><b>工程管理</b><br><span class="mono">陈工</span></td><td>13</td>
+      <td><span class="tag new">新</span>项目详情（含<b>历史排班</b>、安装调试、<b>项目备忘</b>）·
+        <span class="tag new">新</span>出货单 · <span class="tag new">新</span>物料变更审批 ·
+        项目列表（<b>分级</b>、<b>资源用量超支标红</b>）· 派工排班</td></tr>
+    <tr><td><b>采购</b><br><span class="mono">老张</span></td><td>10</td>
+      <td>采购需求（<b>两层：项目总览 → 点进去看完整清单 → 勾选分批下单</b>）·
+        采购单 · 供应商 · 物料主表 · 调价历史 · RMA 退换</td></tr>
+    <tr><td><b>库管</b><br><span class="mono">老张</span></td><td>10</td>
+      <td><span class="tag new">新</span>项目出库状态（<b>八个状态页签，点一个只看一类</b>）·
+        出库（含 <b>SM2 预提</b>）· 入库 · 退库与拒收 · 盘点</td></tr>
+    <tr><td><b>财务</b><br><span class="mono">王姐</span></td><td>11</td>
+      <td>财务节点 · 项目收款 S1-S3 · 尾款结算 S4 与 Var · 催账和停服 · 工资数据 · 成本与利润率</td></tr>
+    <tr><td><b>运维</b><br><span class="mono">小周</span></td><td>9</td>
+      <td>报修受理（<b>两个时间</b>、<b>P0~P3 分级</b>）· 维护单跟踪（<b>研发排查</b>、<b>完结交财务</b>）·
+        <span class="tag new">新</span>故障分析 · 业主订阅</td></tr>
+    <tr><td><b>陈总</b><br><span class="mono">核心管理员</span></td><td>全部</td>
+      <td>所有部门 ＋ 决策页（决策看板 / 风险看板 / 审计日志 / 全局参数）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>这一轮特别请你验的地方</h2>
+
+<div class="card ok">
+<h3>运维</h3>
+<ul>
+  <li><b>报修时间</b>和<b>问题什么时候开始的</b>是两栏了 —— 前者必填（接到电话那一刻，我们永远知道），
+    后者说不清就留空。<b>请确认这样分对不对。</b></li>
+  <li>建单要选 <b>P0~P3</b>，每档 SLA 不一样（4/8/24/72 小时，设置里可改）。
+    <b>请确认这四档的说法和小时数合不合适。</b></li>
+  <li>派人上门之前<b>必须先有研发排查结论</b>（或明确标「无需排查」）。研发的时间在排班里按
+    <b>「远程排查」</b>记，会算进项目成本。<b>请确认这道卡是不是太严。</b></li>
+  <li>干完了点<b>「完结交财务」</b>，填一段处理情况 —— 之后开票收款你就不用管了。</li>
+  <li>新的<b>「故障分析」</b>页：哪类功能最爱坏、<b>哪个型号最爱坏</b>。这页数据越多越有用。</li>
+</ul>
+</div>
+
+<div class="card ok">
+<h3>工程管理</h3>
+<ul>
+  <li>项目列表点<b>「进入」</b>现在到<b>项目详情</b>（不再跳 Site Meeting），里面能看到
+    <b>这个项目派过的每一班</b>。</li>
+  <li><b>「安装调试」不再是单独一页</b>，并进项目详情了 —— 原来它和「派工排班」两处都能派人，容易搞混。
+    <b>请确认这样合不合你的习惯。</b></li>
+  <li>项目列表每行有<b>资源用量%</b>，超 100% 直接标红。<b>请确认预警线（默认 90%）合不合适。</b></li>
+  <li><b>项目备忘</b>：Builder 说的话、业主什么时候回来，都记在项目详情里，到期自动提醒。</li>
+  <li><b>项目分级 A/B/C</b>，原因必填。<b>请你给手上的项目实际分一次级，看看好不好用。</b></li>
+  <li>排班的时候可以<b>顺手提料</b>（安装勾「去仓库办提货」/ SM 勾「带线材」/ 维护填「这次带什么」）。</li>
+</ul>
+</div>
+
+<div class="card ok">
+<h3>采购 · 库管</h3>
+<ul>
+  <li>采购：「采购需求」是<b>两层</b>的 —— 先看哪些项目有事，点进去才是那个项目的完整清单，
+    在清单里<b>勾选分批下单</b>。</li>
+  <li>库管：「项目出库状态」是<b>八个状态页签</b>，点哪个只看哪一类。<b>请确认这八类分得对不对、够不够。</b></li>
+  <li>提货人分<b>第三方（工地）</b>和<b>我方（办公室提货）</b>两类，短信模版不一样。
+    <b>没有手机号的一律不能通知、不能出库</b> —— 请确认这条会不会卡到你。</li>
+  <li><b>备料只是占住，不扣库存</b>；真正扣库存是在<b>开出库单</b>那一刻。</li>
+</ul>
+</div>
+
+<h2>怎么反馈</h2>
+<div class="card">
+<p>看到问题就记一条，越具体越好。最有用的三种：</p>
+<table>
+  <thead><tr><th style="width:110px">类型</th><th>怎么写</th></tr></thead>
+  <tbody>
+    <tr><td><b>做错了</b></td><td>「XX 页点 YY，跳到了 ZZ，应该去 WW」——<b>说清楚在哪一页、点了什么、期望什么</b></td></tr>
+    <tr><td><b>不合工作实际</b></td><td>「这里要求必填 XX，但我们平时这个时候根本拿不到」——<b>说清楚你平时是怎么做的</b></td></tr>
+    <tr><td><b>少了东西</b></td><td>「我还需要看到 XX，不然我判断不了 YY」——<b>说清楚你要拿它做什么决定</b></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="card warn">
+<b>两件事先说在前面，免得你白提：</b>
+<ol>
+  <li><b>金额在工程和库管那边一律不显示</b> —— 不是漏了，是故意的。钱的数字只在财务和管理层能看到。</li>
+  <li><b>「— —」不是 0，是「你没权限看」</b>。看到 <code>— —</code> 说明这个数字对你这个身份是遮住的。</li>
+</ol>
+</div>
+
+<div class="card bad">
+<b>还没做的（不用提）：</b>
+<ul>
+  <li><b>正式系统还没有</b> —— 这只是界面原型。真的能登录、能发短信，要等 Twilio 账号和服务器配好。</li>
+  <li><b>数据库还没跟上这几轮的改动</b>（欠一版契约更新）—— 界面上的新规矩暂时只在原型里。</li>
+  <li>负责人不建档、直接填联系人手机号 —— 老板说先放一放。</li>
+</ul>
+</div>
+
+<p class="sub" style="margin-top:30px">
+有任何看不懂的，页面左下角都有<b>「帮助（本页说明）」</b> —— 每一页都写了「这页怎么用」和「最容易搞错的地方」。
+</p>
+</div>
