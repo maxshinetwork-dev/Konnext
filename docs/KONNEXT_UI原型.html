@@ -409,7 +409,7 @@ const WHO = {
 };
 const DEPT = {
   presales:{label:'售前', pages:['项目列表','项目状态表','操作日志','设置']},  /* 用户定：大表=项目列表；状态表=比例图+走向图+状态过滤 */
-  eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','Site Meeting','安装调试','交付','工程流水账','每日工时管理','文档库','操作日志','设置']},
+  eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','Site Meeting','物料变更审批','安装调试','交付','工程流水账','每日工时管理','文档库','操作日志','设置']},
   proc:    {label:'采购', pages:['总览','采购需求','采购单','供应商','物料主表','汇率','调价历史','RMA退换','操作日志','设置']},
   wh:      {label:'库管', pages:['总览','项目出库状态','入库','出库','退库与拒收','盘点','物料在谁手里','库存流水','操作日志','设置']},
   fin:     {label:'财务', pages:['财务节点','项目列表','项目收款S1-S3','尾款结算S4与Var','运维财务支持','催账和停服','工资数据','项目报销','成本与利润率','操作日志','设置']},
@@ -485,6 +485,7 @@ const COMPANY_PAGES=new Set([
   'proc/RMA退换','proc/设置',
   'wh/总览','wh/入库','wh/出库','wh/退库与拒收','wh/盘点','wh/物料在谁手里','wh/库存流水','wh/设置',
   'eng/总览','eng/派工排班','eng/每日工时管理','eng/文档库','eng/设置','eng/Site Meeting','eng/安装调试','eng/交付',
+  'eng/物料变更审批',
   'fin/财务节点','fin/项目收款S1-S3','fin/尾款结算S4与Var','fin/运维财务支持','fin/催账和停服',
   'fin/工资数据','fin/项目报销','fin/成本与利润率','fin/设置','fin/总览','fin/工资','presales/总览','presales/项目列表','presales/项目状态表','presales/设置','mt/总览',
   'presales/操作日志','eng/操作日志','proc/操作日志','wh/操作日志','fin/操作日志','mt/操作日志',
@@ -1832,6 +1833,14 @@ function bomQty(pj,mat){
     (c.adds||[]).filter(a=>a.mat===mat).forEach(a=>n+=a.qty);   // Additional＝加上去
   });
   return n; }
+/* ★库管备料（第四段）：工程审批通过后，库管确认从仓库现货里拨给这个项目多少。
+   备了的那部分不用再买 —— 所以「还要买」＝应采 − 已下单 − 库管已备。
+   ★这是"确认"不是"现算"：库管点了才算数。不然每次刷新库存一变，采购看到的数就跳。 */
+let WHRSV=[
+ {pj:'KX-2026-0188',mat:'M-CBL-KNX',qty:8,at:'2026/08/01 14:20',by:'老张',
+  note:'仓库有整卷现货，直接拨给林宅，不用再买'},
+];
+const rsvOf=(pj,mat)=>WHRSV.filter(r=>r.pj===pj&&r.mat===mat).reduce((x,r)=>x+r.qty,0);
 /* 这个项目这个料已经下过多少单（采购单里） */
 const bomOrdered=(pj,mat)=>PCPO.filter(p=>p.pj===pj&&p.st!=='已取消')
   .reduce((x,p)=>x+p.lines.filter(l=>l.mat===mat).reduce((y,l)=>y+l.qty,0),0);
@@ -1842,17 +1851,18 @@ function bomRows(pj){
     ...chgOf(pj).flatMap(c=>[...(c.edits||[]).map(e=>e.mat),...(c.adds||[]).map(a=>a.mat)])])];
   return codes.map(mat=>{
     const base=q?((q.lines.find(l=>l.mat===mat)||{}).qty||0):0;
-    const need=bomQty(pj,mat), ord=bomOrdered(pj,mat);
+    const need=bomQty(pj,mat), ord=bomOrdered(pj,mat), rsv=rsvOf(pj,mat);
     const stock=stockOf(mat);
-    const gap=Math.max(0,need-ord);
+    /* 还要买 ＝ 应采 − 已下单 − 库管已备（库管从现货里拨过来的那部分不用再买） */
+    const gap=Math.max(0,need-ord-rsv);
     /* ★买多了：已下单 > 应采。多半是工程后来减了量、而采购已经下过单。
        原来这行会显示绿色「齐了」—— 那 18 件的钱就悄悄留在项目成本里，没人会发现。 */
-    const over=Math.max(0,ord-need);
-    return {mat,base,need,ord,stock,gap,
+    const over=Math.max(0,ord+rsv-need);
+    return {mat,base,need,ord,rsv,stock,gap,
       fromQuote:base>0,
       area:q?((q.lines.find(l=>l.mat===mat)||{}).area||''):'',
       over,
-      canCover:Math.min(stock,gap),                  // 库房现货能顶多少（库管确认后才真扣）
+      canCover:Math.min(stock,gap),                  // 库房现货还能顶多少（库管确认后进 rsv）
       delta:need-base};
   }).sort((a,b)=>(b.fromQuote?1:0)-(a.fromQuote?1:0)||a.mat.localeCompare(b.mat)); }
 /* 挂起：Excel 里认不上的物料编码 —— 不补齐就卡住工程人员那一步 */
@@ -2194,6 +2204,7 @@ function qbomFix(code){
     '现在去建档？建好之后回来点「重新识别」，这一行就会自动补进清单。',ok=>{ if(ok){ pcClose(); go('proc','物料主表'); matNew(); } }); }
 /* 勾选下单：从项目物料账里挑要买的 */
 let bomPick={}, bomPj='';
+let chgF='待审', chgQ='';        /* 工程「物料变更审批」的筛选 */
 function bomPickTog(k){ bomPick[k]=!bomPick[k]; renderAll(); }
 function bomPicked(pj){ return bomRows(pj).filter(r=>bomPick[pj+'|'+r.mat]&&r.gap>0); }
 function bomOrder(pj){ const sel=bomPicked(pj);
@@ -2218,6 +2229,147 @@ function bomOrder(pj){ const sel=bomPicked(pj);
     notifAdd(pj,'采购单 '+id+' 已下单（'+sel.length+' 项）',[{who:'库管 老张',how:'待办',ok:false}]);
     bomPick={}; renderAll();
     uiAlert('已生成采购单 '+id+' ✓\n没勾的项留在流水账里，什么时候要买什么时候再勾'); }); }
+/* ══════════ 工程管理：物料变更审批（★只看变量，不看整表）══════════ */
+function chgApprove(id){ const c=BOMCHG.find(x=>x.id===id); if(!c) return;
+  if(c.st!=='待审'){ uiAlert('这张单已经处理过了（'+c.st+'）'); return; }
+  /* ★SM2 之后只能增不能减：施工都开始了还往下减，已经发到工地的料就对不上账 */
+  const cut=(c.edits||[]).filter(e=>e.to<e.from);
+  if(c.stage!=='SM2'&&cut.length){
+    uiAlert('门禁：这张单是<b>施工中</b>提的，里面有减量（'+
+      cut.map(e=>matOf(e.mat).name+' '+e.from+'→'+e.to).join('、')+'）——\n'+
+      'SM2 之后只能增不能减。施工都开始了还往下减，已经发到工地的料就对不上账了。\n'+
+      '请退回，让现场重新提一张只增的。'); return; }
+  uiPrompt('批准 '+id+'（'+pjNick(c.pj)+' · '+c.stage+'）\n\n'+
+    '批了之后：这些变量立刻进项目物料账，库管先看现货，不够的差额才到采购。\n审批意见（可留空）：',v=>{
+    c.st='已批'; c.reviewBy=WHO[me].name; c.reviewAt=nowTs(); c.reviewNote=(v||'').trim()||'—';
+    const d=(c.edits||[]).map(e=>matOf(e.mat).name+' '+e.from+'→'+e.to).concat(
+      (c.adds||[]).map(a=>'＋'+matOf(a.mat).name+' ×'+a.qty)).join('；');
+    opLog(c.pj,'批准物料变更',id+' · '+c.stage+' · '+c.by+' 提 · '+d+
+      '（★只看变量，不看整表）—— 已进项目物料账',['eng','proc','wh']);
+    notifAdd(c.pj,'物料变更已批准 '+id+'：'+d,
+      [{who:'库管 老张',how:'待办',ok:false},{who:'采购 老张',how:'待办',ok:false},
+       {who:c.by.split('（')[0],how:'App',ok:false}]);
+    renderAll();
+    uiAlert('已批准 ✓ 变量已进项目物料账\n已通知：库管（先看现货能不能直接出）· 采购（差额下单）· 提单人'); }); }
+function chgReject(id){ const c=BOMCHG.find(x=>x.id===id); if(!c) return;
+  if(c.st!=='待审'){ uiAlert('这张单已经处理过了（'+c.st+'）'); return; }
+  uiPrompt('退回 '+id+' 给 '+c.by+'\n为什么退？（必填 ≥4 字 —— 现场要照着这句改）',v=>{
+    const why=(v||'').trim();
+    if(why.length<4){ uiAlert('门禁：退回原因必填（≥4 字）—— 只写"不行"，现场不知道该怎么改'); return; }
+    c.st='已退回'; c.reviewBy=WHO[me].name; c.reviewAt=nowTs(); c.reviewNote=why;
+    opLog(c.pj,'退回物料变更',id+' · '+c.by+' —— '+why,['eng','proc']);
+    notifAdd(c.pj,'物料变更被退回 '+id+'：'+why,[{who:c.by.split('（')[0],how:'App',ok:false}]);
+    renderAll(); uiAlert('已退回 ✓ 提单人会在 App 上收到，并看到你写的原因'); }); }
+
+/* ══════════ 工人手机上的物料屏（可操作演示）══════════
+   规则（用户 2026-08-05 定）：
+     ①不许删报价清单里的行，只能把数量调 0（行留着 —— 删了就查不到"本来有过"）
+     ②每行显示【原始采购数量】，在这个基础上加减
+     ③「恢复」一键回到原始数
+     ④换货＝老货减到 0 + 底部 Additional 加新料
+     ⑤SM2 阶段可增可减；SM2 之后只能增
+     ⑥暂存：编辑中不丢，确认无误再统一提交 */
+let appPj='KX-2026-0188', appStage='SM2', appEdit={}, appAdds=[], appQ='', appSaved='';
+function appBase(mat){ const q=qbomOf(appPj); return q?((q.lines.find(l=>l.mat===mat)||{}).qty||0):0; }
+function appNow(mat){ return appEdit[mat]!=null?appEdit[mat]:appBase(mat); }
+function appInc(mat,d){
+  const cur=appNow(mat), base=appBase(mat);
+  if(d<0&&appStage!=='SM2'&&cur<=base){
+    uiAlert('门禁：现在是<b>施工中</b>，只能加不能减 ——\n'+
+      '料可能已经发到工地了，往下减账就对不上。要减请找工程管理走另一条流程'); return; }
+  const nv=Math.max(0,cur+d);
+  appEdit[mat]=nv; appSaved=''; renderAll(); }
+function appReset(mat){ delete appEdit[mat]; appSaved=''; renderAll(); }
+function appAddMat(mat){
+  if(appAdds.some(a=>a.mat===mat)){ uiAlert('这个料已经在下面的 Additional 里了，直接改数量就行'); return; }
+  const q=qbomOf(appPj);
+  if(q&&q.lines.some(l=>l.mat===mat)){
+    uiAlert('这个料<b>报价单里本来就有</b>（上面那几行）——\n'+
+      '直接在那一行加数量，别在这儿重复加一遍：\n同一个料摆成两行，采购看到的应采数就错了'); return; }
+  appAdds.push({mat,qty:1,why:''}); appQ=''; appSaved=''; renderAll(); }
+function appAddInc(i,d){ const a=appAdds[i]; if(!a) return;
+  a.qty=Math.max(1,a.qty+d); appSaved=''; renderAll(); }
+function appAddDel(i){ appAdds.splice(i,1); appSaved=''; renderAll(); }
+function appAddWhy(i,v){ if(appAdds[i]) appAdds[i].why=v; appSaved=''; }
+function appStash(){ appSaved=nowTs();
+  renderAll(); uiAlert('已暂存 ✓ 手机关了、明天再打开都还在\n确认无误之后再点「提交给工程管理」'); }
+function appSubmit(){
+  const q=qbomOf(appPj);
+  if(!q){ uiAlert('这个项目还没有报价物料清单 —— 等采购上传'); return; }
+  if((q.pending||[]).length){
+    uiAlert('★这张清单还缺 '+q.pending.length+' 个料没建档（'+
+      q.pending.map(p=>p.code).join('、')+'）——\n'+
+      '先让采购把物料建好，不然你改了半天，最后发现少了几个料，前面的活白干'); return; }
+  const edits=Object.keys(appEdit).filter(m=>appEdit[m]!==appBase(m))
+    .map(m=>({mat:m,from:appBase(m),to:appEdit[m]}));
+  const adds=appAdds.filter(a=>a.qty>0);
+  if(!edits.length&&!adds.length){ uiAlert('还没改任何东西 —— 调个数量或加个料再提交'); return; }
+  const noWhy=adds.filter(a=>a.why.trim().length<2);
+  if(noWhy.length){ uiAlert('门禁：新加的料要写清楚为什么（'+
+    noWhy.map(a=>matOf(a.mat).name).join('、')+'）——\n工程管理只看变量，没有理由他没法判断'); return; }
+  uiPrompt('提交给工程管理审批\n共 '+edits.length+' 处调整、'+adds.length+' 项新增。\n'+
+    '这次为什么改？（必填 ≥4 字）',v=>{
+    const why=(v||'').trim();
+    if(why.length<4){ uiAlert('门禁：请写清楚这次为什么改（≥4 字）'); return; }
+    const n=BOMCHG.filter(c=>c.pj===appPj).length+1;
+    const id='CHG-'+appPj.slice(-4)+'-'+String(n).padStart(2,'0');
+    BOMCHG.push({id,pj:appPj,stage:appStage==='SM2'?'SM2':'施工中',
+      by:(WHO[me].name||'现场')+'（App 现场）',at:nowTs(),st:'待审',why,
+      edits,adds:adds.map(a=>({mat:a.mat,qty:a.qty,why:a.why.trim()})),
+      reviewBy:'',reviewAt:'',reviewNote:''});
+    opLog(appPj,'提交物料变更（App）',id+' · '+appStage+' · '+
+      edits.map(e=>matOf(e.mat).name+' '+e.from+'→'+e.to).concat(
+        adds.map(a=>'＋'+matOf(a.mat).name+' ×'+a.qty)).join('；')+' —— '+why,['eng','proc']);
+    notifAdd(appPj,'物料变更待审 '+id+'（'+(edits.length+adds.length)+' 个变量）',
+      [{who:'工程管理 陈工',how:'待办',ok:false}]);
+    appEdit={}; appAdds=[]; appSaved=''; renderAll();
+    uiAlert('已提交 ✓ 工程管理会看到<b>只有变量</b>的那张单\n批准之后：库管先看现货，不够的差额才到采购'); }); }
+
+/* ══════════ 库管：项目备料（第四段）══════════ */
+function whRsvOpen(pj){ const rows=bomRows(pj).filter(r=>r.gap>0);
+  if(!rows.length){ uiAlert('这个项目没有待备的料 —— 要么都买齐了，要么还没有审批通过的需求'); return; }
+  pcDlg={m:'rsv',pj};
+  pcShow('<div style="font-weight:600;margin-bottom:2px">项目备料 · '+pjNick(pj)+'</div>'+
+   '<div class="hint" style="margin-bottom:10px">工程审批通过了，先看<b>仓库有没有现货</b>：'+
+   '能出的直接拨给这个项目<b>不用再买</b>，不够的差额才交采购</div>'+
+   '<table><thead><tr><th>物料</th><th style="text-align:right;width:80px">还要</th>'+
+     '<th style="text-align:right;width:90px">库房现货</th>'+
+     '<th style="text-align:right;width:110px">这次拨多少</th></tr></thead><tbody>'+
+   rows.map((r,i)=>'<tr><td><b>'+matOf(r.mat).name+'</b><div class="hint mono">'+r.mat+'</div></td>'+
+     '<td class="num">'+r.gap+'</td>'+
+     '<td class="num"'+(r.canCover>0?' style="color:var(--healthy)"':'')+'>'+r.stock+'</td>'+
+     '<td class="num"><input id="rs-'+i+'" class="mono" style="width:80px;text-align:right" value="'+
+       r.canCover+'"></td></tr>').join('')+
+   '</tbody></table>'+
+   '<div class="field" style="margin-top:10px"><label>备注（选填）</label>'+
+     '<input id="rs-note" style="width:100%" placeholder="如：整卷现货直接拨过去"></div>'+
+   '<div class="hint" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
+     '★拨过去的<b>不会马上扣库存</b> —— 真正扣是在<b>出库</b>那一刻（要 S2 结清、要提货人签收）。'+
+     '这一步只是<b>占住</b>，让采购别再去买。</div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="whRsvSave(\''+pj+'\')">确认备料</button></div>'); }
+function whRsvSave(pj){ const rows=bomRows(pj).filter(r=>r.gap>0);
+  const got=rows.map((r,i)=>parseInt(((document.getElementById('rs-'+i)||{}).value||'').trim(),10));
+  if(got.some(g=>!(g>=0))){ uiAlert('门禁：拨的数量必须填非负整数 —— 不拨就填 0'); return; }
+  const bad=rows.filter((r,i)=>got[i]>r.gap);
+  if(bad.length){ uiAlert('门禁：'+bad.map(r=>matOf(r.mat).name).join('、')+
+    ' 拨的比还要的还多 —— 多拨没意义，剩下的照样在仓库里'); return; }
+  const over=rows.filter((r,i)=>got[i]>r.stock);
+  if(over.length){ uiAlert('门禁：'+over.map(r=>matOf(r.mat).name).join('、')+
+    ' 仓库现货不够 —— 不许先占后补，占了采购就不买了，到时候两头都没有'); return; }
+  const note=((document.getElementById('rs-note')||{}).value||'').trim();
+  const done=[];
+  rows.forEach((r,i)=>{ if(got[i]>0){
+    WHRSV.push({pj,mat:r.mat,qty:got[i],at:nowTs(),by:WHO[me].name,note});
+    done.push(matOf(r.mat).name+' ×'+got[i]); }});
+  if(!done.length){ uiAlert('一件都没拨 —— 那就全部交采购去买'); return; }
+  opLog(pj,'项目备料',done.join('；')+' 从现货拨给本项目'+(note?'（'+note+'）':'')+
+    ' —— 这部分采购不用再买；真正扣库存在出库那一刻',['wh','proc','eng']);
+  notifAdd(pj,'库管已备料：'+done.join('、')+'（这部分不用采购了）',
+    [{who:'采购 老张',how:'待办',ok:false}]);
+  pcClose(); renderAll();
+  uiAlert('已备料 ✓ '+done.join('、')+'\n采购那边「还要买」立刻减掉这些 —— 剩下的差额才去下单'); }
 function whSetVal(k,label,v){ const nv=parseInt(v,10);
   if(!(nv>0)){ uiAlert('门禁：请填正整数 —— 填 0 等于把这条提醒关掉，系统不会再提醒你'); renderAll(); return; }
   const old=whSet[k]; if(old===nv){ renderAll(); return; }
@@ -6118,6 +6270,213 @@ ${helpNote(`<b>为什么发放过的版本删不掉</b>：发给 Builder / 电�
  </div>
 </div>`;
 },
+'eng/物料变更审批':()=>{
+ const F=['待审','已批','已退回','全部'];
+ const all=BOMCHG.slice().sort((a,b)=>a.at<b.at?1:-1);
+ const hit=c=>`${c.id} ${c.pj} ${pjNick(c.pj)} ${c.by} ${c.why} ${(c.edits||[]).map(e=>matOf(e.mat).name).join(' ')} ${(c.adds||[]).map(a=>matOf(a.mat).name).join(' ')}`;
+ const rows=all.filter(c=>(chgF==='全部'||c.st===chgF)&&
+   (!chgQ||hit(c).toLowerCase().includes(chgQ.toLowerCase())));
+ const wait=all.filter(c=>c.st==='待审');
+ const wDays=c=>Math.max(0,Math.floor((new Date()-dOf(c.at.slice(0,10)))/864e5));
+ const oldest=wait.length?Math.max(...wait.map(wDays)):0;
+ const badCut=wait.filter(c=>c.stage!=='SM2'&&(c.edits||[]).some(e=>e.to<e.from));
+ const nVar=c=>(c.edits||[]).length+(c.adds||[]).length;
+ const q=qbomOf(appPj);
+ const added=new Set(appAdds.map(a=>a.mat));
+ const inQuote=new Set(q?q.lines.map(l=>l.mat):[]);
+ /* ★搜索：物料库正式系统里几百条，工人翻不动 —— 只能搜（用户 2026-08-10 提）。
+    已经在单上的<b>照样列出来但标灰</b>，不然工人搜不到会以为"库里没有"，转头自己写一个名字。 */
+ const cand=MATS.filter(m=>m.active!==false&&
+   (!appQ||`${m.code} ${m.name} ${m.model} ${m.cat} ${m.proto}`.toLowerCase().includes(appQ.toLowerCase())));
+ const onList=c=>added.has(c)||inQuote.has(c);
+ const nEdit=q?q.lines.filter(l=>appNow(l.mat)!==l.qty).length:0;
+ return `
+<h2>物料变更审批</h2>
+<div class="page-sub">现场在 App 上改了物料，改动到这儿来 ——
+  <b>★只看变量，不看整表</b>：报价单几十上百行，逐行核对没人做得到，也没必要</div>
+${ops([
+ ['批准','SM2 之后有减量的会被拦（只能增不能减）','变量立刻进项目物料账 · 通知库管先看现货 · 采购买差额 · 提单人 App 收到'],
+ ['退回','原因必填 ≥4 字','提单人 App 上看到你写的原因，照着改了重提'],
+])}
+${helpNote(`<b>为什么只看变量</b>：一张报价单几十上百行，让你逐行核对，实际结果一定是<b>直接点批准</b>——
+  那这道审批就等于不存在。所以这页只摆<b>改了什么</b>：哪个料从几改成几、加了什么、为什么加。
+  完整那张表在采购的「项目物料与采购」里，随时能查。`)}
+${helpNote(`<b>两个阶段两套规矩</b>（用户 2026-08-05 定）：<br>
+  · <b>SM2 阶段</b>＝现场量完尺，方案该改就改，<b>可增可减</b>；<br>
+  · <b>SM2 之后（施工中）</b>＝只能<b>增</b>不能减 —— 料可能已经发到工地、甚至已经装上去了，
+  这时候把数量往下减，出库单和物料账立刻对不上，而且<b>系统不会报错</b>。
+  所以带减量的施工中变更单，批准按钮会直接拦下来。`)}
+${helpNote(`<b>报价原始单里的行永远不会消失</b>：现场"不要了"＝把数量调成 <b>0</b>，行留着。
+  删掉行，"这个料本来报价里有、后来不要了"这件事就没了 ——
+  客户回头问"我付的钱里那 10 个面板呢"，谁也答不上来。`)}
+<div class="cards">
+ <div class="card"><div class="card-label">待审</div>
+   <div class="card-value"${wait.length?' style="color:var(--warning)"':''}>${wait.length}</div>
+   <div class="card-foot">${wait.length?'共 '+wait.reduce((x,c)=>x+nVar(c),0)+' 个变量等你拍板':'都处理完了 ✓'}</div></div>
+ <div class="card"><div class="card-label">涉及项目</div>
+   <div class="card-value">${new Set(wait.map(c=>c.pj)).size}</div>
+   <div class="card-foot">${wait.length?[...new Set(wait.map(c=>pjNick(c.pj)))].join('、'):'—'}</div></div>
+ <div class="card"><div class="card-label">★等最久</div>
+   <div class="card-value"${oldest>=2?' style="color:var(--breach)"':''}>${wait.length?oldest+' 天':'—'}</div>
+   <div class="card-foot">${oldest>=2?'现场在等这个才敢继续干 —— 拖一天工地停一天':'没有积压 ✓'}</div></div>
+ <div class="card"><div class="card-label">★会被门禁拦</div>
+   <div class="card-value"${badCut.length?' style="color:var(--breach)"':''}>${badCut.length}</div>
+   <div class="card-foot">${badCut.length?'施工中还想减量 —— 只能退回重提':'没有违规的单 ✓'}</div></div>
+</div>
+<div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);flex-wrap:wrap;align-items:center">
+  ${F.map(x=>`<button class="btn${chgF===x?' btn-primary':''}" onclick="chgF='${x}';renderAll()">${x}${
+    x==='待审'&&wait.length?'（'+wait.length+'）':''}</button>`).join('')}
+  <input id="chgq" class="search" placeholder="🔍 搜单号 / 项目 / 提单人 / 物料 / 原因…" value="${chgQ}"
+    style="width:270px;padding:6px var(--sp-2)" oninput="chgQ=this.value;keepFocus('chgq')">
+  <span class="muted" style="font-size:var(--fs-xs);margin-left:auto">${rows.length} / ${all.length} 张</span>
+</div>
+<div class="panel"><div class="panel-head">变更单 <span class="muted" style="font-weight:400">
+  ★中间那栏就是全部内容 —— 只有变量</span></div>
+ <table>
+  <thead><tr><th style="width:118px">项目编号</th><th style="width:150px">项目 · 地址</th>
+    <th style="width:118px">变更单 · 阶段</th><th style="width:140px">谁提的 · 什么时候</th>
+    <th>★改了什么（只列变量）</th><th style="width:112px">状态</th>
+    <th style="width:150px">审批</th></tr></thead>
+  <tbody>${rows.map(c=>{const p=PROJECTS.find(x=>x.code===c.pj)||{};
+   const cut=(c.edits||[]).filter(e=>e.to<e.from);
+   const blocked=c.st==='待审'&&c.stage!=='SM2'&&cut.length;
+   return `<tr${c.st==='待审'?(blocked?' style="background:rgba(220,38,38,.06)"':' style="background:rgba(180,83,9,.06)"'):''}>
+    <td><b class="mono" style="color:var(--accent)">${c.pj}</b></td>
+    <td><b>${p.nick||pjNick(c.pj)}</b><div class="hint">📍 ${p.street||''}${p.suburb?', '+p.suburb:''} ${p.state||''}</div></td>
+    <td><b class="mono">${c.id}</b><div style="margin-top:3px">
+      <span class="pill ${c.stage==='SM2'?'p-cyan':'p-amber'}">${c.stage}</span></div></td>
+    <td>${c.by}<div class="hint">${c.at}${c.st==='待审'?' · 等了 <b>'+wDays(c)+'</b> 天':''}</div></td>
+    <td>
+      ${(c.edits||[]).map(e=>`<div>${matOf(e.mat).name}：<b class="mono">${e.from} → ${e.to}</b>
+        ${e.to===0?'<span class="pill p-grey">不要了 · 行留着</span>'
+          :(e.to<e.from?'<span class="pill p-red">减 '+(e.from-e.to)+'</span>'
+                       :'<span class="pill p-amber">增 '+(e.to-e.from)+'</span>')}</div>`).join('')}
+      ${(c.adds||[]).map(a=>`<div><span class="pill p-amber">＋新增</span> ${matOf(a.mat).name}
+        <b class="mono">×${a.qty}</b> <span class="hint">· ${a.why}</span></div>`).join('')}
+      <div class="hint" style="margin-top:4px">提单理由：${c.why}</div>
+      ${blocked?`<div class="hint" style="color:var(--breach);margin-top:3px">
+        ★施工中还想减量 —— 门禁不放行，只能退回</div>`:''}</td>
+    <td>${c.st==='待审'?'<span class="pill p-amber">待审</span>'
+      :c.st==='已批'?`<span class="pill p-green">已批</span><div class="hint">${c.reviewBy} ${(c.reviewAt||'').slice(5)}</div>`
+      :`<span class="pill p-red">已退回</span><div class="hint">${c.reviewBy} ${(c.reviewAt||'').slice(5)}</div>`}
+      ${c.st!=='待审'?`<div class="hint">${c.reviewNote||''}</div>`:''}</td>
+    <td>${c.st==='待审'
+      ?`<button class="btn btn-primary" ${blocked?'disabled title="这张单在施工中还想减量 —— SM2 之后只能增不能减，请退回让现场重提"':`onclick="chgApprove('${c.id}')"`}>批准</button>
+        <button class="btn" style="margin-top:4px" onclick="chgReject('${c.id}')">退回</button>`
+      :'<span class="muted">已处理</span>'}</td>
+   </tr>`;}).join('')||`<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">${
+     chgF==='待审'?'没有待审的物料变更 ✓ 现场没在等你':'没有匹配的变更单'}</td></tr>`}</tbody></table>
+ <div class="panel-body hint">批准之后这些变量立刻进<b>项目物料账</b>：库管先看仓库有没有现货能直接出，
+   <b>不够的差额才交采购下单</b> —— 有货还去买，钱就白花了。</div>
+</div>
+
+<div class="panel"><div class="panel-head">工人手机上是什么样
+  <span class="muted" style="font-weight:400">★可以直接在这儿操作 —— 提交之后上面那张表就多一条待审</span></div>
+ <div class="panel-body" style="display:flex;gap:var(--sp-4);flex-wrap:wrap;align-items:flex-start">
+  <div style="width:352px;border:9px solid #2a2f36;border-radius:26px;padding:0;background:#fff;overflow:hidden;box-shadow:var(--shadow-2)">
+   <div style="background:#2a2f36;color:#fff;padding:6px 12px;font-size:11px;display:flex;justify-content:space-between">
+     <span>KONNEXT 施工端</span><span>${nowTs().slice(11)}　▮▮▮</span></div>
+   <div style="padding:10px 12px;border-bottom:1px solid var(--border)">
+    <div style="font-weight:600;margin-bottom:6px">项目物料</div>
+    <select style="width:100%;margin-bottom:6px" onchange="appPj=this.value;appEdit={};appAdds=[];appSaved='';renderAll()">
+      ${QBOM.map(x=>x.pj).filter((v,i,a)=>a.indexOf(v)===i).map(c=>
+        `<option value="${c}"${appPj===c?' selected':''}>${c} · ${pjNick(c)}</option>`).join('')}
+    </select>
+    <div style="display:flex;gap:6px;align-items:center">
+      <span class="hint">现在阶段</span>
+      ${['SM2','施工中'].map(x=>`<button class="btn${appStage===x?' btn-primary':''}" style="padding:3px 10px;font-size:11px"
+        onclick="appStage='${x}';renderAll()">${x}</button>`).join('')}
+      <span class="hint" style="margin-left:auto">${appStage==='SM2'?'可增可减':'★只能增'}</span>
+    </div>
+   </div>
+   ${q?`
+   <div style="max-height:440px;overflow:auto">
+    ${q.lines.map(l=>{const now=appNow(l.mat), chg=now!==l.qty;
+     return `<div style="padding:8px 12px;border-bottom:1px solid var(--border)${chg?';background:rgba(180,83,9,.07)':''}">
+      <div style="display:flex;align-items:center;gap:6px">
+       <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600">${matOf(l.mat).name}</div>
+        <div class="hint" style="font-size:10px">${l.area} · 原始 <b>${l.qty}</b>${
+          chg?' → 现在 <b style="color:var(--warning)">'+now+'</b>':''}</div>
+       </div>
+       <button class="btn" style="padding:2px 9px" onclick="appInc('${l.mat}',-1)">−</button>
+       <b class="mono" style="width:26px;text-align:center${now===0?';color:var(--text-muted)':''}">${now}</b>
+       <button class="btn" style="padding:2px 9px" onclick="appInc('${l.mat}',1)">＋</button>
+      </div>
+      ${chg?`<div style="margin-top:3px"><a style="color:var(--accent);cursor:pointer;font-size:11px"
+        onclick="appReset('${l.mat}')">↩ 恢复原始 ${l.qty}</a>
+        ${now===0?'<span class="hint" style="font-size:10px">　（不要了 —— 行留着，不会消失）</span>':''}</div>`:''}
+     </div>`;}).join('')}
+    ${(q.pending||[]).length?`<div style="padding:8px 12px;background:rgba(220,38,38,.07)">
+      <div style="font-size:12px;color:var(--breach)"><b>★还有 ${q.pending.length} 个料没建档</b></div>
+      <div class="hint" style="font-size:10px">${q.pending.map(x=>x.code).join('、')} ——
+        先让采购建好，不然你改了半天最后发现少了几个料</div></div>`:''}
+    <div style="padding:8px 12px;background:var(--bg-elevated)">
+     <div style="font-size:12px;font-weight:600;margin-bottom:5px">Additional（现场新增）</div>
+     ${appAdds.map((a,i)=>`<div style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px dashed var(--border)">
+       <div style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1;min-width:0;font-size:12px">${matOf(a.mat).name}</div>
+        <button class="btn" style="padding:2px 9px" onclick="appAddInc(${i},-1)">−</button>
+        <b class="mono" style="width:22px;text-align:center">${a.qty}</b>
+        <button class="btn" style="padding:2px 9px" onclick="appAddInc(${i},1)">＋</button>
+        <a style="color:var(--breach);cursor:pointer;font-size:11px" onclick="appAddDel(${i})">删</a>
+       </div>
+       <input style="width:100%;margin-top:4px;font-size:11px" placeholder="为什么加这个？（必填）"
+         value="${a.why}" oninput="appAddWhy(${i},this.value)">
+      </div>`).join('')}
+     <input id="app-q" class="search" style="width:100%;padding:4px 8px;font-size:11px"
+       placeholder="🔍 搜物料：名字 / 编码 / 型号（换货＝老的减到 0，新的搜出来加这儿）" value="${appQ}"
+       oninput="appQ=this.value;keepFocus('app-q')">
+     ${appQ?`<div style="margin-top:5px">${cand.slice(0,8).map(m=>
+       `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border)">
+         <span style="flex:1;min-width:0;font-size:11px">${m.name}
+           <span class="hint mono" style="font-size:10px">${m.code} · ${m.model}</span></span>
+         ${onList(m.code)?'<span class="hint" style="font-size:10px">已在单上</span>'
+           :`<button class="btn" style="padding:2px 8px;font-size:11px" onclick="appAddMat('${m.code}')">＋ 加</button>`}
+        </div>`).join('')||`<div class="hint" style="font-size:11px;color:var(--warning)">
+          没搜到「${appQ}」—— 物料库里还没有这个料。<b>找采购建档</b>，
+          别自己写个名字：写了对不上编码，出库入库全乱</div>`}
+       ${cand.length>8?`<div class="hint" style="font-size:10px">还有 ${cand.length-8} 条没显示 —— 再多打两个字缩小范围</div>`:''}</div>`
+     :`<div class="hint" style="font-size:10px;margin-top:4px">物料库共 ${MATS.filter(m=>m.active!==false).length} 条 ——
+        ★<b>只能搜，不能翻</b>：正式系统里几百个料，下拉列表滑到手指酸也找不着</div>`}
+    </div>
+   </div>
+   <div style="padding:9px 12px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:center">
+    <span class="hint" style="font-size:10px;flex:1">${appSaved?'已暂存 '+appSaved.slice(11)
+      :(nEdit+appAdds.length?'<b style="color:var(--warning)">'+(nEdit+appAdds.length)+' 处未提交</b>':'还没改动')}</span>
+    <button class="btn" style="padding:4px 10px;font-size:11px" onclick="appStash()">暂存</button>
+    <button class="btn btn-primary" style="padding:4px 10px;font-size:11px" onclick="appSubmit()">提交审批</button>
+   </div>`:`<div style="padding:20px 12px" class="muted">这个项目还没有报价物料清单</div>`}
+  </div>
+  <div style="flex:1;min-width:300px">
+   <div style="font-weight:600;margin-bottom:6px">现场这块屏，六条规矩</div>
+   <table><tbody>
+    <tr><td style="width:150px"><b>① 只能调 0，不能删行</b></td>
+      <td class="hint">报价里有过的行永远留着 —— 删了就查不到"本来有过"</td></tr>
+    <tr><td><b>② 每行摆原始数量</b></td>
+      <td class="hint">现场是在<b>原始数</b>的基础上加减，不是凭空填一个数</td></tr>
+    <tr><td><b>③ 一键恢复</b></td>
+      <td class="hint">点错了随手退回原始数，不用记原来是几</td></tr>
+    <tr><td><b>③′ 加料只能搜</b></td>
+      <td class="hint">★<b>几百个物料，下拉列表工人根本找不到</b>（用户 2026-08-10 提）——
+        名字 / 编码 / 型号都能搜；<b>搜不到＝库里没有</b>，找采购建档，
+        别自己写一个名字（写了对不上编码，出库入库全乱）</td></tr>
+    <tr><td><b>④ 换货怎么做</b></td>
+      <td class="hint">老的<b>减到 0</b> ＋ 底下 Additional <b>加新的</b> —— 两个动作都留痕，
+        比"直接换成另一个料"清楚得多</td></tr>
+    <tr><td><b>⑤ 阶段管加减</b></td>
+      <td class="hint">SM2 可增可减；<b>施工中只能增</b>（在这儿点减号会被当场拦下）</td></tr>
+    <tr><td><b>⑥ 暂存</b></td>
+      <td class="hint">改到一半锁屏、明天再打开都还在；<b>确认无误再提交</b>，不会半成品跑到审批这儿</td></tr>
+   </tbody></table>
+   <div class="hint" style="margin-top:8px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:9px 11px">
+    <b>多人一起改怎么办</b>：每张变更单都记<b>谁提的、什么时候、改了什么、为什么</b>（上面那张表最后一栏）。
+    正式系统里同一条记录还挂着版本号，两个人同时改，后提交的那个会被拦下并提示"这条已被别人改过"，
+    <b>不会悄悄把别人的改动覆盖掉</b>。</div>
+  </div>
+ </div>
+</div>`;
+},
 'eng/工程流水账':()=>{
  schSeed();
  const p=PROJECTS[pj];
@@ -7835,6 +8194,36 @@ ${helpNote(`★<b>唯一的例外在最下面那张小表</b>：施工期已经�
  <div class="panel-body hint">出库单价在<b>出库那一刻定格</b>，之后采购再涨价也不动它 ——
    未退料要按这个价结进 S4，重新询价就成了两笔账。</div>
 </div>
+${(()=>{const need=live.map(p=>({p,rs:bomRows(p.code)})).filter(x=>x.rs.length);
+  if(!need.length) return '';
+  const T=(rs,k)=>rs.reduce((x,r)=>x+r[k],0);
+  return `<div class="panel"><div class="panel-head">★项目备料 · 工程审完了，先看仓库有没有现货
+   <span class="muted" style="font-weight:400">能出的直接拨过去，不够的差额才交采购</span></div>
+  <table>
+   <thead><tr><th style="width:118px">项目编号</th><th style="width:165px">项目 · 地址</th>
+     <th style="width:100px;text-align:right">应采</th><th style="width:100px;text-align:right">已下单</th>
+     <th style="width:100px;text-align:right">我已备</th><th style="width:100px;text-align:right">还要买</th>
+     <th>仓库能顶哪些</th><th style="width:96px"></th></tr></thead>
+   <tbody>${need.map(x=>{const cov=x.rs.filter(r=>r.canCover>0);
+    return `<tr>
+     <td><b class="mono" style="color:var(--accent)">${x.p.code}</b></td>
+     <td><b>${x.p.nick||x.p.name}</b><div class="hint">📍 ${x.p.street}, ${x.p.suburb} ${x.p.state}</div></td>
+     <td class="num">${T(x.rs,'need')}</td>
+     <td class="num">${T(x.rs,'ord')}</td>
+     <td class="num"${T(x.rs,'rsv')?' style="color:var(--healthy)"':''}>${T(x.rs,'rsv')||'<span class="muted">0</span>'}</td>
+     <td class="num"${T(x.rs,'gap')?' style="color:var(--warning);font-weight:600"':''}>${
+       T(x.rs,'gap')||'<span class="pill p-green">齐了</span>'}</td>
+     <td class="hint">${cov.length?cov.map(r=>`${matOf(r.mat).name} <b style="color:var(--healthy)">可顶 ${r.canCover}</b>
+       <span class="muted">（还要 ${r.gap}、库存 ${r.stock}）</span>`).join('<br>')
+       :(T(x.rs,'gap')?'<span style="color:var(--warning)">仓库一件都顶不上 —— 全都得买</span>':'—')}</td>
+     <td style="text-align:right">${cov.length
+       ?`<button class="btn btn-primary" onclick="whRsvOpen('${x.p.code}')">备料</button>`
+       :`<button class="btn" disabled title="${T(x.rs,'gap')?'仓库没有可顶的现货 —— 只能等采购买回来':'这个项目的料已经齐了，没有待备的'}">备料</button>`}</td>
+    </tr>`;}).join('')}</tbody></table>
+   <div class="panel-body hint">★<b>备料只是占住，不扣库存</b>：真正扣是在<b>出库</b>那一刻（要 S2 结清、要提货人签收）。
+     这一步的意义是<b>让采购别再去买</b> —— 仓库明明有货还下单，这笔钱就白花了，而且没人会发现。<br>
+     反过来也一样：<b>不许先占后补</b>（现货不够还硬占），占了采购就不买，到时候两头都没有。</div>
+  </div>`;})()}
 ${tail.length?`<div class="panel"><div class="panel-head">⚠ 施工期已过、货还没回来
   <span class="muted" style="font-weight:400">${tail.length} 个 · 不属于"在施工"，但必须盯着</span></div>
  <table>

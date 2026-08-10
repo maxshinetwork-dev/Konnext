@@ -120,6 +120,7 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
         <div class="hint">📍 3 Springdale Rd, Killara NSW · 09:00–12:00（办公室排的）</div>
         <div class="hint">出发前清单：布线图（最新版）· 线材清单（按方案）· KNX 测试仪</div>
         <button class="btn sec" onclick="appGo('sm')">开始 Site Meeting →</button>
+        <button class="btn sec" onclick="appGo('mat')">项目物料（改数量 / 加料）→</button>
       </div>
       <div class="card">
         <div class="row"><h4 style="flex:1">🧾 我要报销</h4></div>
@@ -341,6 +342,48 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
     </div>
   </div>
 
+  <!-- 项目物料：★现场改物料 → 工程管理审「变量」→ 库管先看现货 → 采购买差额 -->
+  <div class="scr" id="s-mat">
+    <div class="top"><b>项目物料</b><span class="who" id="m-hd">KX-2026-0203 罗宅 · SM2</span></div>
+    <div class="body">
+      <div class="card">
+        <div class="row"><span class="hint" style="flex:1">现在阶段</span>
+          <button class="btn sec" id="m-sm2" style="width:auto;padding:4px 12px;font-size:12px" onclick="matStage('SM2')">SM2</button>
+          <button class="btn sec" id="m-bld" style="width:auto;padding:4px 12px;font-size:12px;margin-left:6px" onclick="matStage('施工中')">施工中</button>
+        </div>
+        <div class="hint" id="m-rule">SM2 现场量完尺，方案该改就改 —— <b>可增可减</b></div>
+      </div>
+      <div id="m-list"></div>
+      <div class="card">
+        <h4>Additional（现场新增）</h4>
+        <div id="m-adds"></div>
+        <input id="m-q" placeholder="🔍 搜物料：名字 / 编码 / 型号 / 品牌…" oninput="matSearch(this.value)"
+          autocomplete="off" aria-label="搜索物料">
+        <div id="m-res"></div>
+        <div class="hint">★<b>物料库有几百个，只能搜，不能翻</b> —— 下拉列表滑到手指酸也找不着。
+          输两个字就筛（"面板" "调光" "cat6" "5086" 都行）。搜不到＝物料库里还没有这个料，
+          <b>找采购建档</b>，别自己瞎写一个名字（写了对不上编码，出库入库全乱）。</div>
+        <div class="hint">★<b>换货怎么做</b>：老的<b>减到 0</b>，新的加在这儿 —— 两个动作都留痕，
+          比"直接换成另一个料"清楚得多</div>
+      </div>
+      <div class="row" style="gap:8px">
+        <button class="btn sec" style="flex:1" onclick="matStash()">暂存</button>
+        <button class="btn ok" style="flex:1" onclick="matSubmit()">提交审批</button>
+      </div>
+      <div class="hint" id="m-foot" style="text-align:center;margin-top:6px">还没改动</div>
+      <div class="note">报价清单里的行<b>只能调 0，不能删</b>——删了就查不到"本来有过"，
+        客户问"我付的钱里那 10 个面板呢"没人答得上来。<br>
+        <b>SM2 之后只能增不能减</b>：料可能已经发到工地了，往下减账就对不上，而且系统不会报错。<br>
+        提交之后工程管理<b>只看变量</b>（改了哪几行、加了什么、为什么），批了才进采购账。</div>
+    </div>
+    <div class="tabs">
+      <button onclick="appGo('today')"><span class="ic">📋</span>今日</button>
+      <button onclick="appGo('punch')"><span class="ic">📍</span>打卡</button>
+      <button onclick="appGo('report')"><span class="ic">✍️</span>上报</button>
+      <button onclick="appGo('me')"><span class="ic">👤</span>我的</button>
+    </div>
+  </div>
+
   <!-- 我的 -->
   <div class="scr" id="s-me">
     <div class="top"><b>我的</b><span class="who">小陈 · 月薪制</span></div>
@@ -366,12 +409,134 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
 
 <p class="caption">正式版=网页 App（手机浏览器打开即用，无需装应用）。以上界面对应契约里已定的表：
 work_log 打卡 · daily_report 每日上报 · site_meeting 现场提交（记录/照片/签字 → 完成定格）· install_item 安装项 ·
-maintenance_case 现场三样 · expense 项目报销（收据图必填）· 出库提货确认。
+maintenance_case 现场三样 · expense 项目报销（收据图必填）· 出库提货确认 ·
+quote_bom 报价原始单 / bom_change 物料变更（★只能调 0 不能删行 · SM2 之后只能增）。
 「今日任务」里点安装卡片可进<a style="color:var(--accent);cursor:pointer" onclick="appGo('install')">安装清单</a>演示。</p>
 
 <script>
 function appGo(s){document.querySelectorAll('.scr').forEach(x=>x.classList.remove('on'));
-  document.getElementById('s-'+s).classList.add('on');}
+  document.getElementById('s-'+s).classList.add('on');
+  if(s==='mat') matPaint();}
+/* 手机屏里的提示层 —— ★不能用原生 alert：Artifact 沙箱把它屏蔽了，点了等于什么都没发生 */
+function say(html){ let b=document.getElementById('saybox');
+  if(!b){ b=document.createElement('div'); b.id='saybox';
+    b.style.cssText='position:absolute;left:14px;right:14px;bottom:64px;background:#10161d;color:#fff;'+
+      'padding:12px 14px;border-radius:12px;font-size:12.5px;line-height:1.6;z-index:9;box-shadow:0 8px 24px rgba(0,0,0,.3)';
+    b.onclick=()=>{b.style.display='none';};
+    document.querySelector('.screen').appendChild(b); }
+  b.innerHTML=html+'<div style="opacity:.6;margin-top:6px;font-size:11px">（点一下关掉）</div>';
+  b.style.display='block'; clearTimeout(b._t); b._t=setTimeout(()=>{b.style.display='none';},9000); }
+/* ── 项目物料屏（罗宅 KX-2026-0203 报价原始单）── */
+const MLINES=[{n:'KNX 四联面板（白）',a:'一二层',base:22},
+              {n:'红外感应器（吸顶）',a:'走廊+车库',base:12},
+              {n:'网线 CAT6（305m/箱）',a:'全屋',base:5}];
+/* 物料库（演示节选 —— 正式系统里是采购维护的整张物料主表，几百条，所以只能搜不能翻） */
+const MLIB=[
+ {c:'M-KNX-P4W', n:'KNX 四联面板（白）',   m:'ABB BE-TA5504.G1'},
+ {c:'M-KNX-P4B', n:'KNX 四联面板（黑）',   m:'ABB BE-TA5504.B1'},
+ {c:'M-KNX-P2W', n:'KNX 两联面板（白）',   m:'ABB BE-TA5502.G1'},
+ {c:'M-KNX-SW8', n:'KNX 八联面板（黑）',   m:'ABB BE-TA5508.B1'},
+ {c:'M-KNX-DIM4',n:'KNX 调光模块 4 路',    m:'ABB DIM-4'},
+ {c:'M-KNX-DIM8',n:'KNX 调光模块 8 路',    m:'ABB DIM-8'},
+ {c:'M-KNX-SA8', n:'KNX 开关驱动 8 路',    m:'ABB SA/S8'},
+ {c:'M-KNX-GW',  n:'KNX IP 网关',          m:'ABB GW-200'},
+ {c:'M-KNX-PSU', n:'KNX 电源 640mA',       m:'ABB SV/S30.640'},
+ {c:'M-KNX-BLD', n:'KNX 窗帘控制器 4 路',  m:'ABB JRA/S4'},
+ {c:'M-CB-SW6',  n:'C-Bus 六键开关',       m:'Clipsal 5086NL'},
+ {c:'M-CB-SW4',  n:'C-Bus 四键开关',       m:'Clipsal 5084NL'},
+ {c:'M-CB-DIM',  n:'C-Bus 调光器 8 路',    m:'Clipsal L5508D1A'},
+ {c:'M-CB-REL',  n:'C-Bus 继电器 12 路',   m:'Clipsal L5512RVFP'},
+ {c:'M-SEN-PIR', n:'红外感应器（吸顶）',   m:'ZL-PIR-C'},
+ {c:'M-SEN-PIRW',n:'红外感应器（壁挂）',   m:'ZL-PIR-W'},
+ {c:'M-SEN-TH',  n:'温湿度传感器',         m:'ZL-TH-01'},
+ {c:'M-CBL-CAT6',n:'网线 CAT6（305m/箱）', m:'CAT6-305'},
+ {c:'M-CBL-CAT6A',n:'网线 CAT6A 屏蔽（305m/箱）',m:'CAT6A-S-305'},
+ {c:'M-CBL-KNX', n:'KNX 总线（100m/卷）',  m:'KNX-BUS-100'},
+ {c:'M-CBL-SPK', n:'音响线 2×2.5（100m）', m:'SPK-2C25'},
+ {c:'M-NET-SW8', n:'网络交换机 8 口 POE',  m:'US-8-150W'},
+ {c:'M-NET-AP',  n:'无线 AP（吸顶）',      m:'U6-Lite'},
+ {c:'M-RACK-12U',n:'弱电箱 12U',           m:'RK-12U'},
+];
+let mNow=MLINES.map(x=>x.base), mAdds=[], mStage='SM2', mSaved='', mQ='';
+function matStage(v){ mStage=v; matPaint(); }
+function matInc(i,d){
+  if(d<0&&mStage!=='SM2'&&mNow[i]<=MLINES[i].base){
+    say('门禁：现在是「施工中」，<b>只能加不能减</b><br>料可能已经发到工地了，往下减账就对不上。<br>要减请找工程管理走另一条流程'); return; }
+  mNow[i]=Math.max(0,mNow[i]+d); mSaved=''; matPaint(); }
+function matReset(i){ mNow[i]=MLINES[i].base; mSaved=''; matPaint(); }
+function matAdd(code){ const m=MLIB.find(x=>x.c===code); if(!m) return;
+  if(mAdds.some(a=>a.n===m.n)){ say('这个料已经在下面了，直接改数量就行'); return; }
+  if(MLINES.some(l=>l.n===m.n)){ say('这个料<b>报价单里本来就有</b>（上面那几行）——<br>'+
+    '直接在那一行加数量，别在这儿重复加一遍'); return; }
+  mAdds.push({n:m.n,c:m.c,q:1,why:''}); mQ=''; mSaved='';
+  const q=document.getElementById('m-q'); if(q) q.value='';
+  matPaint(); }
+/* ★搜索：几百个物料只能搜不能翻（用户 2026-08-10 提） */
+function matSearch(v){ mQ=(v||'').trim(); matRes(); }
+function matRes(){ const box=document.getElementById('m-res'); if(!box) return;
+  if(!mQ){ box.innerHTML='<div class="hint">物料库共 '+MLIB.length+' 条（演示节选）—— 输入两个字开始搜</div>'; return; }
+  const k=mQ.toLowerCase();
+  const hit=MLIB.filter(m=>(m.c+' '+m.n+' '+m.m).toLowerCase().includes(k));
+  if(!hit.length){ box.innerHTML='<div class="hint" style="color:#b45309">'+
+    '没搜到「'+mQ+'」—— 物料库里还没有这个料。<b>找采购建档</b>，别自己写名字：'+
+    '写了对不上编码，出库入库全乱</div>'; return; }
+  box.innerHTML=hit.slice(0,8).map(m=>{
+    const had=mAdds.some(a=>a.n===m.n)||MLINES.some(l=>l.n===m.n);
+    return '<div class="row" style="padding:6px 0;border-bottom:1px solid var(--border)">'+
+     '<div style="flex:1;min-width:0"><div style="font-size:13px">'+m.n+'</div>'+
+     '<div class="hint" style="font-size:11px">'+m.c+' · '+m.m+'</div></div>'+
+     (had?'<span class="hint">已在单上</span>'
+        :'<button class="btn sec" style="width:auto;padding:4px 12px;margin:0;font-size:12px" onclick="matAdd(\''+m.c+'\')">＋ 加</button>')+
+     '</div>';}).join('')+
+    (hit.length>8?'<div class="hint">还有 '+(hit.length-8)+' 条没显示 —— 再多打两个字缩小范围</div>':'');}
+function matAddInc(i,d){ mAdds[i].q=Math.max(1,mAdds[i].q+d); mSaved=''; matPaint(); }
+function matAddDel(i){ mAdds.splice(i,1); mSaved=''; matPaint(); }
+function matWhy(i,v){ mAdds[i].why=v; mSaved=''; }
+function matStash(){ mSaved=new Date().toTimeString().slice(0,5);
+  matPaint(); say('已暂存 ✓ 手机关了、明天再打开都还在<br>确认无误之后再点「提交审批」'); }
+function matSubmit(){
+  const ed=MLINES.map((l,i)=>({l,i})).filter(x=>mNow[x.i]!==x.l.base);
+  if(!ed.length&&!mAdds.length){ say('还没改任何东西 —— 调个数量或加个料再提交'); return; }
+  const noWhy=mAdds.filter(a=>a.why.trim().length<2);
+  if(noWhy.length){ say('门禁：新加的料要写清楚为什么（'+noWhy.map(a=>a.n).join('、')+
+    '）——<br>工程管理只看变量，没有理由他没法判断'); return; }
+  say('已提交 ✓ 工程管理那边会看到【只有变量】的一张单：<br>'+
+    ed.map(x=>'· '+x.l.n+'　<b>'+x.l.base+' → '+mNow[x.i]+'</b>'+(mNow[x.i]===0?'（不要了，行留着）':'')).join('<br>')+
+    (ed.length&&mAdds.length?'<br>':'')+
+    mAdds.map(a=>'· ＋'+a.n+' ×'+a.q+'　'+a.why).join('<br>')+
+    '<br><br>批了之后：库管先看现货能不能直接出，不够的差额才到采购。');
+  mNow=MLINES.map(x=>x.base); mAdds=[]; mSaved=''; matPaint(); }
+function matPaint(){
+  const sm=mStage==='SM2';
+  document.getElementById('m-hd').textContent='KX-2026-0203 罗宅 · '+mStage;
+  document.getElementById('m-sm2').className='btn '+(sm?'ok':'sec');
+  document.getElementById('m-bld').className='btn '+(sm?'sec':'ok');
+  document.getElementById('m-rule').innerHTML=sm
+    ?'SM2 现场量完尺，方案该改就改 —— <b>可增可减</b>'
+    :'★施工中：<b>只能增不能减</b>（点减号会被当场拦下）';
+  document.getElementById('m-list').innerHTML=MLINES.map((l,i)=>{const c=mNow[i]!==l.base;
+    return '<div class="card"'+(c?' style="border-color:var(--warn)"':'')+'>'+
+     '<div class="row"><div style="flex:1;min-width:0"><h4 style="margin:0">'+l.n+'</h4>'+
+       '<div class="hint">'+l.a+' · 原始 <b>'+l.base+'</b>'+
+       (c?' → 现在 <b style="color:var(--warn)">'+mNow[i]+'</b>':'')+'</div></div>'+
+     '<button class="btn sec" style="width:auto;padding:3px 12px;margin:0" onclick="matInc('+i+',-1)">−</button>'+
+     '<b style="width:34px;text-align:center">'+mNow[i]+'</b>'+
+     '<button class="btn sec" style="width:auto;padding:3px 12px;margin:0" onclick="matInc('+i+',1)">＋</button></div>'+
+     (c?'<div class="hint" style="margin-top:5px"><a style="color:var(--accent);cursor:pointer" onclick="matReset('+i+')">↩ 恢复原始 '+l.base+'</a>'+
+        (mNow[i]===0?'　（不要了 —— 这行留着，不会消失）':'')+'</div>':'')+
+     '</div>';}).join('');
+  document.getElementById('m-adds').innerHTML=mAdds.map((a,i)=>
+    '<div style="margin-bottom:8px"><div class="row"><span style="flex:1;min-width:0">'+a.n+'</span>'+
+    '<button class="btn sec" style="width:auto;padding:3px 11px;margin:0" onclick="matAddInc('+i+',-1)">−</button>'+
+    '<b style="width:30px;text-align:center">'+a.q+'</b>'+
+    '<button class="btn sec" style="width:auto;padding:3px 11px;margin:0" onclick="matAddInc('+i+',1)">＋</button>'+
+    '<a style="color:#c62828;cursor:pointer;margin-left:8px" onclick="matAddDel('+i+')">删</a></div>'+
+    '<input placeholder="为什么加这个？（必填）" value="'+a.why+'" oninput="matWhy('+i+',this.value)"></div>').join('')
+    ||'<div class="hint">还没加东西</div>';
+  matRes();
+  const n=MLINES.filter((l,i)=>mNow[i]!==l.base).length+mAdds.length;
+  document.getElementById('m-foot').innerHTML=mSaved?('已暂存 '+mSaved+' · 没提交，工程管理还看不到')
+    :(n?'<b style="color:var(--warn)">'+n+' 处未提交</b>':'还没改动');}
 function punch(){const b=document.getElementById('pin');
   if(b.textContent.includes('离场')){b.textContent='本任务已完成 ✓';b.disabled=true;
     document.getElementById('plog').innerHTML='07:58 出发 → 08:12 入场林宅 → <b>12:31 离场林宅 ✓</b> 在场 4.3h'+

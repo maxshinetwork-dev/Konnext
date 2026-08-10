@@ -2474,7 +2474,7 @@ const { chromium } = require('playwright');
     R.ordered = PCPO.length===on+1&&PCPO[0].pj===pj
       && PCPO[0].lines[0].mat==='M-KNX-P4W'
       && OPLOG.some(l=>l.action==='按项目物料账下单');
-    R.leftInLedger = bomRows(pj).some(r=>r.mat==='M-CBL-KNX'&&r.gap>0);  // 没勾的还留着
+    R.leftInLedger = bomRows(pj).some(r=>r.mat==='M-KNX-DIM4'&&r.gap>0);  // 没勾的还留着
     // 还原
     QBOM.length=0; q0.forEach(x=>QBOM.push(x));
     BOMCHG.length=0; c0.forEach(x=>BOMCHG.push(x));
@@ -2540,6 +2540,161 @@ const { chromium } = require('playwright');
   ok(S63.oneSource,'★项目需求还存着第二份数据（应当全部由物料账现算）');
   ok(S63.live,'现算没有真的跟着变（改了变更状态，待下单需求应立刻变）');
 
+
+  // ═══ 六十四轮：工程审批（只看变量）· App 物料屏 · 库管备料 ═══
+  const r64=await page.evaluate(()=>{ const R={};
+    const l0=OPLOG.length, n0=NOTIF.length;
+    const c0=JSON.parse(JSON.stringify(BOMCHG)), v0=JSON.parse(JSON.stringify(WHRSV));
+    const pj='KX-2026-0188';
+    // ─── ① 库管备料：备了的那部分采购不用再买 ───
+    loginAs('warehouse');
+    const before=bomRows(pj).find(r=>r.mat==='M-KNX-P4W');
+    R.rsvCuts = before.need===14&&before.rsv===0&&before.gap===14
+      && bomRows(pj).find(r=>r.mat==='M-CBL-KNX').rsv===8      // 演示种子里已备 8
+      && bomRows(pj).find(r=>r.mat==='M-CBL-KNX').gap===0;     // 备了 → 不用买了
+    go('wh','项目出库状态');
+    const hw=document.getElementById('main').innerHTML;
+    R.rsvUI = hw.includes('项目备料')&&hw.includes('whRsvOpen')&&hw.includes('备料只是占住');
+    // 门禁：拨的比还要的多 / 现货不够 / 填了非数字
+    const rows=bomRows(pj).filter(r=>r.gap>0);
+    const iP4W=rows.findIndex(r=>r.mat==='M-KNX-P4W');       // 还要 14、库存 12
+    const iD4 =rows.findIndex(r=>r.mat==='M-KNX-DIM4');      // 还要 8、库存 4
+    const n1=WHRSV.length;
+    whRsvOpen(pj);
+    rows.forEach((r,i)=>{ document.getElementById('rs-'+i).value='0'; });
+    document.getElementById('rs-'+iP4W).value='x';
+    whRsvSave(pj); R.gNum = WHRSV.length===n1;
+    document.getElementById('rs-'+iP4W).value='99';
+    whRsvSave(pj); R.gTooMany = WHRSV.length===n1;             // 拨的比还要的还多
+    document.getElementById('rs-'+iP4W).value='13';            // 还要 14、库存只有 12
+    whRsvSave(pj); R.gNoStock = WHRSV.length===n1;             // ★不许先占后补
+    document.getElementById('rs-'+iP4W).value='0';
+    document.getElementById('rs-'+iD4).value='4';              // 库存 4 全拨过去
+    whRsvSave(pj);
+    R.rsvSaved = WHRSV.length===n1+1
+      && bomRows(pj).find(r=>r.mat==='M-KNX-DIM4').gap===4     // 8 − 4 ＝ 4
+      && OPLOG.some(l=>l.action==='项目备料')
+      && NOTIF.some(x=>(x.what||'').includes('已备料'));
+    R.stockUntouched = stockOf('M-KNX-DIM4')===4;              // ★备料不扣库存，出库那一刻才扣
+    // ─── ② 工程审批：只看变量 · SM2 之后只能增 ───
+    loginAs('eng'); go('eng','物料变更审批');
+    const he=document.getElementById('main').innerHTML;
+    R.engPage = he.includes('只看变量')&&he.includes('CHG-0188-02')&&he.includes('chgApprove');
+    R.engNoFullTable = !he.includes('库房现货')&&!he.includes('勾选下单');   // 这页不摆整张物料账
+    // 造一张"施工中还想减量"的单 → 批准必须被拦
+    BOMCHG.push({id:'CHG-TEST-99',pj,stage:'施工中',by:'测试（App 现场）',at:nowTs(),st:'待审',
+      why:'测试用：施工中往下减',edits:[{mat:'M-KNX-P4W',from:14,to:9}],adds:[],
+      reviewBy:'',reviewAt:'',reviewNote:''});
+    renderAll();
+    const he2=document.getElementById('main').innerHTML;
+    R.blockedUI = he2.includes('施工中还想减量');
+    chgApprove('CHG-TEST-99');
+    R.gCutAfterSM2 = BOMCHG.find(c=>c.id==='CHG-TEST-99').st==='待审';   // 没批成
+    // 退回：原因太短要拦
+    chgReject('CHG-TEST-99'); document.getElementById('uiinput').value='不行'; uiOk();
+    R.gWhyShort = BOMCHG.find(c=>c.id==='CHG-TEST-99').st==='待审';
+    chgReject('CHG-TEST-99');
+    document.getElementById('uiinput').value='施工中不能减量，请重新提一张只增的';
+    uiOk();
+    R.rejected = BOMCHG.find(c=>c.id==='CHG-TEST-99').st==='已退回'
+      && OPLOG.some(l=>l.action==='退回物料变更');
+    BOMCHG.splice(BOMCHG.findIndex(c=>c.id==='CHG-TEST-99'),1);
+    // 批准待审那张 → 应采立刻变
+    const q0=bomQty(pj,'M-KNX-DIM4');
+    chgApprove('CHG-0188-02'); document.getElementById('uiinput').value='现场照片对得上，批';
+    uiOk();
+    R.approved = BOMCHG.find(c=>c.id==='CHG-0188-02').st==='已批'
+      && bomQty(pj,'M-KNX-DIM4')===q0+1                       // 花园廊架 +1 立刻进账
+      && OPLOG.some(l=>l.action==='批准物料变更')
+      && NOTIF.some(x=>(x.what||'').includes('物料变更已批准'));
+    // ─── ③ App 物料屏 ───
+    const pj2='KX-2026-0203';        // ★罗宅：物料都建过档，能走到提交；林宅留给"挂起拦提交"那条
+    appPj=pj2; appStage='SM2'; appEdit={}; appAdds=[]; appQ=''; appSaved='';
+    R.appBase = appBase('M-KNX-P4W')===22&&appNow('M-KNX-P4W')===22;   // 摆的是原始数
+    appInc('M-KNX-P4W',-1); R.appMinus = appNow('M-KNX-P4W')===21;
+    appReset('M-KNX-P4W');  R.appReset = appNow('M-KNX-P4W')===22&&appEdit['M-KNX-P4W']==null;
+    // 换货：老的减到 0（行不会消失）
+    for(let i=0;i<25;i++) appInc('M-KNX-P4W',-1);
+    R.appZero = appNow('M-KNX-P4W')===0
+      && qbomOf(pj2).lines.some(l=>l.mat==='M-KNX-P4W');      // ★行还在
+    appReset('M-KNX-P4W');
+    // ★施工中只能增：减号当场被拦
+    appStage='施工中'; appInc('M-SEN-PIR',-1);
+    R.appNoCutAfterSM2 = appNow('M-SEN-PIR')===appBase('M-SEN-PIR');
+    appInc('M-SEN-PIR',2); R.appPlusOK = appNow('M-SEN-PIR')===appBase('M-SEN-PIR')+2;
+    // Additional：加料 · 重复加拦 · 理由必填
+    // ★加料只能搜（用户 2026-08-10）：搜得到、搜不到有话说、已在单上的不给"加"
+    go('eng','物料变更审批');
+    appQ='网关'; renderAll();
+    const hs=document.getElementById('main').innerHTML;
+    R.appSearch = hs.includes('KNX IP 网关')&&hs.includes("appAddMat('M-KNX-GW')");
+    appQ='xyz不存在'; renderAll();
+    R.appSearchMiss = document.getElementById('main').innerHTML.includes('找采购建档');
+    appQ=''; renderAll();
+    R.appSearchIdle = document.getElementById('main').innerHTML.includes('只能搜，不能翻');
+    appAddMat('M-KNX-GW'); R.appAdd = appAdds.length===1&&appAdds[0].mat==='M-KNX-GW';
+    appAddMat('M-KNX-GW'); R.appAddDup = appAdds.length===1;
+    appAddMat('M-SEN-PIR'); R.appAddInQuote = appAdds.length===1;   // 报价单里本来就有 → 不许重复加
+    appAddInc(0,2); R.appAddQty = appAdds[0].qty===3;
+    const nb=BOMCHG.length;
+    appSubmit(); R.gAddWhy = BOMCHG.length===nb;              // 没写理由 → 拦
+    appAddWhy(0,'业主临时要加一台网关');
+    // 暂存：不生成变更单，只记时间
+    appStash(); R.appStash = appSaved!==''&&BOMCHG.length===nb;
+    appSubmit(); document.getElementById('uiinput').value='业主加了花园区域';
+    uiOk();
+    const nw=BOMCHG[BOMCHG.length-1];
+    R.appSubmit = BOMCHG.length===nb+1&&nw.st==='待审'&&nw.stage==='施工中'&&nw.pj===pj2
+      && nw.edits.length===1&&nw.edits[0].mat==='M-SEN-PIR'
+      && nw.adds.length===1&&nw.adds[0].mat==='M-KNX-GW'&&nw.adds[0].qty===3
+      && appEdit['M-SEN-PIR']==null&&appAdds.length===0;       // 提交后手机上清空
+    R.appWaitNotCount = bomQty(pj2,'M-KNX-GW')===0;            // ★待审的不进账
+    // ★挂起没清 → 不许提交（林宅还有 1 个料没建档）
+    appPj=pj; appStage='SM2'; appEdit={}; appAdds=[]; appInc('M-KNX-DIM4',1);
+    const bn=BOMCHG.length; appSubmit();
+    R.gPending = BOMCHG.length===bn;
+    // 还原
+    BOMCHG.length=0; c0.forEach(x=>BOMCHG.push(x));
+    WHRSV.length=0; v0.forEach(x=>WHRSV.push(x));
+    appPj='KX-2026-0188'; appStage='SM2'; appEdit={}; appAdds=[]; appQ=''; appSaved='';
+    chgF='待审'; chgQ='';
+    OPLOG.splice(0,OPLOG.length-l0); NOTIF.splice(0,NOTIF.length-n0);
+    pcClose(); renderAll();
+    R.restored = BOMCHG.length===c0.length&&WHRSV.length===v0.length
+      && bomQty(pj,'M-KNX-P4W')===14&&stockOf('M-KNX-DIM4')===4;
+    return JSON.stringify(R);});
+  const S64=JSON.parse(r64);
+  ok(S64.rsvCuts,'库管备了的那部分没从「还要买」里减掉（仓库有货还去买＝钱白花）');
+  ok(S64.rsvUI,'库管「项目出库状态」上没有项目备料这一块');
+  ok(S64.gNum,'备料数量填非数字竟能保存（应拦）');
+  ok(S64.gTooMany,'拨的比还要的还多竟能保存（应拦）');
+  ok(S64.gNoStock,'★现货不够竟能先占后补（应拦 —— 占了采购就不买，到时候两头都没有）');
+  ok(S64.rsvSaved,'备料保存失败 / 「还要买」没减 / 没留痕没通知采购');
+  ok(S64.stockUntouched,'★备料把库存直接扣了（应当只是占住，真正扣是在出库那一刻）');
+  ok(S64.engPage,'工程「物料变更审批」页没渲染出待审单');
+  ok(S64.engNoFullTable,'★审批页把整张物料账也摆上去了（只看变量，逐行核对没人做得到）');
+  ok(S64.blockedUI,'施工中带减量的单没在界面上标出来');
+  ok(S64.gCutAfterSM2,'★施工中还想减量竟能批准（SM2 之后只能增 —— 料已发到工地，减了账就对不上）');
+  ok(S64.gWhyShort,'退回原因只写两个字竟能退（应拦 ≥4 字 —— 现场不知道该怎么改）');
+  ok(S64.rejected,'退回没生效或没留痕');
+  ok(S64.approved,'批准后应采数量没变 / 没留痕 / 没通知库管采购');
+  ok(S64.appBase,'★App 物料屏没摆原始采购数量（现场是在原始数基础上加减）');
+  ok(S64.appMinus&&S64.appPlusOK,'App 加减号不起作用');
+  ok(S64.appReset,'App「恢复」没回到原始数');
+  ok(S64.appZero,'★减到 0 之后那一行消失了（报价里有过就必须留着）');
+  ok(S64.appNoCutAfterSM2,'★施工中在 App 上点减号竟然减下去了（应当当场拦）');
+  ok(S64.appAdd&&S64.appAddQty,'App Additional 加料 / 改数量不起作用');
+  ok(S64.appAddDup,'同一个料能重复加进 Additional（应提示直接改数量）');
+  ok(S64.appAddInQuote,'★报价单里本来就有的料还能在 Additional 里再加一遍（同料两行，应采数就错了）');
+  ok(S64.appSearch,'★App 加料搜不出来（几百个物料，下拉列表工人根本找不到）');
+  ok(S64.appSearchMiss,'搜不到时没告诉工人「找采购建档」（自己写名字＝对不上编码，出入库全乱）');
+  ok(S64.appSearchIdle,'没输关键词时没说明"只能搜不能翻"');
+  ok(S64.gAddWhy,'新加的料没写理由竟能提交（应拦 —— 工程管理只看变量，没理由没法判断）');
+  ok(S64.appStash,'★暂存竟然直接提交了（暂存只是存在手机上，确认无误才提交）');
+  ok(S64.appSubmit,'App 提交没生成待审变更单 / 提交后手机上没清空');
+  ok(S64.appWaitNotCount,'★待审的变更进了应采（必须审完才算数）');
+  ok(S64.gPending,'★还有物料没建档竟能提交变更（应拦 —— 不然改了半天最后发现少了几个料）');
+  ok(S64.restored,'六十四轮测试后演示态未还原');
 
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
