@@ -409,7 +409,7 @@ const WHO = {
 };
 const DEPT = {
   presales:{label:'售前', pages:['项目列表','项目状态表','操作日志','设置']},  /* 用户定：大表=项目列表；状态表=比例图+走向图+状态过滤 */
-  eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','出货单','Site Meeting','物料变更审批','安装调试','交付','工程流水账','每日工时管理','文档库','操作日志','设置']},
+  eng:     {label:'工程管理', pages:['总览','项目列表','项目详情','派工排班','出货单','Site Meeting','物料变更审批','安装调试','交付','工程流水账','每日工时管理','文档库','操作日志','设置']},
   proc:    {label:'采购', pages:['总览','采购需求','采购单','供应商','物料主表','汇率','调价历史','RMA退换','操作日志','设置']},
   wh:      {label:'库管', pages:['总览','项目出库状态','入库','出库','退库与拒收','盘点','物料在谁手里','库存流水','操作日志','设置']},
   fin:     {label:'财务', pages:['财务节点','项目列表','项目收款S1-S3','尾款结算S4与Var','运维财务支持','催账和停服','工资数据','项目报销','成本与利润率','操作日志','设置']},
@@ -3021,9 +3021,9 @@ function mtNewSave(){ const v=id=>((document.getElementById(id)||{}).value||'').
 /* ★五十六轮起，运维不再自己派工：排人一律在工程「派工排班」里做
    （工作类型＝维护 → 选维护单 → 地址与内容自动带出）。
    这两个函数保留成指路，防止旧入口还残留在别处被点到。 */
-function mtDispOpen(id){ go('eng','派工排班');
-  uiAlert('维护上门的排班改在工程「派工排班」里排 —— 工作类型选「维护」，第二个框直接列出维护单，\n'+
-    '点中哪张单，项目地址和工作内容就自动带出（取自运维建单时的记录）'); }
+function mtDispOpen(id){
+  goX('eng','派工排班','维护上门的排班在工程「派工排班」里排 —— 工作类型选「维护」，\n'+
+    '第二个框直接列出维护单；点中哪张单，项目地址和工作内容就自动带出（取自运维建单时的记录）'); }
 function mtDispOpenOld(id){ const c=MCASES.find(x=>x.id===id); if(!c) return; mtDlg={m:'disp',id};
   const p=PROJECTS.find(x=>x.code===c.code)||{};
   const w=warOf(c.code);
@@ -5099,7 +5099,25 @@ function switchWho(w){ me=w; tab=WHO[w].depts.includes(tab)?tab:(w==='admin'?'de
   if(tab==='decision'&&WHO[w].tier!==1) tab=WHO[w].depts[0];
   page=DEPT[tab].pages[0]; pjFilter=null; renderAll(); }
 function pickPj(i){ pj=+i; renderAll(); }
-function go(t,p){ tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; stFilter='全部'; statPeriod='month'; logQ=''; logDeptF='全部'; nodeF='全部'; finQ=''; whQ=''; whKind='全部'; whFrom=''; renderAll(); }
+/* ══════════ 跨部门跳转（用户 2026-08-10 提的 bug）══════════
+   原来运维点「去派工排班」直接 go('eng',…)，可运维账号根本没有工程那条线的权限：
+   顶上的部门页标里没有「工程管理」，人就<b>卡在那儿回不来</b>，只能切身份。
+   两条一起修：
+     ①没那条线权限的 —— <b>不跳</b>，说清这一步归谁做（跳过去也看不了）
+     ②有权限跳过去的 —— 页顶给一条「← 返回」，原路回得来 */
+let navBack=null;
+function goX(t,p,why){
+  const u=WHO[me];
+  if(!u.depts.includes(t)){
+    uiAlert('这一步在【'+DEPT[t].label+'】那条线上做'+(p?('（'+p+'）'):'')+' ——\n'+
+      (why?why+'\n\n':'')+
+      '你的账号只有'+u.depts.map(d=>DEPT[d].label).join('、')+'的权限，跳过去也打不开。\n'+
+      '请找'+DEPT[t].label+'负责人。'); return; }
+  const b={tab,page,label:DEPT[tab].label+' · '+page};
+  go(t,p); navBack=b; renderAll();      /* go() 里已经渲染过一次，那会儿 navBack 还是空的 */
+  if(why) setTimeout(()=>uiAlert(why),60); }
+function goBack(){ if(!navBack) return; const b=navBack; go(b.tab,b.page); }
+function go(t,p){ navBack=null; tab=t; page=p||DEPT[t].pages[0]; pjFilter=null; bigCity='全部'; bigState='全部'; bigQ=''; pjQ=''; stFilter='全部'; statPeriod='month'; logQ=''; logDeptF='全部'; nodeF='全部'; finQ=''; whQ=''; whKind='全部'; whFrom=''; renderAll(); }
 /* 去处理 → 直接过滤出该项目（二十九轮用户定：不要全列出来再让人找） */
 function goPj(t,p,code){ go(t,p);
   if(code&&code!=='?'){ finQ=code; pjQ=code; bigQ=code;
@@ -5441,6 +5459,12 @@ function renderAll(){
 
   const isCompany=COMPANY_PAGES.has(tab+'/'+page);
   const p=PROJECTS[pj];
+  /* ★从别的部门跳过来的，页顶留一条回去的路（六十九轮） */
+  const backBar=navBack?`<div class="coybar" style="background:var(--accent-soft);border-color:var(--accent)">
+      <button class="btn" onclick="goBack()">← 返回 ${navBack.label}</button>
+      <span class="grow"></span>
+      <span class="hint">你现在在<b>${DEPT[tab].label} · ${page}</b> —— 是从${navBack.label}跳过来的</span>
+    </div>`:'';
   const bar = isCompany
     ? `<div class="coybar">🏢 <b>公司级页面</b> · 不属于任何单个项目
          <span class="grow"></span>
@@ -5458,14 +5482,14 @@ function renderAll(){
          <span class="addr">Builder ${p.builder}</span>
          <span class="addr">电工 ${p.elec}</span>
          <span class="grow"></span>
-         <button class="btn" onclick="uiAlert('跳转到该项目全景：七步进度 / SM / 安装 / 交付 / 收款 / 维护 / 订阅')">项目全景 →</button>
+         <button class="btn" onclick="goX('eng','项目详情')">项目全景 →</button>
        </div>`;
   /* 五十三轮⑤：页面停留久了提醒数据可能过期——旧快照上点保存最容易覆盖别人的修改 */
-  const staleBar=secStale()?`<div class="warn-bar" style="margin:var(--sp-3) var(--sp-5) 0">
+  const staleBar=(navBack?backBar:'')+(secStale()?`<div class="warn-bar" style="margin:var(--sp-3) var(--sp-5) 0">
      <span class="grow">⏳ 这页的数据是 <b class="mono">${new Date(SEC.loadedAt).toTimeString().slice(0,5)}</b> 取的，
        已经过去 ${Math.floor((Date.now()-SEC.loadedAt)/60000)} 分钟 —— 期间别人可能已经改过。
        <b>在旧数据上点保存最容易覆盖掉别人的修改</b>，建议先刷新。</span>
-     <button class="btn btn-primary" onclick="secRefresh()">刷新这页</button></div>`:'';
+     <button class="btn btn-primary" onclick="secRefresh()">刷新这页</button></div>`:'');
   document.getElementById('main').innerHTML=bar+staleBar+`<div class="main-inner">${view()}</div>`;
 }
 
@@ -5849,6 +5873,120 @@ ${can('customer')?`
 </div>`,
 
 /* ───────── 库管 · 出库 ───────── */
+'eng/项目详情':()=>{
+ const p=PROJECTS[pj]; const code=p.code;
+ const st=engStage(p);
+ const d=SMD[code]; const smDone=d?d.sm.filter(x=>x.done||x.na).length:0;
+ const a=hrAgg(code); const est=a.est, used=a.T.bh;
+ const pct=est?Math.round(used/est*1000)/10:null; const band=hourBand(pct);
+ /* ★历史排班：用户 2026-08-10 提「看不到项目历史排班的详情」—— 过去与将来一起列 */
+ schSeed();
+ const sch=SCH.filter(x=>x.pj===code).sort((a,b)=>a.d<b.d?1:(a.d>b.d?-1:tmin(a.st||'00:00')-tmin(b.st||'00:00')));
+ const past=sch.filter(x=>x.d<todayS()), soon=sch.filter(x=>x.d>=todayS());
+ const byWho={}; sch.forEach(x=>{ byWho[x.who]=(byWho[x.who]||0)+x.min; });
+ const rq=mreqOf(code).filter(r=>r.st!=='已取消');
+ const chg=chgOf(code);
+ const out=outOf(code);
+ const f=finOf(code);
+ return `
+<h2>项目详情 · ${p.nick}</h2>
+<div class="page-sub">一个项目的全貌 —— 走到哪了 · 人投了多少 · <b>历史排班</b> · 相关单据都在这一页
+  <span class="muted">· 从「项目列表」点「进入 →」来的</span></div>
+${ops([
+ ['看历史排班','这个项目派过的每一班：谁 · 哪天 · 几点到几点 · 干了什么 · 剩下什么 · 回执','—'],
+ ['去排班','跳到「派工排班」加人','—'],
+ ['看相关单据','SM / 出货单 / 物料变更 / 出库单，点进去处理','—'],
+])}
+${helpNote(`<b>为什么要有这一页</b>（用户 2026-08-10 提）：原来「项目列表」点「进入」直接跳到 <b>Site Meeting</b>，
+  那只是这个项目的一个侧面，看不到整体，<b>更看不到这个项目到底派过哪些班</b>。
+  现在「进入」到这里：进度、人力投放、历史排班、相关单据一次看全，再从这里点进各个专页去处理。`)}
+${helpNote(`<b>工时占比＝已投入 ÷ 售前预计</b>，四档配色（充裕 / 正常 / 接近超支预警 / 已超支亏损），
+  预警线在工程「设置」里改。<b>超过 100% 就是这个项目在亏</b> —— 越早看到越有得救。`)}
+<div class="cards">
+ <div class="card"><div class="card-label">当前阶段</div>
+   <div class="card-value" style="font-size:var(--fs-lg)">${st.k}</div>
+   <div class="card-foot">${st.d}</div></div>
+ <div class="card"><div class="card-label">Site Meeting</div>
+   <div class="card-value">${smDone} / 4</div>
+   <div class="card-foot">${d?(smDone>=4?'四场都过了 ✓':'下一场：SM'+(smDone+1)):'还没建 SM 记录'}</div></div>
+ <div class="card"><div class="card-label">★工时占比</div>
+   <div class="card-value" style="color:${band.c}">${pct!=null?pct+'%':'— —'}</div>
+   <div class="card-foot">${band.k} · 已投入 ${used} h / 预计 ${est||'—'} h</div></div>
+ <div class="card"><div class="card-label">派过的班</div>
+   <div class="card-value">${sch.length}</div>
+   <div class="card-foot">${past.length} 次已过 · ${soon.length} 次待办 · 共 ${Math.round(sch.reduce((x,y)=>x+y.min,0)/60*10)/10} h</div></div>
+</div>
+<div class="split">
+ <div class="panel"><div class="panel-head">这个项目是谁的</div>
+  <div class="panel-body">
+   <table><tbody>
+    <tr><td style="width:110px">项目编号</td><td><b class="mono" style="color:var(--accent)">${code}</b></td></tr>
+    <tr><td>地址</td><td>📍 ${p.street}, ${p.suburb} ${p.state}</td></tr>
+    <tr><td>立项时间</td><td class="mono">${p.opened}</td></tr>
+    <tr><td>业主</td><td>${p.owner}</td></tr>
+    <tr><td>Builder</td><td>${p.builder}</td></tr>
+    <tr><td>电工</td><td>${p.elec}</td></tr>
+    <tr><td>S2 物料款</td><td>${f?(f.ms[1].settled?'<span class="pill p-green">已结清</span>'
+      :'<span class="pill p-red">未结清 · 出库会被卡</span>'):'<span class="pill p-grey">财务还没建收款计划</span>'}</td></tr>
+   </tbody></table>
+   <div class="hint" style="margin-top:8px">金额在工程这条线一律不显示 —— 工程看的是进度和人，钱在财务页。</div>
+  </div></div>
+ <div class="panel"><div class="panel-head">谁在这个项目上花了多少时间
+   <span class="muted" style="font-weight:400">按排班现算</span></div>
+  <table><thead><tr><th>人</th><th style="text-align:right;width:110px">累计时长</th>
+    <th style="width:160px">占这个项目</th></tr></thead>
+   <tbody>${Object.keys(byWho).sort((x,y)=>byWho[y]-byWho[x]).map(w=>{
+     const tot=sch.reduce((x,y)=>x+y.min,0)||1; const q=Math.round(byWho[w]/tot*100);
+     return `<tr><td><b>${w}</b></td><td class="num">${minLab(byWho[w])}</td>
+      <td><div style="background:var(--bg-elevated);border-radius:4px;height:12px;overflow:hidden">
+        <div style="width:${q}%;height:100%;background:var(--accent)"></div></div>
+        <div class="hint">${q}%</div></td></tr>`;}).join('')
+    ||'<tr><td colspan="3" class="muted" style="padding:var(--sp-4)">这个项目还没派过班</td></tr>'}</tbody></table>
+ </div>
+</div>
+<div class="panel"><div class="panel-head">★历史排班
+  <span class="muted" style="font-weight:400">${sch.length} 条 · 过去与将来一起列，最近的在上面</span>
+  <button class="btn btn-primary" style="margin-left:auto" onclick="go('eng','派工排班')">去排班 →</button></div>
+ <table>
+  <thead><tr><th style="width:104px">日期</th><th style="width:96px">人</th>
+    <th style="width:110px">类型</th><th style="width:130px">起止 · 时长</th>
+    <th>工作内容</th><th>还剩什么</th><th style="width:90px">回执</th></tr></thead>
+  <tbody>${sch.map(x=>{const done=x.d<todayS();
+   return `<tr${done?' style="opacity:.72"':''}>
+    <td class="mono">${x.d}${done?'':'<div class="hint" style="color:var(--accent)">未来</div>'}</td>
+    <td><b>${x.who}</b></td>
+    <td><span class="pill ${schCls(x.type)==='sch-mt'?'p-amber':(x.type==='Site Meeting'?'p-cyan':'p-b')}">${x.type}</span></td>
+    <td class="hint mono">${x.st}–${x.et}<br>${minLab(x.min)}</td>
+    <td class="hint">${(x.note||'—').replace(/\n/g,'<br>')}</td>
+    <td class="hint">${x.remain||'—'}</td>
+    <td>${x.ack?'<span class="pill p-green">已回 Y</span>':'<span class="pill p-amber">等回 Y</span>'}</td>
+   </tr>`;}).join('')||'<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">这个项目还没派过班 —— 点右上「去排班」</td></tr>'}</tbody></table>
+ <div class="panel-body hint">★这是<b>派工计划</b>；实际到没到场看「工程流水账」（计划 vs 实际打卡，
+   过去派了工没打卡的会标红）。</div>
+</div>
+<div class="panel"><div class="panel-head">这个项目的单据 <span class="muted" style="font-weight:400">点进去处理</span></div>
+ <table>
+  <thead><tr><th style="width:150px">单据</th><th style="width:80px;text-align:right">条数</th>
+    <th>现在什么情况</th><th style="width:120px"></th></tr></thead>
+  <tbody>
+   <tr><td><b>Site Meeting</b></td><td class="num">${smDone} / 4</td>
+     <td class="hint">${d?d.sm.map((x,i)=>'SM'+(i+1)+'：'+(x.done?'已完成':(x.na?'不适用':(x.sched?'已排 '+x.sched:'未排期')))).join(' · '):'—'}</td>
+     <td style="text-align:right"><button class="btn" onclick="go('eng','Site Meeting')">去看 →</button></td></tr>
+   <tr><td><b>出货单（提料）</b></td><td class="num">${rq.length}</td>
+     <td class="hint">${rq.length?rq.map(r=>r.id+' · '+MREQ_KIND[r.kind]+' · <b>'+r.st+'</b>').join('<br>'):'还没提过料'}</td>
+     <td style="text-align:right"><button class="btn" onclick="go('eng','出货单')">去看 →</button></td></tr>
+   <tr><td><b>物料变更</b></td><td class="num">${chg.length}</td>
+     <td class="hint">${chg.length?'已批 '+chg.filter(c=>c.st==='已批').length+' · 待审 '+
+       chg.filter(c=>c.st==='待审').length+(chg.some(c=>c.st==='待审')?'　<b style="color:var(--warning)">有单等你拍板</b>':''):'没有变更'}</td>
+     <td style="text-align:right"><button class="btn" onclick="go('eng','物料变更审批')">去看 →</button></td></tr>
+   <tr><td><b>出库单</b></td><td class="num">${out.length}</td>
+     <td class="hint">${out.length?out.map(o=>o.id+' · '+o.taker+' · '+outQty(o)+' 件'+
+       (outUnret(o)?'（未退 '+outUnret(o)+'）':'（已退清）')).join('<br>'):'还没出过库'}</td>
+     <td style="text-align:right"><button class="btn" onclick="goX('wh','项目出库状态')">库管那边 →</button></td></tr>
+  </tbody></table>
+ <div class="panel-body hint">「库管那边」是<b>跨部门</b>的：有库管权限才跳得过去，跳过去页顶会有「← 返回」。</div>
+</div>`;
+},
 'eng/派工排班':()=>{
  schSeed();
  const days=weekDays(schOff); const mon=ymdS(days[0]);
@@ -7900,7 +8038,7 @@ ${ops([
  ${ops([
   ['按阶段筛选','六态：全部 / Site Meeting 阶段 / 施工中 / 项目交付 / 项目维护 / 已停服','—'],
   ['指定负责人（业主 / Builder / 电工）','候选＝售前采集的联系人与参建方 · 工程负责人拍板','保存即定为项目标注（全公司可见）· 通知财务（付款人候选）与库管（提货人）· 留痕'],
-  ['进入 →','带着项目上下文跳到 Site Meeting','—'],
+  ['进入 →','带着项目上下文进<b>项目详情</b>（六十九轮修：原来跳到 Site Meeting，是 bug）','—'],
  ])}
  ${helpNote(`<b>这页怎么用</b>：这张表只收<b>进了工程线</b>的项目——售前还在接洽、或已流失的根本不进来。
    「工程进度」列直接写明当前处于哪个阶段：<b>Site Meeting 阶段</b>（SM 还没走完，带下一场是第几场、排没排期）·
@@ -7937,7 +8075,7 @@ ${ops([
       <td>${L.fixed?'📌 ':''}${L.owner}<div class="hint">B: ${L.builder}<br>E: ${L.elec}</div>
         ${L.fixed?`<div class="hint">工程指定 · ${L.by} ${L.at}</div>`:'<div class="hint" style="color:var(--warning)">未指定（用售前采集值）</div>'}
         <button class="btn" style="padding:2px 8px;font-size:11px;margin-top:4px" onclick="engLeadToggle('${p.code}')">${engLeadOpen===p.code?'收起':'指定'}</button></td>
-      <td><button class="btn" onclick="pickPj(${i});go('eng','Site Meeting')">进入 →</button></td></tr>
+      <td><button class="btn btn-primary" onclick="pickPj(${i});go('eng','项目详情')">进入 →</button></td></tr>
      ${engLeadOpen===p.code?`<tr><td colspan="7" style="background:var(--bg-elevated);padding:10px 14px">
        <div style="font-weight:600;margin-bottom:6px">指定项目负责人 · ${p.nick}
          <span class="muted" style="font-weight:400">候选＝售前采集的联系人与参建方（同财务付款人机制）</span></div>
@@ -10387,10 +10525,10 @@ ${helpNote(`<b>作废会连带删排班</b>：客户说不用来了、或者单�
         :`<span class="pill p-amber">免责期已过</span> ${-w.fLeft} 天`)+`<div>物料保修${w.pLeft>=0?`还剩 ${w.pLeft} 天`:`已过 ${-w.pLeft} 天`}</div>`:'—'}</td>
      <td>${!c.job?`<span class="pill p-amber">还没排人</span>
          <div class="hint">去工程「派工排班」排 —— 工作类型选<b>维护</b>，第二个框选这张单</div>
-         <button class="btn" style="padding:2px 8px;font-size:11px;margin-top:4px" onclick="go('eng','派工排班')">去派工排班 →</button>`
+         <button class="btn" style="padding:2px 8px;font-size:11px;margin-top:4px" onclick="mtDispOpen('${c.id}')">去派工排班 →</button>`
        :`<div class="hint mono">${c.job.d} ${c.job.st}–${c.job.et}<br>${c.job.who}${schOf(c.job.who,c.job.d).some(x=>x.pj===c.code&&x.ack)?' <span style="color:#16a34a">●已回 Y</span>':' <span style="color:#dc2626">●等回 Y</span>'}</div>
          <div style="display:flex;gap:5px;margin-top:4px;flex-wrap:wrap">
-           <button class="btn" style="padding:2px 8px;font-size:11px" onclick="go('eng','派工排班')">改期（去排班）</button>
+           <button class="btn" style="padding:2px 8px;font-size:11px" onclick="mtDispOpen('${c.id}')">改期（去排班）</button>
            <button class="btn${t.ok?'':' btn-primary'}" style="padding:2px 8px;font-size:11px" onclick="mtSiteOpen('${c.id}')">现场三样齐</button></div>
          ${c.job.done&&!t.ok?`<div class="gate">缺${[!t.cause&&'归因',!t.sum&&'服务内容',!t.sign&&'客户签字'].filter(Boolean).join('、')} —— 财务定不了价</div>`:''}`}
        <div style="margin-top:4px"><a style="color:#c62828;cursor:pointer;font-size:11px" onclick="mtVoid('${c.id}')">作废</a></div></td>

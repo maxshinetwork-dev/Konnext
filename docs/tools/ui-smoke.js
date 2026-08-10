@@ -2976,6 +2976,51 @@ const { chromium } = require('playwright');
   ok(S66.cancelOK,'作废没生效或没留痕');
   ok(S66.restored,'六十六轮测试后演示态未还原');
 
+  // ═══ 六十九轮：两个跳转 bug（用户 2026-08-10 提）═══
+  const r69=await page.evaluate(()=>{ const R={};
+    // ① M2：运维点「去派工排班」原来直接跳进工程页面，回不来（运维账号没有工程权限）
+    loginAs('maintenance'); go('mt','运维派工状态');
+    const before={tab,page};
+    mtDispOpen('MT-0121-11');
+    R.noJump = tab==='mt'&&page==='运维派工状态';           // ★不许把人扔进他没权限的部门
+    R.told = (document.getElementById('toasts').textContent||'').includes('工程管理');
+    document.getElementById('toasts').innerHTML='';
+    R.tabsHaveNoEng = !WHO['maintenance'].depts.includes('eng');
+    // ② 有权限的（陈总全部门）跳过去，页顶要有「← 返回」
+    loginAs('admin'); go('mt','运维派工状态');
+    goX('eng','派工排班','测试');
+    R.jumped = tab==='eng'&&page==='派工排班'&&!!navBack;
+    R.backBar = document.getElementById('app').innerHTML.includes('← 返回 运维 · 运维派工状态');
+    goBack();
+    R.backOK = tab==='mt'&&page==='运维派工状态'&&navBack===null;
+    document.getElementById('toasts').innerHTML='';
+    // 侧边栏自己点一下，返回条要消失（不然会留一条过期的路）
+    goX('eng','派工排班','测试'); go('eng','总览');
+    R.backCleared = navBack===null&&!document.getElementById('app').innerHTML.includes('← 返回');
+    // ③ E2：项目列表「进入 →」原来跳到 Site Meeting
+    loginAs('eng'); go('eng','项目列表');
+    const h=document.getElementById('main').innerHTML;
+    R.enterFixed = h.includes("go('eng','项目详情')")&&!h.includes("go('eng','Site Meeting')\">进入");
+    pickPj(PROJECTS.findIndex(p=>p.code==='KX-2026-0188')); go('eng','项目详情');
+    const hd=document.getElementById('main').innerHTML;
+    R.detail = hd.includes('项目详情')&&hd.includes('历史排班')&&hd.includes('工时占比');
+    R.schHist = SCH.filter(x=>x.pj==='KX-2026-0188').every(x=>hd.includes(x.who));
+    R.docs = hd.includes('Site Meeting')&&hd.includes('出货单（提料）')&&hd.includes('物料变更')&&hd.includes('出库单');
+    document.getElementById('toasts').innerHTML='';
+    go('eng','总览'); navBack=null;
+    return JSON.stringify(R);});
+  const S69=JSON.parse(r69);
+  ok(S69.noJump,'★运维点「去派工排班」又被扔进了工程页面 —— 他没那条线权限，回都回不来');
+  ok(S69.told,'拦下来了却没说清这一步归谁做');
+  ok(S69.jumped,'有权限的跨部门跳转没跳过去');
+  ok(S69.backBar,'★跨部门跳过去之后页顶没有「← 返回」');
+  ok(S69.backOK,'「← 返回」没回到原来那页');
+  ok(S69.backCleared,'★自己点侧边栏之后「← 返回」还赖着不走（那是条过期的路）');
+  ok(S69.enterFixed,'★项目列表「进入 →」还是跳 Site Meeting（应当进项目详情）');
+  ok(S69.detail,'项目详情页没渲染出进度/历史排班/工时占比');
+  ok(S69.schHist,'★项目详情里看不到这个项目派过的班（用户就是为这个提的）');
+  ok(S69.docs,'项目详情里没有相关单据的入口');
+
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
   console.log(`断言失败: ${fails.length}`); fails.forEach(f=>console.log('  ✗ '+f));
