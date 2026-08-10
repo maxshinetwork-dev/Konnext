@@ -48,13 +48,17 @@ UPDATE material SET price_aud=130 WHERE code='T30-M-1';
 SELECT code, last_from, last_to, last_pct, days_since, change_n FROM v_material_price_trend
  WHERE code='T30-M-1';
 
-\echo '════════ ④ 采购需求：★指令只能来自库管 ════════'
-\echo '--- ★应拦：采购自己开需求（来源不在两档之内）---'
+\echo '════════ ④ 采购需求：★采购永远是执行者，不能自己决定要不要买 ════════'
+--   ⚠ v0.37 口径变更：项目料的提单人从【库管】改成【工程人员】（老板 2026-08-05 拍板）。
+--     来源五档 quote / sm2_change / build_add / warehouse_restock / maintenance，
+--     'project_demand' 这个 v0.36 的值已经不存在了（31 号回归专门测它）。
+--     不变的是这一条：来源里【没有 procurement】—— 采购不能自己开需求。
+\echo '--- ★应拦：采购自己开需求（来源里根本没有 procurement 这一档）---'
 INSERT INTO purchase_req(req_no,source,material_id,qty,why,raised_by)
 SELECT 'RQ-T30-X','procurement',id,10,'采购觉得该买了','老张' FROM material WHERE code='T30-M-1';
 \echo '--- ★应拦：项目提料却没有项目 ---'
 INSERT INTO purchase_req(req_no,source,material_id,qty,why,raised_by)
-SELECT 'RQ-T30-Y','project_demand',id,10,'按方案 BOM 提料','库管 老张' FROM material WHERE code='T30-M-1';
+SELECT 'RQ-T30-Y','quote',id,10,'按方案 BOM 提料','工程 小陈' FROM material WHERE code='T30-M-1';
 \echo '--- 正常：库管补货建议（公司级，不挂项目）---'
 INSERT INTO purchase_req(req_no,source,material_id,qty,why,raised_by)
 SELECT 'RQ-T30-1','warehouse_restock',id,40,'库存 12 低于红线 20（C1 常备件）','库管（系统现算）'

@@ -13,8 +13,9 @@ INSERT INTO project(id,code,build_stage,step6_signed_at,contract_price,handover_
 
 \echo ''
 \echo '=========== 未交付项目报修 → 不予受理 ==========='
-INSERT INTO maintenance_case(project_id,title,estimate_amount)
-VALUES('aaaaaaaa-0000-0000-0000-00000000000a','客户说客厅灯不亮',0);
+-- v0.37：报修渠道无条件必填，造数据一并带上，免得被渠道门禁先拦掉、这条根本没测到
+INSERT INTO maintenance_case(project_id,title,estimate_amount,report_channel)
+VALUES('aaaaaaaa-0000-0000-0000-00000000000a','客户说客厅灯不亮',0,'phone');
 \echo '--- 连派工也一起卡住 ---'
 INSERT INTO maintenance_job(project_id,staff_id,scheduled_date,no_case_reason)
 VALUES('aaaaaaaa-0000-0000-0000-00000000000a','11111111-1111-1111-1111-111111111111',current_date,'客户催');
@@ -25,8 +26,27 @@ SELECT p.code, i.title AS 走剩余项处理, i.status FROM install_item i JOIN 
 
 \echo ''
 \echo '=========== 已交付项目报修 → 正常受理 ==========='
-INSERT INTO maintenance_case(id,project_id,title,estimate_amount,labor_cost,material_cost)
-VALUES('cccccccc-0000-0000-0000-00000000000c','bbbbbbbb-0000-0000-0000-00000000000b','客厅面板失灵',0,320,150);
+INSERT INTO maintenance_case(id,project_id,title,estimate_amount,labor_cost,material_cost,
+                             report_channel,rd_conclusion,rd_by,rd_at)
+VALUES('cccccccc-0000-0000-0000-00000000000c','bbbbbbbb-0000-0000-0000-00000000000b','客厅面板失灵',0,320,150,
+       'phone','远程连不上这块面板，网关在线，判断是面板本体故障，需上门更换','研发-小赵',now());
+\echo '--- ★v0.37 M4：没有排查结论就派人上门 → 应拒 ---'
+--     靠自觉的话忙起来一定直接派人，人到了现场才发现是个远程五分钟能解决的事
+INSERT INTO maintenance_case(id,project_id,title,report_channel)
+VALUES('cccccccc-0000-0000-0000-0000000000cd','bbbbbbbb-0000-0000-0000-00000000000b',
+       '书房开关偶尔失灵','wechat');
+INSERT INTO maintenance_job(project_id,case_id,staff_id,scheduled_date,planned_minutes)
+VALUES('bbbbbbbb-0000-0000-0000-00000000000b','cccccccc-0000-0000-0000-0000000000cd',
+       '11111111-1111-1111-1111-111111111111',current_date,60);
+\echo '--- 明确标「无需排查」并写清原因 → 放行 ---'
+UPDATE maintenance_case SET rd_skip_reason='客户现场已复现且描述明确，是机械按键卡死，远程查不出来'
+ WHERE id='cccccccc-0000-0000-0000-0000000000cd';
+INSERT INTO maintenance_job(project_id,case_id,staff_id,scheduled_date,planned_minutes)
+VALUES('bbbbbbbb-0000-0000-0000-00000000000b','cccccccc-0000-0000-0000-0000000000cd',
+       '11111111-1111-1111-1111-111111111111',current_date,60);
+SELECT title, left(COALESCE(rd_conclusion,rd_skip_reason),18) AS 排查
+  FROM maintenance_case WHERE id='cccccccc-0000-0000-0000-0000000000cd';
+
 INSERT INTO maintenance_job(project_id,case_id,staff_id,scheduled_date,planned_minutes)
 VALUES('bbbbbbbb-0000-0000-0000-00000000000b','cccccccc-0000-0000-0000-00000000000c',
        '11111111-1111-1111-1111-111111111111',current_date,120);

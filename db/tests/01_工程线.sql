@@ -98,11 +98,13 @@ VALUES('aaaaaaaa-0000-0000-0000-000000000001','11111111-1111-1111-1111-111111111
 \echo ''
 \echo '=========== 检查 6：维护单只受理已交付项目 ==========='
 \echo '--- 未交付项目建维护单 → 应拒 ---'
-INSERT INTO maintenance_case(project_id,title,estimate_amount)
-VALUES('aaaaaaaa-0000-0000-0000-000000000002','施工期客户报修(项目未交付)',800);
+-- v0.37：报修渠道无条件必填（reported_at 已改必填），造数据一并带上，
+--        免得这条被渠道门禁先拦掉、"未交付不予受理"根本没测到
+INSERT INTO maintenance_case(project_id,title,estimate_amount,report_channel)
+VALUES('aaaaaaaa-0000-0000-0000-000000000002','施工期客户报修(项目未交付)',800,'phone');
 \echo '--- 已交付项目 → 通过 ---'
-INSERT INTO maintenance_case(project_id,title,estimate_amount)
-VALUES('aaaaaaaa-0000-0000-0000-000000000001','交付后客户报修',800);
+INSERT INTO maintenance_case(project_id,title,estimate_amount,report_channel)
+VALUES('aaaaaaaa-0000-0000-0000-000000000001','交付后客户报修',800,'phone');
 SELECT p.code, m.title FROM maintenance_case m JOIN project p ON p.id=m.project_id;
 
 \echo ''

@@ -114,8 +114,11 @@ SELECT 'aaaaaaaa-0000-0000-0000-00000000000a','e1111111-1111-1111-1111-111111111
        (now()-interval '200 days')::date+(d||' days')::interval+interval '17 hours','gps'
 FROM generate_series(1,80) d;
 -- 维护：收入 5000 / 成本 1800
-INSERT INTO maintenance_case(id,project_id,title,labor_cost,material_cost,fault_cause,status)
-VALUES('cc000000-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-00000000000a','面板更换',1200,600,'product_defect','paid_closed');
+-- v0.37：报修渠道无条件必填 + 上门前要有排查结论，造数据一并带上
+INSERT INTO maintenance_case(id,project_id,title,labor_cost,material_cost,fault_cause,status,
+                             report_channel,rd_conclusion,rd_by,rd_at)
+VALUES('cc000000-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-00000000000a','面板更换',1200,600,'product_defect','paid_closed',
+       'phone','远程排查确认面板固件损坏，需更换','研发-小赵',now());
 INSERT INTO maintenance_job(project_id,case_id,staff_id,scheduled_date,fault_cause,service_summary,client_sign_url,client_sign_name,client_sign_at,completed_at)
 VALUES('aaaaaaaa-0000-0000-0000-00000000000a','cc000000-0000-0000-0000-000000000001','e1111111-1111-1111-1111-111111111111',current_date,'product_defect','换面板','https://x/s.jpg','王先生',now(),now());
 INSERT INTO payment_milestone(id,project_id,kind,case_id,amount_due,status,settle_reason)

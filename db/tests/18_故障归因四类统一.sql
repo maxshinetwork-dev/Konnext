@@ -44,7 +44,10 @@ SELECT cause_cn AS 原因, in_warranty AS 在保, suggested_action AS 建议处�
 
 \echo ''
 \echo '════ 维护单：四类归因 + 免责判定 ════'
-INSERT INTO maintenance_case(id,project_id,title) VALUES('cccccccc-0000-0000-0000-00000000000c','bbbbbbbb-0000-0000-0000-00000000000b','客厅面板失灵');
+-- v0.37：报修渠道无条件必填 + 上门前要有排查结论，造数据一并带上
+INSERT INTO maintenance_case(id,project_id,title,report_channel,rd_conclusion,rd_by,rd_at)
+VALUES('cccccccc-0000-0000-0000-00000000000c','bbbbbbbb-0000-0000-0000-00000000000b','客厅面板失灵',
+       'phone','远程重启无效，面板离线，判断本体故障','研发-小赵',now());
 INSERT INTO maintenance_job(id,project_id,case_id,staff_id,scheduled_date,planned_minutes,
   fault_cause,service_summary,client_sign_url,client_sign_name,client_sign_at,completed_at)
 VALUES('dddddddd-0000-0000-0000-00000000000d','bbbbbbbb-0000-0000-0000-00000000000b','cccccccc-0000-0000-0000-00000000000c',
@@ -53,6 +56,6 @@ VALUES('dddddddd-0000-0000-0000-00000000000d','bbbbbbbb-0000-0000-0000-000000000
 UPDATE maintenance_case SET status='paid_closed' WHERE id='cccccccc-0000-0000-0000-00000000000c';
 SELECT title, fault_cause AS 归因, is_free_warranty AS 免责维保覆盖 FROM maintenance_case;
 \echo '--- 若是人为损坏，免责维保不覆盖 ---'
-INSERT INTO maintenance_case(id,project_id,title,fault_cause,status)
-VALUES('cccccccc-0000-0000-0000-00000000000e','bbbbbbbb-0000-0000-0000-00000000000b','客户摔坏面板','human','paid_closed');
+INSERT INTO maintenance_case(id,project_id,title,fault_cause,status,report_channel)
+VALUES('cccccccc-0000-0000-0000-00000000000e','bbbbbbbb-0000-0000-0000-00000000000b','客户摔坏面板','human','paid_closed','phone');
 SELECT title, fault_cause AS 归因, is_free_warranty AS 免责覆盖 FROM maintenance_case ORDER BY title;
