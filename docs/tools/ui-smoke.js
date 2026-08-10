@@ -2414,6 +2414,94 @@ const { chromium } = require('playwright');
   ok(CH.crossLog,'跨部门动作没有双写日志（只记一边，另一边查不到）');
   ok(CH.mask,'★金额遮罩漏了：'+(CH.maskWho||'')+'（没权限的身份看到了具体金额）');
 
+  // ═══ 六十二轮：项目物料账（报价原始单 → 工程变更 → 库管现货 → 采购下单）═══
+  const bomR=await page.evaluate(()=>{ const R={};
+    const l0=OPLOG.length, n0=NOTIF.length;
+    const q0=JSON.parse(JSON.stringify(QBOM)), c0=JSON.parse(JSON.stringify(BOMCHG));
+    const p0=JSON.parse(JSON.stringify(PCPO));
+    loginAs('warehouse');
+    // ① 应采数量＝原始 + 已批变更；待审的不算进去
+    const pj='KX-2026-0188';
+    R.calcEdit = bomQty(pj,'M-KNX-P4W')===14;          // 原始 18，SM2 已批改成 14
+    R.calcZero = bomQty(pj,'M-CB-SW6')===0;            // 改成 0（行还在）
+    R.calcAdd  = bomQty(pj,'M-KNX-DIM4')===8;          // 原始 6 + 已批新增 2；待审的 +1 不算
+    // 把待审那张批掉，应采应当立刻变
+    const wait=BOMCHG.find(c=>c.id==='CHG-0188-02');
+    wait.st='已批';
+    R.waitCounts = bomQty(pj,'M-KNX-DIM4')===9;        // 批了之后 +1
+    wait.st='待审';
+    R.waitExcluded = bomQty(pj,'M-KNX-DIM4')===8;      // 退回待审，又不算了
+    // ② 原始单的行不会消失：数量 0 的行仍在物料账里
+    const rows=bomRows(pj);
+    R.zeroRowStays = rows.some(r=>r.mat==='M-CB-SW6'&&r.need===0&&r.base===10);
+    // ③ ★买多了要标红：CB-SW6 已下单 18、应采 0
+    const cb=rows.find(r=>r.mat==='M-CB-SW6');
+    R.overFlag = cb.over===18&&cb.gap===0;
+    go('proc','项目物料与采购'); bomPj=pj; renderAll();      // 默认落在第一个施工中项目，这里点名 0188
+    const h=document.getElementById('main').innerHTML;
+    R.overUI = h.includes('买多 18')&&h.includes('已下单超出应采');
+    R.threeSeg = h.includes('报价原始单')&&h.includes('SM2')&&h.includes('施工中');
+    R.waitNotIn = h.includes('待审的还没进这本账');
+    // ④ Excel 上传：版本不覆盖，认不上的挂起
+    R.pending = qbomPending().length===1&&qbomPending()[0].code==='M-KNX-SW8';
+    go('proc','采购需求');
+    const h2=document.getElementById('main').innerHTML;
+    R.pendUI = h2.includes('挂起')&&h2.includes('M-KNX-SW8')&&h2.includes('去建档');
+    const v0=qbomOf(pj).ver;
+    qbomUpload();
+    document.getElementById('qb-pj').value=pj;
+    document.getElementById('qb-ver').value='';
+    document.getElementById('qb-file').value='x.xlsx';
+    qbomSave(); R.gVer = qbomOf(pj).ver===v0;           // 报价版本号必填
+    document.getElementById('qb-ver').value='V6.0';
+    document.getElementById('qb-file').value='';
+    qbomSave(); R.gFile = qbomOf(pj).ver===v0;          // 文件必选
+    document.getElementById('qb-file').value='林宅_报价V6.0.xlsx';
+    qbomSave(); uiOk();                                  // 已有版本 → 二次确认
+    R.newVer = qbomOf(pj).ver===v0+1
+      && QBOM.filter(x=>x.pj===pj).length===2            // ★旧版留着，不覆盖
+      && OPLOG.some(l=>l.action==='上传报价物料清单');
+    // ⑤ 勾选下单：不勾会拦；勾了两家供应商会拦；下完单没勾的还在
+    QBOM.splice(0,1);                                    // 撤掉刚传的那版，回到演示态
+    const on=PCPO.length;
+    bomPick={}; bomOrder(pj); R.gNoPick = PCPO.length===on;
+    bomPick[pj+'|M-CBL-CAT6']=true; bomPick[pj+'|M-KNX-P4W']=true;   // 两家供应商
+    bomOrder(pj); R.gTwoSupp = PCPO.length===on;
+    bomPick={}; bomPick[pj+'|M-KNX-P4W']=true;
+    bomOrder(pj); uiOk();
+    R.ordered = PCPO.length===on+1&&PCPO[0].pj===pj
+      && PCPO[0].lines[0].mat==='M-KNX-P4W'
+      && OPLOG.some(l=>l.action==='按项目物料账下单');
+    R.leftInLedger = bomRows(pj).some(r=>r.mat==='M-CBL-KNX'&&r.gap>0);  // 没勾的还留着
+    // 还原
+    QBOM.length=0; q0.forEach(x=>QBOM.push(x));
+    BOMCHG.length=0; c0.forEach(x=>BOMCHG.push(x));
+    PCPO.length=0; p0.forEach(x=>PCPO.push(x));
+    bomPick={}; bomPj='';
+    OPLOG.splice(0,OPLOG.length-l0); NOTIF.splice(0,NOTIF.length-n0); renderAll();
+    R.restored = QBOM.length===q0.length&&PCPO.length===p0.length&&bomQty(pj,'M-KNX-P4W')===14;
+    return JSON.stringify(R);});
+  const S62=JSON.parse(bomR);
+  ok(S62.calcEdit,'应采数量没有按已批变更算（原始 18 → SM2 改 14）');
+  ok(S62.calcZero,'改成 0 的物料应采不是 0');
+  ok(S62.calcAdd,'Additional 新增没有加进应采');
+  ok(S62.waitCounts&&S62.waitExcluded,'★待审的变更竟然算进了应采（审完才算数）');
+  ok(S62.zeroRowStays,'★数量改成 0 的行从物料账里消失了（报价里有过就必须留痕）');
+  ok(S62.overFlag,'已下单超出应采（买多了）没算出来');
+  ok(S62.overUI,'★买多了的行没在界面上标红 —— 绿油油写着"齐了"，那笔钱就悄悄没了');
+  ok(S62.threeSeg,'项目物料账没把三段来源分清（报价原始单 / SM2 / 施工中）');
+  ok(S62.waitNotIn,'没提示"待审的变更还没进这本账"');
+  ok(S62.pending,'Excel 认不上的物料没挂起');
+  ok(S62.pendUI,'采购需求页没把挂起的物料单独列出来并给「去建档」');
+  ok(S62.gVer,'报价版本号空着竟能导入（应拦 —— 将来跟外部报价系统对账全靠它）');
+  ok(S62.gFile,'没选文件竟能导入（应拦）');
+  ok(S62.newVer,'★再传报价清单没有存成新版本 / 把旧版覆盖了');
+  ok(S62.gNoPick,'一项没勾竟能下单（应拦）');
+  ok(S62.gTwoSupp,'勾了两个供应商竟能开一张单（应拦）');
+  ok(S62.ordered,'按物料账下单未生成采购单或未留痕');
+  ok(S62.leftInLedger,'★没勾的物料从账里消失了（应当留着，支持分期采购）');
+  ok(S62.restored,'项目物料账测试后演示态未还原');
+
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
   console.log(`断言失败: ${fails.length}`); fails.forEach(f=>console.log('  ✗ '+f));

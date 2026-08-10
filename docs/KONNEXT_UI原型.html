@@ -410,7 +410,7 @@ const WHO = {
 const DEPT = {
   presales:{label:'售前', pages:['项目列表','项目状态表','操作日志','设置']},  /* 用户定：大表=项目列表；状态表=比例图+走向图+状态过滤 */
   eng:     {label:'工程管理', pages:['总览','项目列表','派工排班','Site Meeting','安装调试','交付','工程流水账','每日工时管理','文档库','操作日志','设置']},
-  proc:    {label:'采购', pages:['总览','采购需求','采购单','供应商','项目采购状态','物料主表','汇率','调价历史','RMA退换','操作日志','设置']},
+  proc:    {label:'采购', pages:['总览','采购需求','采购单','供应商','项目物料与采购','物料主表','汇率','调价历史','RMA退换','操作日志','设置']},
   wh:      {label:'库管', pages:['总览','项目出库状态','入库','出库','退库与拒收','盘点','物料在谁手里','库存流水','操作日志','设置']},
   fin:     {label:'财务', pages:['财务节点','项目列表','项目收款S1-S3','尾款结算S4与Var','运维财务支持','催账和停服','工资数据','项目报销','成本与利润率','操作日志','设置']},
   mt:      {label:'运维', pages:['总览','报修受理','运维派工状态','维护单跟踪','维保状态','业主订阅','操作日志','设置']},
@@ -482,7 +482,7 @@ function senderMail(k,v){ const nv=(v||'').trim().toLowerCase();
    混在一起做全局项目选择器，会让人误以为库存也是分项目的 */
 const COMPANY_PAGES=new Set([
   'proc/总览','proc/物料主表','proc/汇率','proc/采购单','proc/采购需求','proc/供应商','proc/调价历史',
-  'proc/RMA退换','proc/项目采购状态','proc/设置',
+  'proc/RMA退换','proc/项目物料与采购','proc/设置',
   'wh/总览','wh/入库','wh/出库','wh/退库与拒收','wh/盘点','wh/物料在谁手里','wh/库存流水','wh/设置',
   'eng/总览','eng/派工排班','eng/每日工时管理','eng/文档库','eng/设置','eng/Site Meeting','eng/安装调试','eng/交付',
   'fin/财务节点','fin/项目收款S1-S3','fin/尾款结算S4与Var','fin/运维财务支持','fin/催账和停服',
@@ -1753,6 +1753,91 @@ function rmaChaseSend(id){ const r=PCRMA.find(x=>x.id===id); if(!r) return; cons
   pcClose(); renderAll();
   uiAlert('已发出催问 ✓ 第 '+r.chase.length+' 次\n对方回复之后，回到这页把状态推进到下一步（要填凭据）'); }
 
+/* ══════════ 项目物料账（六十二轮 · 2026-08-05 采购负责人提，用户拍板）══════════
+   ★口径变更：项目料的提单人【从库管改成工程人员】——
+     方案和现场情况工程人员最清楚，库管管的是仓库不是项目。
+     （这推翻了 v0.36 的「项目料由库管下达」，契约 v0.37 跟进）
+
+   一条链，四段：
+     ①【报价原始单】外部报价系统出 Excel → 采购在本页上传 → 基线，只读，版本化
+     ②【SM2 变更】  工程人员在 App 改（可增可减）→ 工程管理负责人审
+     ③【施工新增】  SM2 之后只能增不能减 → 同样要审
+     ④【库管先看现货】有货直接出库，不够的差额才交采购下单
+
+   为什么原始单不许删行、只能把数量调成 0：
+     删了行，"这个料本来报价里有、后来不要了"这件事就消失了。
+     客户回头问"我付的钱里那 10 个面板呢"，没人答得上来。 */
+
+/* 报价原始单：pending＝Excel 里认不上的物料编码，挂起并卡住工程人员那一步 */
+let QBOM=[
+ {pj:'KX-2026-0188',ver:1,quoteVer:'V5.8',at:'2026/07/20 09:30',by:'老张',
+  file:'林宅_报价V5.8_物料清单.xlsx',
+  lines:[{mat:'M-KNX-P4W', qty:18,area:'一层 客厅+餐厅'},
+         {mat:'M-KNX-DIM4',qty:6, area:'弱电箱'},
+         {mat:'M-CB-SW6',  qty:10,area:'二层 走廊'},
+         {mat:'M-CBL-CAT6',qty:3, area:'全屋'},
+         {mat:'M-CBL-KNX', qty:8, area:'全屋'}],
+  pending:[{code:'M-KNX-SW8',name:'KNX 八联面板（黑）',qty:4,area:'二层 主卧'}]},
+ {pj:'KX-2026-0203',ver:1,quoteVer:'V3.2',at:'2026/08/01 11:00',by:'老张',
+  file:'罗宅_报价V3.2_物料清单.xlsx',
+  lines:[{mat:'M-KNX-P4W',qty:22,area:'一二层'},
+         {mat:'M-SEN-PIR', qty:12,area:'走廊+车库'},
+         {mat:'M-CBL-CAT6',qty:5, area:'全屋'}],
+  pending:[]},
+];
+/* 物料变更单：工程人员在 App 提，工程管理负责人审（只看变量，不看整表） */
+let BOMCHG=[
+ {id:'CHG-0188-01',pj:'KX-2026-0188',stage:'SM2',by:'阿强（App 现场）',at:'2026/07/29 16:20',
+  st:'已批',why:'SM2 现场量尺后调整：餐厅少一组、二层走廊改用调光',
+  edits:[{mat:'M-KNX-P4W',from:18,to:14},{mat:'M-CB-SW6',from:10,to:0}],
+  adds:[{mat:'M-KNX-DIM4',qty:2,why:'二层走廊改分区调光'}],
+  reviewBy:'陈工',reviewAt:'2026/07/30 09:10',reviewNote:'与现场照片一致，批'},
+ {id:'CHG-0188-02',pj:'KX-2026-0188',stage:'施工中',by:'小陈（App 现场）',at:'2026/08/03 10:40',
+  st:'待审',why:'业主临时加了花园廊架灯控，要补 2 路调光和一段总线',
+  edits:[],
+  adds:[{mat:'M-KNX-DIM4',qty:1,why:'花园廊架灯控'},{mat:'M-CBL-KNX',qty:2,why:'廊架走线'}],
+  reviewBy:'',reviewAt:'',reviewNote:''},
+];
+const QSRC=['报价原始单','SM2 变更','施工新增','库管补货'];
+const qbomOf=pj=>QBOM.filter(q=>q.pj===pj).sort((a,b)=>b.ver-a.ver)[0]||null;
+const chgOf=pj=>BOMCHG.filter(c=>c.pj===pj).sort((a,b)=>a.at<b.at?-1:1);
+/* ★某项目某物料的【应采数量】现算：原始 → 按时间顺序套用已批变更 */
+function bomQty(pj,mat){
+  const q=qbomOf(pj);
+  let n=q?((q.lines.find(l=>l.mat===mat)||{}).qty||0):0;
+  chgOf(pj).filter(c=>c.st==='已批').forEach(c=>{
+    const e=(c.edits||[]).find(x=>x.mat===mat);
+    if(e) n=e.to;                                   // 调数量＝改成多少（后一次覆盖前一次）
+    (c.adds||[]).filter(a=>a.mat===mat).forEach(a=>n+=a.qty);   // Additional＝加上去
+  });
+  return n; }
+/* 这个项目这个料已经下过多少单（采购单里） */
+const bomOrdered=(pj,mat)=>PCPO.filter(p=>p.pj===pj&&p.st!=='已取消')
+  .reduce((x,p)=>x+p.lines.filter(l=>l.mat===mat).reduce((y,l)=>y+l.qty,0),0);
+/* 一个项目的完整物料账：三段合成一张，每行现算「应采/已下单/库房现货/还要买」 */
+function bomRows(pj){
+  const q=qbomOf(pj); if(!q&&!chgOf(pj).length) return [];
+  const codes=[...new Set([...(q?q.lines.map(l=>l.mat):[]),
+    ...chgOf(pj).flatMap(c=>[...(c.edits||[]).map(e=>e.mat),...(c.adds||[]).map(a=>a.mat)])])];
+  return codes.map(mat=>{
+    const base=q?((q.lines.find(l=>l.mat===mat)||{}).qty||0):0;
+    const need=bomQty(pj,mat), ord=bomOrdered(pj,mat);
+    const stock=stockOf(mat);
+    const gap=Math.max(0,need-ord);
+    /* ★买多了：已下单 > 应采。多半是工程后来减了量、而采购已经下过单。
+       原来这行会显示绿色「齐了」—— 那 18 件的钱就悄悄留在项目成本里，没人会发现。 */
+    const over=Math.max(0,ord-need);
+    return {mat,base,need,ord,stock,gap,
+      fromQuote:base>0,
+      area:q?((q.lines.find(l=>l.mat===mat)||{}).area||''):'',
+      over,
+      canCover:Math.min(stock,gap),                  // 库房现货能顶多少（库管确认后才真扣）
+      delta:need-base};
+  }).sort((a,b)=>(b.fromQuote?1:0)-(a.fromQuote?1:0)||a.mat.localeCompare(b.mat)); }
+/* 挂起：Excel 里认不上的物料编码 —— 不补齐就卡住工程人员那一步 */
+const qbomPending=()=>QBOM.flatMap(q=>(q.pending||[]).map(p=>({...p,pj:q.pj,ver:q.ver,file:q.file})));
+const chgWait=()=>BOMCHG.filter(c=>c.st==='待审');
+
 /* ── 出库单（库管）：★物料在「出库」这一刻才落到具体项目上
    用户 2026-08-04 定：物料<b>既跟着项目走，也跟着提货人走</b>。
    back＝已退库数量；stl＝已按 S4 结算掉（不再算未退料，但那不等于货退回来了，两回事别混）── */
@@ -2035,6 +2120,83 @@ function whHoldChase(taker){ const h=whHolders().find(x=>x.taker===taker); if(!h
     notifAdd(h.pjs.length===1?h.pjs[0]:'','催退库：'+taker+' 手里还有 '+h.qty+' 件未退',
       [{who:taker,how:'短信+App',ok:false}]);
     renderAll(); uiAlert('已发出催退库 ✓ 短信+App 通知 '+taker+'\n退不回来的最终按出库单价结进 S4'); }); }
+/* ★上传报价物料清单（Excel）—— 真正的报价在外部系统做，带外交到采购手上 */
+function qbomUpload(){ pcDlg={m:'qbom'};
+  const live=PROJECTS.filter(p=>['施工中','项目交付'].includes(p.status));
+  pcShow('<div style="font-weight:600;margin-bottom:2px">上传报价物料清单</div>'+
+   '<div class="hint" style="margin-bottom:10px">设计与报价在<b>外部系统</b>做；客户接受报价后出的物料清单，'+
+   '带外交到采购手上，在这里传进来 —— 传进来就是这个项目的<b>基线</b></div>'+
+   '<div class="field"><label>项目</label><select id="qb-pj">'+
+     live.map(p=>{const had=qbomOf(p.code);
+       return '<option value="'+p.code+'">'+p.code+' · '+(p.nick||p.name)+
+       (had?'（已有 V'+had.ver+'，再传会存成新版本）':'')+'</option>';}).join('')+'</select></div>'+
+   '<div class="split" style="gap:10px">'+
+   '<div class="field"><label>报价版本号（外部系统的）</label>'+
+     '<input id="qb-ver" style="width:100%" placeholder="如：V5.8"></div>'+
+   '<div class="field"><label>Excel 文件</label>'+
+     '<input id="qb-file" style="width:100%" placeholder="点这里选文件（演示：直接填文件名）"></div></div>'+
+   '<div class="hint" style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:9px 11px">'+
+     '★<b>只认物料编码</b>，名称只用来复核。<br>'+
+     '能认上的正常导入；<b>认不上的会挂起并单独列出来</b>，在补齐之前，'+
+     '工程人员那边会显示"这张清单还缺 N 个料没建档"，<b>不让开始改</b>——'+
+     '既不用为一个编码重传整张表，也不会漏掉。</div>'+
+   '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'+
+   '<button class="btn" onclick="pcClose()">取消</button>'+
+   '<button class="btn btn-primary" onclick="qbomSave()">导入</button></div>'); }
+function qbomSave(){
+  const pj=((document.getElementById('qb-pj')||{}).value||'').trim();
+  const ver=((document.getElementById('qb-ver')||{}).value||'').trim();
+  const file=((document.getElementById('qb-file')||{}).value||'').trim();
+  if(!pj){ uiAlert('门禁：必须选项目'); return; }
+  if(ver.length<2){ uiAlert('门禁：报价版本号必填 —— 将来跟外部报价系统对账全靠它'); return; }
+  if(!file){ uiAlert('门禁：请选择 Excel 文件'); return; }
+  const had=qbomOf(pj);
+  const doIt=()=>{
+    /* 演示：模拟一次导入结果 —— 5 行认上、1 行认不上 */
+    QBOM.unshift({pj,ver:(had?had.ver+1:1),quoteVer:ver,at:nowTs(),by:WHO[me].name,file,
+      lines:[{mat:'M-KNX-P4W',qty:16,area:'一层'},{mat:'M-SEN-PIR',qty:8,area:'走廊'}],
+      pending:[{code:'M-XXX-NEW',name:'（Excel 里写的名字）新型号面板',qty:2,area:'主卧'}]});
+    opLog(pj,'上传报价物料清单',file+' · 报价 '+ver+' · 存为 V'+(had?had.ver+1:1)+
+      ' · 认上 2 行、<b>挂起 1 行</b>（编码在物料主表里没有）'+
+      (had?' —— 原 V'+had.ver+' 保留可查，不覆盖':''),['proc','eng','wh']);
+    notifAdd(pj,'报价物料清单已导入 V'+(had?had.ver+1:1)+'：2 行成功 · 1 行挂起待建档',
+      [{who:'工程管理 陈工',how:'待办',ok:false}]);
+    pcClose(); renderAll();
+    uiAlert('已导入 ✓ 认上 2 行\n★挂起 1 行：编码在物料主表里查不到。\n'+
+      '在补齐之前，工程人员那边不能开始改这张清单。'); };
+  if(had) uiConfirm('这个项目已经有 V'+had.ver+' 的报价清单（'+had.file+'）。\n'+
+    '再传会存成 <b>V'+(had.ver+1)+'</b>，<b>原来那版永远留着可查，不覆盖</b>。\n继续？',ok=>{ if(ok) doIt(); });
+  else doIt(); }
+/* 挂起行 → 去物料主表建档 */
+function qbomFix(code){
+  uiConfirm('物料编码「'+code+'」在物料主表里没有。\n\n'+
+    '现在去建档？建好之后回来点「重新识别」，这一行就会自动补进清单。',ok=>{ if(ok){ pcClose(); go('proc','物料主表'); matNew(); } }); }
+/* 勾选下单：从项目物料账里挑要买的 */
+let bomPick={}, bomPj='';
+function bomPickTog(k){ bomPick[k]=!bomPick[k]; renderAll(); }
+function bomPicked(pj){ return bomRows(pj).filter(r=>bomPick[pj+'|'+r.mat]&&r.gap>0); }
+function bomOrder(pj){ const sel=bomPicked(pj);
+  if(!sel.length){ uiAlert('先勾要下单的物料 —— 没勾的会留在流水账里，下次再买（支持分期采购）'); return; }
+  const supps=[...new Set(sel.map(r=>matOf(r.mat).supp))];
+  if(supps.length>1){ uiAlert('门禁：勾中的物料来自 '+supps.length+' 个供应商（'+
+    supps.map(x=>suppOf(x).name).join('、')+'）——\n一张采购单只能开给一家，请分开下单'); return; }
+  const cover=sel.filter(r=>r.canCover>0);
+  const msg=cover.length?'\n★注意：其中 '+cover.length+' 项仓库里有现货（'+
+    cover.map(r=>matOf(r.mat).name+' '+r.canCover+' 件').join('、')+
+    '）——\n先让库管确认能不能直接出库，能出的就不用买了。':'';
+  uiConfirm('给 '+suppOf(supps[0]).name+' 下单，共 '+sel.length+' 项：\n'+
+    sel.map(r=>matOf(r.mat).name+' ×'+r.gap).join('\n')+msg+'\n\n继续？',ok=>{ if(!ok) return;
+    const id='PO-'+nowTs().slice(0,4)+'-'+String(PCPO.length+40).padStart(3,'0');
+    const sp=suppOf(supps[0]); const eta=new Date(); eta.setDate(eta.getDate()+(sp.leadDays||14));
+    PCPO.unshift({id,supp:supps[0],cur:sp.cur,fx:fxOf(sp.cur),at:nowTs(),by:WHO[me].name,
+      reason:'项目采购 · 按项目物料账下单',pj,
+      lines:sel.map(r=>({mat:r.mat,qty:r.gap,unit:matOf(r.mat).price})),
+      eta:ymdS(eta),arrivedAt:null,st:'在途'});
+    opLog(pj,'按项目物料账下单',id+' · '+sp.name+' · '+sel.map(r=>matOf(r.mat).name+' ×'+r.gap).join('；')+
+      ' —— 没勾的留在流水账里，下次再买',['proc','wh','eng']);
+    notifAdd(pj,'采购单 '+id+' 已下单（'+sel.length+' 项）',[{who:'库管 老张',how:'待办',ok:false}]);
+    bomPick={}; renderAll();
+    uiAlert('已生成采购单 '+id+' ✓\n没勾的项留在流水账里，什么时候要买什么时候再勾'); }); }
 function whSetVal(k,label,v){ const nv=parseInt(v,10);
   if(!(nv>0)){ uiAlert('门禁：请填正整数 —— 填 0 等于把这条提醒关掉，系统不会再提醒你'); renderAll(); return; }
   const old=whSet[k]; if(old===nv){ renderAll(); return; }
@@ -6931,33 +7093,61 @@ ${helpNote(`<b>这页怎么用</b>：这里的四个数是全公司工程口径�
  </div>`;
 },
 'proc/采购需求':()=>{
+ const pend=qbomPending(), wait=chgWait();
  const all=[...PCREQ,...pcRestock()];
  const rows=all.filter(r=>(pcF==='全部'||r.src===pcF)&&(!pcQ||
    `${r.id} ${matOf(r.mat).name} ${r.pj} ${pjNick(r.pj)} ${r.why}`.toLowerCase().includes(pcQ.toLowerCase())));
  const picked=pcPicked();
- return `<h2>采购需求 <span class="pill p-cyan">都来自库管 · 采购是执行者</span></h2>
- <div class="page-sub">两个来源：<b>集中采购</b>＝库管补货建议（C1 低于红线，系统现算）· <b>项目采购</b>＝项目 S2 结清后按方案提料</div>
+ return `<h2>采购需求 <span class="pill p-cyan">采购是执行者，不是需求方</span></h2>
+ <div class="page-sub">四个来源都<b>不是采购自己提的</b>：报价原始单（外部报价系统 → 采购上传）·
+   SM2 变更 / 施工新增（工程人员在 App 提、工程管理审）· 库管补货（C1 低于红线，系统现算）</div>
  ${ops([
-  ['勾需求 → 生成采购单','一张单只能开给<b>一个供应商</b>（勾了两家会拦）','进「采购单」并跟踪到货；需求转「已下单」'],
-  ['退回库管','★采购<b>不能自己删需求</b> —— 觉得不合理就退回，写清为什么','库管收到通知，由<b>库管</b>决定改数量还是撤销'],
-  ['补货建议','<b>系统现算，不用人维护</b> —— 库存低于红线自动出现，补够了自动消失','—'],
-  ['自己想买点什么','<b>做不到</b> —— 这页没有「新建需求」按钮','要买什么由库管下指令'],
+  ['上传报价物料清单','只认物料编码；认不上的挂起并卡住工程人员那一步','形成这个项目的基线，工程人员在 App 里看到它'],
+  ['勾需求 → 生成采购单','一张单只能开给<b>一个供应商</b>（勾了两家会拦）','进「采购单」并跟踪到货'],
+  ['退回','★采购<b>不能自己删需求</b> —— 觉得不合理就退回给提单人，写清为什么','提单人收到通知，由他改或撤销'],
+  ['自己想买点什么','<b>做不到</b> —— 这页没有「新建需求」按钮','要买什么由报价、工程、库存决定'],
  ])}
- ${helpNote(`<b>这页怎么用</b>：把要买的勾上，点「生成采购单」。系统会按物料的供应商归堆——
-   <b>一张采购单只能开给一家供应商</b>，勾了两家会拦下来让你分开下。
-   生成之后<b>拿着这张单去线下下单</b>（打电话/发邮件），系统这边负责记住"什么时候为什么买了多少"和"什么时候该到"。`)}
- ${helpNote(`★<b>要不要采购，指令由库管下达，采购不能自己决定</b>（用户 2026-08-04 定）。
-   这页<b>没有「新建需求」按钮</b>，也<b>不能删需求</b>——因为"要买什么"是库存和项目决定的，
-   不是采购决定的。采购觉得某条不合理（数量不对、型号不对、时机不对），就点<b>「退回库管」</b>
-   写清为什么，由<b>库管</b>去改或撤销。这样责任始终清楚：<b>库管定要什么，采购定找谁买、什么价、什么时候到</b>。`)}
-${helpNote(`<b>补货建议是现算的</b>：C1 常备件的库存低于红线就自动出现在这里，补够了自动消失——
-   不用人去维护一张"要买什么"的清单。红线在「物料主表」里改。
-   <b>项目需求</b>则是库管在项目 S2 物料款结清后按方案 BOM 提的，带项目编号。`)}
+ ${helpNote(`<b>项目料的提单人是工程人员</b>（2026-08-05 采购负责人提、老板拍板）——
+   方案和现场情况工程人员最清楚，库管管的是仓库不是项目。
+   链条是：<b>报价清单（采购上传）→ SM2 后工程人员在 App 上调 → 工程管理负责人审 →
+   ★库管先看仓库有没有现货 → 不够的差额才到这里变成采购需求</b>。`)}
+ ${helpNote(`★<b>Excel 里认不上的物料编码会挂起</b>，不会悄悄跳过、也不会自动建一个假物料。
+   在补齐之前，工程人员那边显示"这张清单还缺 N 个料没建档"，<b>不让开始改</b>——
+   否则他改了半天，最后发现少了几个料，前面的活白干。`)}
+ <div class="cards">
+  <div class="card"><div class="card-label">★挂起 · 物料没建档</div>
+    <div class="card-value"${pend.length?' style="color:var(--breach)"':''}>${pend.length}</div>
+    <div class="card-foot">${pend.length?'卡住了工程人员那一步 —— 先建档':'报价清单都认全了 ✓'}</div></div>
+  <div class="card"><div class="card-label">工程提的变更待审</div>
+    <div class="card-value"${wait.length?' style="color:var(--warning)"':''}>${wait.length}</div>
+    <div class="card-foot">${wait.length?'在工程管理那边，审完才到采购':'没有待审的'}</div></div>
+  <div class="card"><div class="card-label">待下单需求</div>
+    <div class="card-value"${pcReqAll().length?' style="color:var(--warning)"':''}>${pcReqAll().length}</div>
+    <div class="card-foot">项目料 ${pcReqAll().filter(r=>r.pj).length} · 集中备货 ${pcReqAll().filter(r=>!r.pj).length}</div></div>
+  <div class="card"><div class="card-label">已上传报价清单</div><div class="card-value">${QBOM.length}</div>
+    <div class="card-foot">${[...new Set(QBOM.map(q=>q.pj))].length} 个项目 · 版本都留着可查</div></div>
+ </div>
+ ${pend.length?`<div class="panel" style="border-color:var(--breach)">
+  <div class="panel-head" style="color:var(--breach)">★ 挂起：这些物料编码在物料主表里没有
+    <span class="muted" style="font-weight:400">补齐之前，工程人员改不了这张清单</span></div>
+  <table><thead><tr><th style="width:160px">项目</th><th style="width:150px">Excel 里的编码</th>
+    <th>Excel 里写的名称</th><th style="width:80px;text-align:right">数量</th>
+    <th style="width:140px">区域</th><th style="width:110px"></th></tr></thead>
+  <tbody>${pend.map(p=>`<tr>
+    <td><b>${pjNick(p.pj)}</b><div class="hint mono" style="font-size:10px">${p.file}</div></td>
+    <td><b class="mono" style="color:var(--breach)">${p.code}</b></td>
+    <td>${p.name}</td><td class="num">${p.qty}</td><td class="hint">${p.area||'—'}</td>
+    <td><button class="btn btn-primary" style="padding:3px 9px;font-size:11px" onclick="qbomFix('${p.code}')">去建档</button></td>
+   </tr>`).join('')}</tbody></table>
+  <div class="panel-body hint">建好之后回来重新识别，这几行会自动补进清单 ——
+   <b>既不用为一个编码重传整张表，也不会漏掉</b>。</div>
+ </div>`:''}
  <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);flex-wrap:wrap;align-items:center">
    ${['全部','项目需求','库管补货'].map(x=>`<button class="btn${pcF===x?' btn-primary':''}" onclick="pcF='${x}';renderAll()">${x}</button>`).join('')}
    <input id="pcq" class="search" placeholder="🔍 搜物料 / 项目 / 原因…" value="${pcQ}"
-     style="width:230px;padding:6px var(--sp-2)" oninput="pcQ=this.value;keepFocus('pcq')">
-   <button class="btn btn-primary" style="margin-left:auto" onclick="pcPoOpen()">
+     style="width:220px;padding:6px var(--sp-2)" oninput="pcQ=this.value;keepFocus('pcq')">
+   <button class="btn" style="margin-left:auto" onclick="qbomUpload()">⬆ 上传报价物料清单</button>
+   <button class="btn btn-primary" onclick="pcPoOpen()">
      生成采购单${picked.length?`（已勾 ${picked.length} 项）`:''}</button>
  </div>
  <div class="panel"><table>
@@ -6973,11 +7163,13 @@ ${helpNote(`<b>补货建议是现算的</b>：C1 常备件的库存低于红线�
      <td class="num">${r.qty}</td>
      <td>${sp.name}<div class="hint">${sp.cur} · 交期 ${sp.leadDays} 天</div></td>
      <td class="hint" style="max-width:280px">${r.why}<div class="mono" style="font-size:10px">${r.at} · ${r.by}</div></td>
-     <td>${r.st==='已退回'?`<span class="pill p-red">已退回库管</span><div class="hint">${r.backWhy||''}</div>`
+     <td>${r.st==='已退回'?`<span class="pill p-red">已退回</span><div class="hint">${r.backWhy||''}</div>`
        :r.st==='待下单'?`<span class="pill p-amber">待下单</span>
-         ${r.src==='项目需求'?`<div><a style="color:#c62828;cursor:pointer;font-size:11px" onclick="pcReqBack('${r.id}')">退回库管</a></div>`:''}`
+         ${r.src==='项目需求'?`<div><a style="color:#c62828;cursor:pointer;font-size:11px" onclick="pcReqBack('${r.id}')">退回</a></div>`:''}`
        :`<span class="pill p-green">已下单</span>${r.po?`<div class="hint mono">${r.po}</div>`:''}`}</td></tr>`;}).join('')
-    ||'<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">没有匹配的需求 —— 库存都在红线以上，项目也没提料</td></tr>'}</tbody></table>
+    ||'<tr><td colspan="8" class="muted" style="padding:var(--sp-4)">没有匹配的需求</td></tr>'}</tbody></table>
+  <div class="panel-body hint">项目料按项目看整本账（原始单 / 变更 / 新增，还差多少没买）去
+   <a style="color:var(--accent);cursor:pointer" onclick="go('proc','项目物料与采购')">项目物料与采购 →</a></div>
  </div>`;
 },
 'proc/采购单':()=>{
@@ -7110,50 +7302,109 @@ ${helpNote(`<b>删除 vs 停用</b>：一家供应商只要被物料挂过、开
  <div class="panel-body hint">供应商是<b>公司级</b>信息，不属于任何单个项目；建立/修改/停用/删除都进操作日志。
   <b>灰掉的是已停用</b>——不再出现在新下单与新建物料的选项里，历史照旧可查</div>
 </div>`,
-'proc/项目采购状态':()=>{
- const rows=pcProjRows();
- return `<h2>项目采购状态 <span class="pill p-grey">只读</span></h2>
- <div class="page-sub">项目采购走到哪一步了 —— <b>这页只看不改</b>：钱是财务的、提料是库管的、下单在「采购需求」</div>
- ${ops([['这页能做什么','什么都不做 —— <b>只读</b>','要下单去「采购需求」；要看单去「采购单」']])}
- ${helpNote(`<b>为什么只读</b>：一个项目的采购要走四步——<b>①S2 物料款结清</b>（财务）→
-   <b>②库管按方案提料</b>（库管）→ <b>③采购下单</b>（采购）→ <b>④到货入库</b>（库管）。
-   四步里采购只管第③步，其余三步的按钮都在别的部门。这页把四步串起来给你看，
-   免得"到底卡在谁那儿"要问三个人。`)}
- ${helpNote(`<b>没结 S2 就不该提料下单</b>：物料款没到就先买，等于公司垫钱。
-   所以第一列是财务的 S2 状态——灰的就是还没到钱，别催库管提料。`)}
- <div class="panel"><div class="panel-head">部门之间的门禁链 <span class="muted" style="font-weight:400">一环扣一环 · 采购只负责中间那一段</span></div>
-  <div class="panel-body" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:var(--fs-xs)">
-   ${[['财务','S2 物料款结清','没结清就先买＝公司垫钱'],
-      ['库管','按方案提料','要买什么由库管定，采购不自己决定'],
-      ['采购','下单 · 盯到货','找谁买 / 什么价 / 运费多少 / 什么时候到'],
-      ['库管','到货入库点数','没入库就没有库存，出库单价从这里来'],
-      ['库管','出库给提货人','★物料既跟项目走，也跟提货人走'],
-      ['工程','安装'] ].map((x,i)=>`
-     <span class="pill ${x[0]==='采购'?'p-cyan':'p-grey'}" title="${x[2]||''}">${i+1}. ${x[0]} · ${x[1]}</span>
-     ${i<5?'<span class="muted">→</span>':''}`).join('')}
-   <div class="hint" style="width:100%;margin-top:6px">每一环没完成，下一环就动不了 —— 这就是为什么这页只读：
-    采购能推的只有第 3 环，其余都在别的部门手里。</div>
-  </div></div>
- <div class="panel"><table>
-  <thead><tr><th style="width:120px">项目编号</th><th style="width:170px">项目 · 地址</th>
-    <th style="width:130px">①S2 物料款</th><th style="width:110px">②库管提料</th>
-    <th style="width:150px">③采购下单</th><th style="width:150px">④到货</th><th>当前卡在哪</th></tr></thead>
-  <tbody>${rows.map(r=>`<tr>
-    <td><b class="mono" style="color:var(--accent)">${r.p.code}</b><div class="hint">${OPENED[r.p.code]||''}</div></td>
-    <td><b>${r.p.nick}</b><div class="hint">📍 ${r.p.street}, ${r.p.suburb} ${r.p.state}</div></td>
-    <td>${r.paid?'<span class="pill p-green">已结清</span>':'<span class="pill p-grey">未结清</span>'}
-      <div class="hint">财务在推</div></td>
-    <td>${r.reqs.length?`<span class="pill p-cyan">${r.reqs.length} 项</span>`:'<span class="muted">—</span>'}
-      <div class="hint">库管提</div></td>
-    <td>${r.pos.length?r.pos.map(p=>`<div class="mono" style="font-size:11px">${p.id}</div>`).join('')
-      :(r.reqs.length?'<span class="pill p-amber">待下单</span>':'<span class="muted">—</span>')}</td>
-    <td>${r.pos.length?r.pos.map(p=>{const e=poEta(p);
-      return `<div><span class="pill ${e.cls}">${e.k}</span> <span class="hint mono">${p.arrivedAt?p.arrivedAt.slice(0,10):p.eta}</span></div>`;}).join('')
-      :'<span class="muted">—</span>'}</td>
-    <td class="hint"><b>${r.step}</b></td></tr>`).join('')
-    ||'<tr><td colspan="7" class="muted" style="padding:var(--sp-4)">此刻没有在建项目</td></tr>'}</tbody></table>
-  <div class="panel-body hint">集中采购（公司备货）不在这张表里 —— 那部分不属于任何项目，在「采购需求 / 采购单」里看</div>
- </div>`;
+'proc/项目物料与采购':()=>{
+ const live=PROJECTS.filter(p=>['施工中','项目交付'].includes(p.status));
+ const code=(bomPj&&live.some(p=>p.code===bomPj))?bomPj:(live[0]||{}).code;
+ if(!code) return `<h2>项目物料与采购</h2>
+   <div class="page-sub">现在没有施工中的项目</div>`;
+ const p=PROJECTS.find(x=>x.code===code)||{};
+ const q=qbomOf(code), chgs=chgOf(code), rows=bomRows(code);
+ const sel=bomPicked(code);
+ const pendN=(q&&q.pending||[]).length;
+ const f=finOf(code); const s2=f?!!f.ms[1].settled:null;
+ const tot=k=>rows.reduce((x,r)=>x+r[k],0);
+ return `
+<h2>项目物料与采购 <span class="pill p-cyan">一个项目一本账</span></h2>
+<div class="page-sub">这个项目该买什么 · 买到哪一步了 —— 三段来源合成一张：<b>报价原始单 · SM2 变更 · 施工新增</b></div>
+${ops([
+ ['勾选 → 下单','★没勾的<b>留在流水账里</b>，什么时候要买什么时候再勾（支持分期采购）','进「采购单」跟踪到货'],
+ ['看「还要买」这一列','＝ 应采 − 已下单；仓库有现货的另标出来','先让库管确认能不能直接出库，能出的就不用买'],
+])}
+${helpNote(`<b>为什么原始单的行不会消失</b>：报价里有、后来不要了的料，数量会变成 <b>0</b>，但<b>行还在</b>。
+  删了行，"客户付的钱里本来包含这个"就没有痕迹了 —— 回头对账谁也说不清。
+  所以你会看到「原始 10 → 现在 0」这样的行，那是<b>正常的</b>。`)}
+${helpNote(`★<b>「买多了」要当场看见</b>：采购已经下了单，工程后来把数量减下去（甚至减到 0），
+  这批货已经花了钱。这种行会<b>标红</b>并单独统计 —— 不标出来，它就绿油油地写着"齐了"，
+  那笔钱悄悄留在项目成本里，<b>谁也不会发现</b>。处理办法：退供应商，或者转成公司备货。`)}
+${helpNote(`★<b>「还要买」不等于「马上买」</b>：仓库里可能已经有现货。这一列旁边标了<b>库房现货</b>——
+  先让库管确认能不能直接出库给这个项目，能出的那部分就<b>不用买</b>。
+  （库管的「项目备料」确认下一轮做，现在这里只把现货数摆出来。）`)}
+<div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-3);flex-wrap:wrap;align-items:center">
+  <span class="muted" style="font-size:var(--fs-xs)">项目</span>
+  <select style="width:auto;max-width:340px" onchange="bomPj=this.value;bomPick={};renderAll()">
+    ${live.map(x=>`<option value="${x.code}"${x.code===code?' selected':''}>${x.code} · ${x.nick||x.name}</option>`).join('')}</select>
+  <span class="hint">📍 ${p.street}, ${p.suburb} ${p.state}</span>
+  <button class="btn btn-primary" style="margin-left:auto" onclick="bomOrder('${code}')">
+    勾选下单${sel.length?`（已勾 ${sel.length} 项）`:''}</button>
+</div>
+<div class="cards">
+ <div class="card"><div class="card-label">报价原始单</div>
+   <div class="card-value" style="font-size:var(--fs-lg)">${q?'V'+q.ver+' · '+q.quoteVer:'还没上传'}</div>
+   <div class="card-foot">${q?q.lines.length+' 行 · '+q.at.slice(0,10)+' 由 '+q.by+' 上传':'去「采购需求」页上传 Excel'}
+     ${pendN?'<br><b style="color:var(--breach)">★还有 '+pendN+' 行挂起（物料没建档）</b>':''}</div></div>
+ <div class="card"><div class="card-label">工程提的变更</div><div class="card-value">${chgs.length}</div>
+   <div class="card-foot">已批 ${chgs.filter(c=>c.st==='已批').length} · 待审 ${chgs.filter(c=>c.st==='待审').length}
+     ${chgs.filter(c=>c.st==='待审').length?'<br><b style="color:var(--warning)">待审的还没进这本账</b>':''}</div></div>
+ <div class="card"><div class="card-label">应采 / 已下单</div>
+   <div class="card-value" style="font-size:var(--fs-lg)">${tot('need')} / ${tot('ord')}</div>
+   <div class="card-foot">S2 物料款：${s2===true?'<b style="color:var(--healthy)">已结清</b>'
+     :s2===false?'<b style="color:var(--breach)">未结清 —— 出库会被卡</b>':'财务还没建收款计划'}</div></div>
+ <div class="card"><div class="card-label">★还要买</div>
+   <div class="card-value"${tot('gap')?' style="color:var(--warning)"':''}>${tot('gap')}</div>
+   <div class="card-foot">${rows.filter(r=>r.canCover>0).length?'其中 '+rows.filter(r=>r.canCover>0).length+' 项仓库有现货，先问库管':'仓库没有可顶的现货'}</div></div>
+ <div class="card"><div class="card-label">★已下单超出应采</div>
+   <div class="card-value"${tot('over')?' style="color:var(--breach)"':''}>${tot('over')}</div>
+   <div class="card-foot">${tot('over')?'<b style="color:var(--breach)">买多了 —— 工程后来减了量，货已经下单</b><br>退供应商，或转成公司备货':'没有买多的 ✓'}</div></div>
+</div>
+<div class="panel"><div class="panel-head">物料账 <span class="muted" style="font-weight:400">
+  原始 → 变更后 → 已下单 → 还要买 · 全部现算</span></div>
+ <table>
+  <thead><tr><th style="width:40px"></th><th>物料</th><th style="width:130px">区域</th>
+    <th style="width:80px;text-align:right">原始</th><th style="width:90px;text-align:right">变更</th>
+    <th style="width:80px;text-align:right">应采</th><th style="width:80px;text-align:right">已下单</th>
+    <th style="width:90px;text-align:right">库房现货</th><th style="width:90px;text-align:right">★还要买</th>
+    <th style="width:120px">供应商</th></tr></thead>
+  <tbody>${rows.map(r=>{const m=matOf(r.mat); const zero=r.need===0;
+   return `<tr${r.over?' style="background:rgba(220,38,38,.06)"':(zero?' style="opacity:.5"':'')}>
+    <td>${r.gap>0?`<input type="checkbox" style="width:auto"${bomPick[code+'|'+r.mat]?' checked':''}
+      onchange="bomPickTog('${code}|${r.mat}')">`:''}</td>
+    <td><b>${m.name}</b><div class="hint mono">${r.mat}</div>
+      ${r.fromQuote?'':'<span class="pill p-amber">Additional</span>'}</td>
+    <td class="hint">${r.area||'—'}</td>
+    <td class="num">${r.fromQuote?r.base:'<span class="muted">—</span>'}</td>
+    <td class="num"${r.delta?(r.delta>0?' style="color:var(--breach)"':' style="color:var(--healthy)"'):''}>${
+      r.delta?(r.delta>0?'+':'')+r.delta:'<span class="muted">—</span>'}</td>
+    <td class="num"><b>${r.need}</b>${zero?'<div class="hint">改成 0（行留着）</div>':''}</td>
+    <td class="num"${r.over?' style="color:var(--breach);font-weight:600"':''}>${r.ord||'<span class="muted">0</span>'}${
+      r.over?'<div class="hint" style="color:var(--breach)">超出 '+r.over+'</div>':''}</td>
+    <td class="num"${r.canCover>0?' style="color:var(--healthy)"':''}>${r.stock}${
+      r.canCover>0?'<div class="hint" style="color:var(--healthy)">可顶 '+r.canCover+'</div>':''}</td>
+    <td class="num"${r.gap?' style="color:var(--warning);font-weight:600"':''}>${
+      r.gap?r.gap:(r.over?`<span class="pill p-red">买多 ${r.over}</span>`:'<span class="pill p-green">齐了</span>')}</td>
+    <td class="hint">${suppOf(m.supp).name}</td></tr>`;}).join('')
+   ||'<tr><td colspan="10" class="muted" style="padding:var(--sp-4)">这个项目还没有报价物料清单 —— 去「采购需求」页上传</td></tr>'}</tbody></table>
+ <div class="panel-body hint">勾上要买的点右上角下单。<b>没勾的不会消失</b>，留在这张表里，
+   下次要买再勾 —— 这就是分期采购。</div>
+</div>
+${chgs.length?`<div class="panel"><div class="panel-head">变更记录
+  <span class="muted" style="font-weight:400">工程人员在 App 提 · 工程管理负责人审 · 只看变量不看整表</span></div>
+ <table>
+  <thead><tr><th style="width:130px">变更单</th><th style="width:90px">阶段</th><th style="width:150px">谁提的</th>
+    <th>改了什么（★只列变量）</th><th style="width:110px">状态</th><th>审批意见</th></tr></thead>
+  <tbody>${chgs.slice().reverse().map(c=>`<tr${c.st==='待审'?' style="background:rgba(180,83,9,.06)"':''}>
+    <td><b class="mono">${c.id}</b><div class="hint">${c.at}</div></td>
+    <td><span class="pill ${c.stage==='SM2'?'p-cyan':'p-amber'}">${c.stage}</span></td>
+    <td>${c.by}<div class="hint">${c.why}</div></td>
+    <td class="hint">${(c.edits||[]).map(e=>`${matOf(e.mat).name}：<b>${e.from} → ${e.to}</b>${
+      e.to===0?'（不要了，行留着）':''}`).join('<br>')}
+      ${(c.adds||[]).length?((c.edits||[]).length?'<br>':'')+(c.adds||[]).map(a=>
+        `<span class="pill p-amber">＋</span> ${matOf(a.mat).name} <b>×${a.qty}</b> · ${a.why}`).join('<br>'):''}</td>
+    <td>${c.st==='已批'?`<span class="pill p-green">已批</span><div class="hint">${c.reviewBy} ${(c.reviewAt||'').slice(5)}</div>`
+      :`<span class="pill p-amber">待审</span><div class="hint">在工程管理那边</div>`}</td>
+    <td class="hint">${c.reviewNote||'—'}</td></tr>`).join('')}</tbody></table>
+ <div class="panel-body hint">★<b>SM2 阶段可增可减；SM2 之后只能增不能减</b> ——
+   施工都开始了还往下减，已经发到工地的料就对不上账了。</div>
+</div>`:''}`;
 },
 'proc/物料主表':()=>{
  const rows=MATS.filter(m=>!pcQ||`${m.code} ${m.name} ${m.model} ${suppOf(m.supp).name}`.toLowerCase().includes(pcQ.toLowerCase()));
