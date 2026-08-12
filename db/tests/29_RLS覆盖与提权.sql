@@ -52,7 +52,7 @@ SELECT id::text AS lin_id FROM app_account WHERE login_name='lin' \gset
 BEGIN;
 SET LOCAL ROLE konnext_app;
 SELECT set_config('app.account_id', :'lin_id', true);
-\echo '--- 期望 77 ---'
+\echo '--- 期望 98 ---'
 SELECT count(*) AS 能读断言定义 FROM assertion_def;
 ROLLBACK;
 
