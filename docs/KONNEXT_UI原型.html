@@ -5469,7 +5469,7 @@ const cohortAll=()=>{ const seen={},list=[];
   BIGPD.forEach(p=>{seen[p.code]=1;
     list.push({opened:p.opened,out:p.lost?'l':(p.step>=6?'s':'p')});});
   PROJECTS.forEach(p=>{ if(seen[p.code]) return;      // 编号重复时以售前大表为准
-    list.push({opened:p.opened,out:(p.status==='已流失'||p.status==='留标')?'l':(p.status==='接洽当中'?'p':'s')});});
+    list.push({opened:p.opened,out:(p.status==='已流失')?'l':(p.status==='接洽当中'?'p':'s')});});
   return list;};   // 交付/维护中/烂尾都经过签约 → 售前口径算已成交
 const ymOf=d=>d?d.slice(2,4)+'-'+d.slice(5,7):'';     // '2026/07/27' → '26-07'
 
@@ -6749,7 +6749,7 @@ ${ops([
         <tr><td>施工中</td><td class="num">4</td><td><span class="pill p-cyan">在建</span></td></tr>
         <tr><td>项目交付</td><td class="num">2</td><td><span class="pill p-green">交付</span></td></tr>
         <tr><td>项目维护中</td><td class="num">5</td><td><span class="pill p-green">维护</span></td></tr>
-        <tr><td><b>留标</b></td><td class="num">7</td><td><span class="pill p-grey">未中标</span></td></tr>
+        <tr><td><b>已流失</b></td><td class="num">7</td><td><span class="pill p-grey">未中标</span></td></tr>
         <tr><td><b>已烂尾</b></td><td class="num">1</td><td><span class="pill p-loss">风险</span></td></tr>
       </tbody></table>
     </div>
@@ -6769,10 +6769,10 @@ ${ops([
         <tr><td><span class="pill p-grey">not_started</span></td><td class="num">6</td>
           <td class="hint">未开工·不显示利润率</td></tr>
         <tr><td><span class="pill p-grey">bid_lost</span></td><td class="num">7</td>
-          <td class="hint">留标·不显示</td></tr>
+          <td class="hint">已流失·不显示</td></tr>
       </tbody></table>
       <div class="hint" style="margin-top:var(--sp-3)">
-        ★ 未开工与留标项目<b>不显示</b>利润率 —— 没花钱算出 100% 会误导决策。<br>
+        ★ 未开工与已流失项目<b>不显示</b>利润率 —— 没花钱算出 100% 会误导决策。<br>
         已烂尾项目的收入基数换成<b>实收合同款</b>，不是合同额。
       </div>
     </div>
@@ -6811,7 +6811,7 @@ ${ops([
         <td>${can('margin')?'<span class="pill p-loss">−237.6%</span>':'<span class="masked">— —</span>'}</td>
         <td class="muted">—</td></tr>
       <tr><td class="mono">0155</td><td>Epping 李宅<div class="hint">7 Beecroft Rd, Epping NSW</div></td>
-        <td><span class="pill p-grey">留标</span></td><td class="num muted">—</td>
+        <td><span class="pill p-grey">已流失</span></td><td class="num muted">—</td>
         <td>${money('300,000','margin')}</td><td class="masked">—</td><td class="masked">—</td>
         <td class="masked">—</td>
         <td class="masked">不显示</td><td><span class="pill p-grey">未订阅</span></td></tr>
@@ -6826,7 +6826,7 @@ ${ops([
 /* ───────── 决策页 · 风险看板 ───────── */
 'decision/风险看板':()=>`
 <h2>风险看板</h2>
-<div class="page-sub">留标 · 已烂尾 · 状态停留超阈值 · 订阅逾期，一屏看全</div>
+<div class="page-sub">已流失 · 已烂尾 · 状态停留超阈值 · 订阅逾期，一屏看全</div>
 <div class="panel">
   <table>
     <thead><tr><th>编号</th><th>项目</th><th>状态</th><th>风险类型</th>
@@ -6849,7 +6849,7 @@ ${ops([
         <td><span class="pill p-red">已逾期 59 天</span></td>
         <td>${can('margin')?'<span class="pill p-amber">40.9%</span>':'<span class="masked">— —</span>'}</td></tr>
       <tr><td class="mono">0155</td><td>Epping 李宅<div class="hint">7 Beecroft Rd, Epping NSW</div></td>
-        <td><span class="pill p-grey">留标</span></td><td>留标</td>
+        <td><span class="pill p-grey">已流失</span></td><td>已流失</td>
         <td class="num">0</td><td class="num muted">—</td><td class="num muted">—</td>
         <td><span class="pill p-grey">未订阅</span></td><td class="masked">不显示</td></tr>
     </tbody>
@@ -6862,7 +6862,7 @@ ${ops([
       <tr><td>接洽当中</td><td class="num">45 天</td><td>待联系</td><td class="num">30 天</td></tr>
       <tr><td>已签署报价</td><td class="num">14 天</td><td>定金已收取</td><td class="num">21 天</td></tr>
       <tr><td>施工中</td><td class="num">120 天</td><td>项目交付</td><td class="num">30 天</td></tr>
-      <tr><td>维护中 / 留标 / 已烂尾</td><td class="num muted">终态不设</td><td></td><td></td></tr>
+      <tr><td>维护中 / 已流失 / 已烂尾</td><td class="num muted">终态不设</td><td></td><td></td></tr>
     </tbody></table>
     <div class="hint" style="margin-top:var(--sp-3)">状态一变，停留天数自动归零</div>
   </div>
@@ -6986,7 +6986,7 @@ ${ops([
       <tr><td>权限安全</td><td class="num">8</td><td><span class="pill p-red">1 违规</span></td>
         <td class="hint">视图 security_invoker · 三级不得进后台 · 核心管理员唯一…</td></tr>
       <tr><td>流程与订阅</td><td class="num">25</td><td><span class="pill p-green">全过</span></td>
-        <td class="hint">SM 顺序 · 交付须签收 · 留标/烂尾边界 · 订阅只在已交付…</td></tr>
+        <td class="hint">SM 顺序 · 交付须签收 · 已流失/烂尾边界 · 订阅只在已交付…</td></tr>
     </tbody></table>
   </div>
 </div>
@@ -11699,7 +11699,7 @@ ${helpNote(`订阅年费<b>改价只影响以后</b>：新签和下一次续费�
 'presales/总览':()=>overview('售前',[
   ['接洽当中','6','','2 个停留超 45 天（阈值 45）'],
   ['待签约','3','customer','合同额合计 A$ 1.24M'],
-  ['本月留标','2','','参与但未中标，已归档'],
+  ['本月已流失','2','','参与但未中标，已归档'],
   ['待录报价','1','','缺预测工时 → 人工消耗率算不出'],
 ]),
 };
