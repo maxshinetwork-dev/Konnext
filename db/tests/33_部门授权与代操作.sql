@@ -11,7 +11,7 @@
 -- ★划分是天然的，不手列清单：
 --   表在 table_ownership 里【有部门归属】→ 管理员写它＝代那个部门干活 → 要授权
 --   表【没有部门归属】（决策看板/账号权限/断言定义/登记表）→ 本职 → 照旧
--- 期望拦截：10 次
+-- 期望拦截：11 次
 SET timezone='Australia/Sydney';
 \set ON_ERROR_STOP off
 
@@ -199,6 +199,78 @@ SELECT kind AS 方式, (revoked_at IS NOT NULL) AS 已解除,
   FROM dept_delegation ORDER BY granted_at;
 
 \echo ''
-\echo '════════ ⑪ 断言复核 ════════'
+\echo '════════ ⑪ ★v0.40：查漏 —— 「没登记归属」的表曾经是敞开的 ════════'
+--   用户 2026-08-10 追问「是不是有遗漏」，全库扫出四处绕过了这道门：
+--     work_log（打卡）· daily_report / daily_issue（每日上报）· eng_setting（各部门设置键）
+--   ★根子上的错：v0.39 把「没登记部门归属」当成「决策级本职 → 放行」。方向反了 ——
+--     没登记绝大多数时候是【忘了登记】，于是每张忘登记的业务表对管理员都是敞开的，还不报错。
+\echo '--- 全库扫：有写策略却没登记归属的表（期望 0 行）---'
+SELECT c.relname AS 没登记归属的表
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname='public' AND c.relkind='r'
+   AND EXISTS(SELECT 1 FROM pg_policies p WHERE p.schemaname='public'
+               AND p.tablename=c.relname AND p.cmd IN ('INSERT','UPDATE','ALL'))
+   AND NOT EXISTS(SELECT 1 FROM table_ownership o WHERE o.table_name=c.relname);
+
+BEGIN;
+SET LOCAL ROLE konnext_app;
+SELECT set_config('app.account_id', :'chen_id', true);
+\echo '--- ★应拦：没授权时改打卡记录（work_log 归工程/运维，v0.39 时它是敞开的）---'
+INSERT INTO work_log(project_id,staff_id,work_type,checkin_at,checkin_method)
+VALUES('a3300000-0000-0000-0000-000000000001',
+       (SELECT id FROM eng_staff LIMIT 1),'execution',now(),'gps');
+ROLLBACK;
+
+-- 造一个工程人员，好验「本部门照旧」
+INSERT INTO eng_staff(id,name,pay_type,pay_hourly_rate,hired_at)
+VALUES('e3300000-0000-0000-0000-000000000001','阿强','hourly',70,'2025-01-01');
+INSERT INTO app_account(id,login_name,full_name,phone,tier,active,created_by)
+VALUES('ac330000-0000-0000-0000-000000000001','gong','陈工','+61400000004',2,true,:'chen_id');
+INSERT INTO account_department(account_id,department,is_head)
+VALUES('ac330000-0000-0000-0000-000000000001','eng_mgmt',true);
+SELECT 'ac330000-0000-0000-0000-000000000001' AS gong_id \gset
+
+BEGIN;
+SET LOCAL ROLE konnext_app;
+SELECT set_config('app.account_id', :'gong_id', true);
+\echo '--- 正常：工程负责人写自己部门的打卡记录 ---'
+INSERT INTO work_log(project_id,staff_id,work_type,checkin_at,checkin_method)
+VALUES('a3300000-0000-0000-0000-000000000001',
+       'e3300000-0000-0000-0000-000000000001','execution',now(),'gps');
+SELECT count(*) AS 打卡条数 FROM work_log;
+ROLLBACK;
+
+\echo ''
+\echo '--- ★eng_setting 按【键】判，不按表判 ---'
+--   一张表装六个部门的设置：财务 15 个键、运维 8 个、售前 7 个、库管 6 个、采购 5 个。
+--   按表判的话，管理员改财务的 GST、运维的 SLA、库管的仓库地址统统不受约束
+BEGIN;
+SET LOCAL ROLE konnext_app;
+SELECT set_config('app.account_id', :'chen_id', true);
+\echo '--- 改财务的 GST（影响 0 行 = 拦住了；RLS 拦 UPDATE 不报错，看行数）---'
+UPDATE eng_setting SET value_num=15 WHERE key='gst_bank_pct';
+\echo '--- 期望：还是 10 ---'
+SELECT key, value_num AS 现在的值 FROM eng_setting WHERE key='gst_bank_pct';
+\echo '--- 正常：改决策级的键（账号上限，无部门归属＝本职）---'
+UPDATE eng_setting SET value_num=3 WHERE key='max_admin_accounts';
+SELECT key, value_num AS 现在的值 FROM eng_setting WHERE key='max_admin_accounts';
+ROLLBACK;
+
+\echo '--- 财务授权之后，陈总就能改财务的键了 ---'
+INSERT INTO dept_delegation(department,kind,granted_by,until_date)
+VALUES ('finance','leave',:'wang_id',current_date+5);
+BEGIN;
+SET LOCAL ROLE konnext_app;
+SELECT set_config('app.account_id', :'chen_id', true);
+UPDATE eng_setting SET value_num=15 WHERE key='gst_bank_pct';
+SELECT key, value_num AS 授权后改成 FROM eng_setting WHERE key='gst_bank_pct';
+\echo '--- ★但运维的键照旧改不了（授权是按部门给的）---'
+UPDATE eng_setting SET value_num=99 WHERE key='mt_sla_p0';
+SELECT key, value_num AS 运维的键没被改动 FROM eng_setting WHERE key='mt_sla_p0';
+ROLLBACK;
+UPDATE dept_delegation SET revoked_at=now(), revoked_by=:'wang_id' WHERE department='finance';
+
+\echo ''
+\echo '════════ ⑫ 断言复核 ════════'
 SELECT code, label, violations FROM fn_run_assertions()
  WHERE code LIKE 'INV-DEL-%' ORDER BY code;

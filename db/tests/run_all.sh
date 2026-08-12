@@ -7,7 +7,7 @@
 #   （dept_handoff 没标 scope）→ 库存永远是 0 → 后面的出库、退库跟着连环报错，
 #   每一条都被记成"拦截成功"。测试全绿，实际上好几个文件什么都没测到。
 #   现在按类型分开数，并把【可疑的其他错误】原样打出来 —— 数字不许再骗人。
-DDL=${1:-../contract_v0_39.sql}
+DDL=${1:-../contract_v0_40.sql}
 PSQL="psql -h /tmp -p 5433"
 PASS=0; GATE=0; CONS=0; OTHER=0
 OTHER_LINES=""
