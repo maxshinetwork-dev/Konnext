@@ -1597,11 +1597,15 @@ const { chromium } = require('playwright');
     R.miss=h.includes('没打卡')&&h.includes('日结挂起');
     R.rep=h.includes('每日上报 · 陈工')||h.includes('每日上报 · 小陈');
     engLgBad=true; renderAll();
-    const bad=document.querySelectorAll('#main tbody tr').length;
+    /* ★别写死行数：排班演示数据是按「本周周一到周五」生成的，日期一过，
+       上周二那条就从「已排期·还没到」变成「派了工没打卡」，行数每天都不一样。
+       这条断言要验的本来就是【过滤真的只留异常行】，不是【恰好 2 行】。 */
+    const badRows=[...document.querySelectorAll('#main tbody tr')];
+    const bad=badRows.length>0&&badRows.every(t=>/没打卡|围栏|异常|挂起/.test(t.innerHTML));
     engLgBad=false; engLgF='Site Meeting'; renderAll();
     const smOnly=[...document.querySelectorAll('#main tbody tr')].every(t=>t.innerHTML.includes('Site Meeting'));
     engLgF='全部'; renderAll();
-    R.filter=(bad===2)&&smOnly;
+    R.filter=bad&&smOnly;
     pj=PROJECTS.findIndex(p=>p.code==='KX-2026-0201'); renderAll();
     R.empty=document.getElementById('main').innerHTML.includes('还没有工程流水');
     pj=0; renderAll();
@@ -1616,7 +1620,7 @@ const { chromium } = require('playwright');
   ok(R50.gate,'工程流水账缺 SM3/SM4 解锁财务的下游事件');
   ok(R50.miss,'派了工没打卡的日子未标红（罗宅 07/29–30）');
   ok(R50.rep,'工程流水账未带出当天每日上报原文');
-  ok(R50.filter,'阶段过滤 / 只看异常 不生效（罗宅异常应 2 天）');
+  ok(R50.filter,'阶段过滤 / 只看异常 不生效（勾了只看异常，还是混进了正常的日子）');
   ok(R50.empty,'没进工程线的项目应显示空态说明');
   const wt=await page.evaluate(()=>{ const R={}; const l0=OPLOG.length;
     loginAs('eng'); go('eng','每日工时管理');
@@ -3180,10 +3184,19 @@ const { chromium } = require('playwright');
     document.getElementById('nt-t').value='业主说要等家具进场后再装窗帘电机';
     document.getElementById('nt-d').value='';
     pjNoteSave('KX-2026-0188'); R.gNoteDue = PJNOTE.length===nn;        // 没日期 → 拦
-    document.getElementById('nt-d').value='2026-08-15';
+    /* ★别写死日期：到期前 3 天才进待办，写死 08-15 的话，等今天走到 08-12 它就进窗口了，
+       这条断言会莫名其妙地失败。锚在「今天 + 30 天」，永远在窗口外。 */
+    const far=new Date(); far.setDate(far.getDate()+30);
+    const z=n=>String(n).padStart(2,'0');
+    const farD=far.getFullYear()+'-'+z(far.getMonth()+1)+'-'+z(far.getDate());
+    document.getElementById('nt-d').value=farD;
     pjNoteSave('KX-2026-0188');
-    R.noteSaved = PJNOTE.length===nn+1&&noteNext('KX-2026-0188').due==='2026/08/15';
-    /* 到期前 3 天才进待办 —— 08/15 那条还早，用近的那条验 */
+    /* ★验的是「取最近那条」这个逻辑本身，不是「等于我刚填的那个日期」——
+       0188 本来就有 08/20、08/28 两条，新加的 30 天后那条不该顶掉更近的。
+       写死成「等于我刚填的」，只有在我恰好填了最近日期时才成立，日期一漂就假失败。 */
+    const due0188=PJNOTE.filter(n=>n.pj==='KX-2026-0188'&&!n.done).map(n=>n.due).sort();
+    R.noteSaved = PJNOTE.length===nn+1&&noteNext('KX-2026-0188').due===due0188[0];
+    /* 到期前 3 天才进待办 —— 30 天后那条还早，用近的那条验 */
     R.noteTodo = noteTodos().some(t=>t.pj==='KX-2026-0203')
       &&!noteTodos().some(t=>t.id==='note-'+PJNOTE[PJNOTE.length-1].id);
     // 还原
@@ -3219,6 +3232,111 @@ const { chromium } = require('playwright');
   ok(S74.noteSaved,'备忘没保存 / 跟进时间没跟着变成最近那条');
   ok(S74.noteTodo,'★备忘到期没进待办（记了不提醒等于没记）');
   ok(S74.restored,'七十四轮测试后演示态未还原');
+
+  /* ══════ v0.39 部门授权：★最高管理者默认对别的部门只读 ══════
+     用户 2026-08-10 提：他是唯一能写所有部门的角色，也就是唯一可能和别人撞车的人。
+     乐观锁是「撞了才报错」，这一版「根本不让它撞」。 */
+  const S39=JSON.parse(await page.evaluate(()=>{
+    const R={}, d0=JSON.parse(JSON.stringify(DELEG)), l0=OPLOG.length;
+
+    /* ① 管理员看别的部门：只读横幅 + 写按钮全灰 */
+    loginAs('admin'); go('presales','项目列表');
+    let h=document.getElementById('main').innerHTML;
+    R.roBar   = h.includes('只读')&&h.includes('小林')&&h.includes('强制接管');
+    const btns=[...document.querySelectorAll('#main .main-inner button')];
+    const wr=btns.filter(b=>!/查看|详情|展开|收起|进入|返回|帮助|导出|筛选|全部|清空|刷新|上一|下一|本周|关闭|预览|下载|明细|去处理|去看|说明|知道了|这页怎么用|^取消$|^✕$|←|→|？/.test(b.textContent.trim()));
+    R.greyed  = wr.length>0&&wr.every(b=>b.disabled);
+    /* ★悬停必须说明为什么（UI 规则第 2 条）*/
+    R.whyHover= wr.length>0&&wr.every(b=>/休假授权/.test(b.title||''));
+    R.canRead = document.querySelectorAll('#main tbody tr').length>0;   // 只读完全不受影响
+
+    /* ② 已授权的部门（种子：运维）→ 能动 */
+    go('mt','报修受理');
+    h=document.getElementById('main').innerHTML;
+    R.okBar   = h.includes('已授权给你')&&h.includes('小周');
+    const mb=[...document.querySelectorAll('#main .main-inner button')];
+    R.notGrey = mb.length>0&&mb.some(b=>!b.disabled);
+
+    /* ③ 本职工作不受影响（决策页没有部门归属）*/
+    go('decision','决策看板');
+    const db=[...document.querySelectorAll('#main .main-inner button')];
+    R.ownJob  = db.length===0||db.some(b=>!b.disabled);
+
+    /* ④ 决策页「部门授权总览」*/
+    go('decision','部门授权');
+    h=document.getElementById('main').innerHTML;
+    R.board   = h.includes('部门授权总览')&&h.includes('只读')&&h.includes('可以操作');
+
+    /* ⑤ ★休假授权只能部门负责人本人点 */
+    const n0=DELEG.presales; delegOpen('presales');
+    R.gNotMine= DELEG.presales===n0&&document.getElementById('dgbox').style.display!=='block';
+
+    /* ⑥ 强制接管：原因 <10 字应拦 */
+    takeoverOpen('presales');
+    document.getElementById('dg-why').value='他不在';
+    takeoverSave('presales');
+    R.gWhyShort = !DELEG.presales;
+    /* 写够了 → 通过，并且留痕里写明已短信通知本人 */
+    document.getElementById('dg-why').value='小林突发急病住院联系不上，客户签约今天必须出，我先接管三天';
+    takeoverSave('presales');
+    R.tookOver = !!DELEG.presales&&DELEG.presales.kind==='takeover';
+    R.notified = OPLOG.some(r=>r.action==='★强制接管部门'&&/短信通知/.test(r.detail));
+    /* 接管之后按钮解灰 */
+    go('presales','项目列表');
+    const ab=[...document.querySelectorAll('#main .main-inner button')];
+    R.unlocked = ab.length>0&&ab.some(b=>!b.disabled);
+
+    /* ⑦ 到期自动收回：把到期日改成昨天 */
+    const y=new Date(); y.setDate(y.getDate()-1);
+    const z=n=>String(n).padStart(2,'0');
+    DELEG.presales.until=y.getFullYear()+'/'+z(y.getMonth()+1)+'/'+z(y.getDate());
+    renderAll();
+    R.expired = !canWriteDept('presales')&&
+                document.getElementById('main').innerHTML.includes('只读');
+
+    /* ⑧ 部门负责人自己的部门：照旧能动，且看得到「休假授权」按钮 */
+    DELEG.presales=null;
+    loginAs('presales'); go('presales','项目列表');
+    h=document.getElementById('main').innerHTML;
+    R.headBar = h.includes('你是本部门负责人')&&h.includes('休假授权');
+    const pb=[...document.querySelectorAll('#main .main-inner button')];
+    R.headCan = pb.length>0&&pb.some(b=>!b.disabled);
+    /* 到期日超 90 天应拦 */
+    delegOpen('presales');
+    const far=new Date(); far.setDate(far.getDate()+120);
+    document.getElementById('dg-until').value=far.getFullYear()+'-'+z(far.getMonth()+1)+'-'+z(far.getDate());
+    delegSave('presales');
+    R.g90 = !DELEG.presales;
+    /* 正常授权 */
+    const ok7=new Date(); ok7.setDate(ok7.getDate()+7);
+    document.getElementById('dg-until').value=ok7.getFullYear()+'-'+z(ok7.getMonth()+1)+'-'+z(ok7.getDate());
+    delegSave('presales');
+    R.granted = !!DELEG.presales&&DELEG.presales.kind==='leave';
+
+    /* 还原 */
+    DELEG=d0; OPLOG.splice(0,OPLOG.length-l0);
+    loginAs('admin'); go('decision','决策看板'); pj=0; renderAll();
+    R.restored = !DELEG.presales&&!!DELEG.mt;
+    return JSON.stringify(R);}));
+  ok(S39.roBar,'★管理员看别的部门时，页顶没有「只读」横幅（他不知道自己动不了，点了才发现）');
+  ok(S39.greyed,'★管理员看别的部门时，写按钮没有置灰');
+  ok(S39.whyHover,'★置灰的按钮悬停没说明为什么（UI 规则第 2 条：禁用必须说清原因）');
+  ok(S39.canRead,'只读被误伤了 —— 管理员应该照样看得见别的部门的全部内容');
+  ok(S39.okBar,'已授权的部门页顶没有「已授权给你」横幅');
+  ok(S39.notGrey,'已授权的部门按钮还是灰的');
+  ok(S39.ownJob,'★管理员的本职工作（决策页）被误伤了 —— 那些表没有部门归属，跟授权无关');
+  ok(S39.board,'决策页缺「部门授权总览」（谁管着哪个部门、还剩几天）');
+  ok(S39.gNotMine,'★管理员竟能替别人点「休假授权」—— 那等于绕过了这道授权');
+  ok(S39.gWhyShort,'★强制接管原因只写三个字竟能通过（应拦 ≥10 字，这是事后唯一能复盘的东西）');
+  ok(S39.tookOver,'强制接管没生效');
+  ok(S39.notified,'★强制接管没留下「已短信通知本人」的痕迹 —— 不通知就成了偷偷接管');
+  ok(S39.unlocked,'接管之后按钮还是灰的');
+  ok(S39.expired,'★授权过期了还能动 —— 到期不自动收回，这道门等于白设');
+  ok(S39.headBar,'部门负责人页顶没有「休假授权」按钮');
+  ok(S39.headCan,'部门负责人写自己的部门被误拦了');
+  ok(S39.g90,'★授权到 120 天后竟能存（应拦 90 天 —— 长期交接该走重新指派负责人）');
+  ok(S39.granted,'休假授权没保存');
+  ok(S39.restored,'v0.39 测试后演示态未还原');
 
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
