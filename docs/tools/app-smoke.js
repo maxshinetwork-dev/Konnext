@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
   const p=await b.newPage({viewport:{width:430,height:900}});
   const errs=[]; p.on('pageerror',e=>errs.push(e.message));
   p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
-  await p.goto('file:///home/user/Konnext/docs/KONNEXT_施工端App演示.html');
+  await p.goto(process.argv[2]?('file://'+process.argv[2]):'file:///home/user/Konnext/docs/KONNEXT_施工端App演示.html');
   const fails=[];
   const ok=(c,l)=>{ if(!c) fails.push(l); };
   const screens=['today','punch','install','report','sm','exp','mt','mat','me'];

@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
   const errors=[];
   page.on('console',m=>{ if(m.type()==='error') errors.push('console: '+m.text()); });
   page.on('pageerror',e=>errors.push('pageerror: '+e.message));
-  await page.goto('file:///home/user/Konnext/docs/KONNEXT_UI原型.html');
+  await page.goto(process.argv[2]?('file://'+process.argv[2]):'file:///home/user/Konnext/docs/KONNEXT_UI原型.html');
 
   const fails=[];
   const ok=(cond,label)=>{ if(!cond) fails.push(label); };
