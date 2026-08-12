@@ -52,6 +52,11 @@ body{margin:0;background:var(--bg);color:var(--text);
 .btn.ok{background:var(--ok)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .row{display:flex;align-items:center;gap:10px}
+/* ★同一个地址的活并进一个框（用户 2026-08-12）—— 一个地址＝一趟车。
+   框里再按「活」分段，段与段之间一条虚线隔开。 */
+.job{border-top:1px dashed var(--border);margin-top:10px;padding-top:9px}
+.job .row{margin-bottom:2px}
+.job .when{margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}
 .chk{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13.5px}
 .chk:last-child{border-bottom:0}
 .chk input{width:19px;height:19px;margin-top:2px;accent-color:var(--accent)}
@@ -102,37 +107,16 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
   <div class="scr" id="s-today">
     <div class="top"><b>今日任务</b><span class="who">小陈 · 施工 · 08/02</span></div>
     <div class="body">
-      <div class="card">
-        <div class="row"><h4 style="flex:1"><span class="mono">KX-2026-0188</span> 林宅</h4><span class="pill p-b">安装调试</span></div>
-        <div class="hint">📍 11 Bond St, Mosman NSW　<a style="color:var(--accent)">导航 ▸</a></div>
-        <div class="hint">今日安装项 4 项 · 负责人 陈工 · 同行 阿强</div>
-        <button class="btn sec" onclick="appGo('punch')">到场打卡 →</button>
-      </div>
-      <div class="card">
-        <div class="row"><h4 style="flex:1"><span class="mono">KX-2026-0180</span> 陈宅</h4><span class="pill p-w">维护上门</span></div>
-        <div class="hint">📍 22 Rosamond St, Hornsby NSW · 预约 14:00</div>
-        <div class="hint">报修：二楼调光模块无响应（客户原话）</div>
-        <button class="btn sec" onclick="appGo('mt')">开始维护单 →</button>
-      </div>
-      <div class="card" style="border-style:dashed">
-        <div class="row"><h4 style="flex:1"><span class="mono">KX-2026-0188</span> 林宅</h4><span class="pill p-b">待确认提货</span></div>
-        <div class="hint">📍 11 Bond St, Mosman NSW</div>
-        <div class="hint">📦 KNX 四联面板 ×6（出库单 OUT-0188-07）<br>
-        收到提货短信后回 <b>YES</b>，或在这里确认 —— 物料从这一刻记到你手里</div>
-        <button class="btn sec" onclick="this.textContent='已确认提货 ✓';this.disabled=true">确认提货</button>
-      </div>
-      <div class="card">
-        <div class="row"><h4 style="flex:1"><span class="mono">KX-2026-0203</span> 罗宅</h4><span class="pill p-w">SM2 布线交流</span></div>
-        <div class="hint">📍 3 Springdale Rd, Killara NSW · 09:00–12:00（办公室排的）</div>
-        <div class="hint">出发前清单：布线图（最新版）· 线材清单（按方案）· KNX 测试仪</div>
-        <button class="btn sec" onclick="appGo('sm')">开始 Site Meeting →</button>
-        <button class="btn sec" onclick="appGo('mat')">项目物料（改数量 / 加料）→</button>
-      </div>
+      <!-- ★这些框不是手写的，是按【地址】合并生成的 —— 见下方 todayPaint() -->
+      <div id="today-list"></div>
       <div class="card">
         <div class="row"><h4 style="flex:1">🧾 我要报销</h4></div>
         <div class="hint">垫钱买了材料 / 打车送料 / 换了工具？拍收据提交，财务审批</div>
         <button class="btn sec" onclick="appGo('exp')">去报销 →</button>
       </div>
+      <div class="note">★<b>一个地址 ＝ 一个框</b>：同一个工地上的活（安装 · 维护 · SM · 提货）
+      全在同一个框里，提货单不单独摆 —— 拆开摆会让人以为要多跑一趟。
+      今天要跑 <b id="today-n">3</b> 个地方。</div>
     </div>
     <div class="tabs">
       <button class="on"><span class="ic">📋</span>今日</button>
@@ -151,6 +135,9 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
         <div class="row"><h4 style="flex:1">① 安装 · <span class="mono">KX-2026-0188</span> 林宅</h4><span class="pill p-b">在场中</span></div>
         <div class="hint">📍 11 Bond St, Mosman · <b>08:12 入场 ✓</b>（围栏内 43m）· 在场计时中…</div>
         <button class="btn bigpunch" id="pin" onclick="punch()">离场打卡</button>
+        <button class="btn sec" onclick="appGo('mat','build')">现场物料变更（施工中）→</button>
+        <div class="hint" style="margin-top:4px">★施工中改物料<b>只能增不能减</b> ——
+          料可能已经发到工地甚至装上去了</div>
       </div>
       <div class="card">
         <div class="row"><h4 style="flex:1">② 维护上门 · <span class="mono">KX-2026-0180</span> 陈宅</h4><span class="pill p-w">未入场</span></div>
@@ -351,14 +338,15 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
 
   <!-- 项目物料：★现场改物料 → 工程管理审「变量」→ 库管先看现货 → 采购买差额 -->
   <div class="scr" id="s-mat">
-    <div class="top"><button class="back" onclick="appGo('today')" aria-label="返回今日任务">←</button><b>项目物料</b><span class="who" id="m-hd">KX-2026-0203 罗宅 · SM2</span></div>
+    <div class="top"><button class="back" onclick="appGo('today')" aria-label="返回今日任务">←</button><b>项目物料</b><span class="who" id="m-hd"></span></div>
     <div class="body">
       <div class="card">
-        <div class="row"><span class="hint" style="flex:1">现在阶段</span>
-          <button class="btn sec" id="m-sm2" style="width:auto;padding:4px 12px;font-size:12px" onclick="matStage('SM2')">SM2</button>
-          <button class="btn sec" id="m-bld" style="width:auto;padding:4px 12px;font-size:12px;margin-left:6px" onclick="matStage('施工中')">施工中</button>
-        </div>
-        <div class="hint" id="m-rule">SM2 现场量完尺，方案该改就改 —— <b>可增可减</b></div>
+        <div class="row"><span class="hint" style="flex:1">当前阶段</span>
+          <span class="pill" id="m-pill">SM2</span></div>
+        <div class="hint" id="m-from" style="margin-top:4px"></div>
+        <div class="hint" id="m-rule" style="margin-top:4px"></div>
+        <div class="hint" style="margin-top:5px">🔒 阶段<b>不是你选的</b> —— 工程管理排这一天的任务时就定死了：
+          派的是 SM2 就走 SM2 的规矩，派的是安装调试就走施工中的规矩。</div>
       </div>
       <div id="m-list"></div>
       <div class="card">
@@ -378,7 +366,10 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
         <button class="btn ok" style="flex:1" onclick="matSubmit()">提交审批</button>
       </div>
       <div class="hint" id="m-foot" style="text-align:center;margin-top:6px">还没改动</div>
-      <div class="note">报价清单里的行<b>只能调 0，不能删</b>——删了就查不到"本来有过"，
+      <div class="note">★<b>阶段是工程管理排任务时定的，你在这儿改不了</b>：
+        今天派你去 SM2，这就是 SM2 的变更；派你去安装调试，就是施工中的变更。
+        两种规矩不一样，混了账就对不上。<br>
+        报价清单里的行<b>只能调 0，不能删</b>——删了就查不到"本来有过"，
         客户问"我付的钱里那 10 个面板呢"没人答得上来。<br>
         <b>SM2 之后只能增不能减</b>：料可能已经发到工地了，往下减账就对不上，而且系统不会报错。<br>
         提交之后工程管理<b>只看变量</b>（改了哪几行、加了什么、为什么），批了才进采购账。</div>
@@ -424,9 +415,9 @@ quote_bom 报价原始单 / bom_change 物料变更（★只能调 0 不能删�
 「今日任务」里点安装卡片可进<a style="color:var(--accent);cursor:pointer" onclick="appGo('install')">安装清单</a>演示。</p>
 
 <script>
-function appGo(s){document.querySelectorAll('.scr').forEach(x=>x.classList.remove('on'));
+function appGo(s,arg){document.querySelectorAll('.scr').forEach(x=>x.classList.remove('on'));
   document.getElementById('s-'+s).classList.add('on');
-  if(s==='mat') matPaint();}
+  if(s==='mat') matOpen(arg);}
 /* 手机屏里的提示层 —— ★不能用原生 alert：Artifact 沙箱把它屏蔽了，点了等于什么都没发生 */
 function say(html){ let b=document.getElementById('saybox');
   if(!b){ b=document.createElement('div'); b.id='saybox';
@@ -436,10 +427,90 @@ function say(html){ let b=document.getElementById('saybox');
     document.querySelector('.screen').appendChild(b); }
   b.innerHTML=html+'<div style="opacity:.6;margin-top:6px;font-size:11px">（点一下关掉）</div>';
   b.style.display='block'; clearTimeout(b._t); b._t=setTimeout(()=>{b.style.display='none';},9000); }
+/* ── 今日任务：★一个【地址】＝一个框 ────────────────────────────
+   用户 2026-08-12：「不要单独一个框图，地址一样的都在一个框图里」。
+   工人看这一屏问的是「今天我要跑哪几个地方、到了每个地方干什么」——
+   ★分组键是【地址】，不是项目编号：地址才是一趟车。
+   提货单尤其不能自己立一个框 —— 它本来就是那趟车上要办的一件事，
+   单独摆一个框，人会以为除了去工地还得再跑一趟仓库。
+   所以下面存的是【一件活一条】的平表，框由代码按地址合并出来，
+   不是手工摆好的 —— 手工摆一定会有人漏合，而且漏了不报错。*/
+const TODAY_JOBS=[
+ {code:'KX-2026-0188', nick:'林宅', addr:'11 Bond St, Mosman NSW',
+  t:'安装调试', cls:'p-b', when:'08:00 起 · 全天',
+  lines:['今日安装项 4 项 · 负责人 陈工 · 同行 阿强'],
+  btns:[{t:'到场打卡 →', go:"appGo('punch')"},
+        {t:'项目物料（施工中变更）→', go:"appGo('mat','build')"}]},
+ {code:'KX-2026-0188', nick:'林宅', addr:'11 Bond St, Mosman NSW',
+  t:'待确认提货', cls:'p-g', when:'OUT-0188-07',
+  lines:['📦 KNX 四联面板 ×6 —— 随今天这趟一起带过去',
+         '收到提货短信后回 <b>YES</b>，或在这里确认 —— 物料从这一刻起记在<b>你</b>手里'],
+  btns:[{t:'确认提货', done:'已确认提货 ✓'}]},
+ {code:'KX-2026-0180', nick:'陈宅', addr:'22 Rosamond St, Hornsby NSW',
+  t:'维护上门', cls:'p-w', when:'预约 14:00',
+  lines:['报修：二楼调光模块无响应（客户原话）'],
+  btns:[{t:'开始维护单 →', go:"appGo('mt')"}]},
+ {code:'KX-2026-0203', nick:'罗宅', addr:'3 Springdale Rd, Killara NSW',
+  t:'SM2 布线交流', cls:'p-w', when:'09:00–12:00',
+  lines:['办公室排的场次 · 出发前清单：布线图（最新版）· 线材清单（按方案）· KNX 测试仪'],
+  btns:[{t:'开始 Site Meeting →', go:"appGo('sm')"},
+        {t:'项目物料（SM2 变更）→', go:"appGo('mat','sm2')"}]},
+ {code:'KX-2026-0203', nick:'罗宅', addr:'3 Springdale Rd, Killara NSW',
+  t:'待确认提货', cls:'p-g', when:'OUT-0203-02',
+  lines:['📦 网线 CAT6（305m/箱）×2 · 用途：SM2 现场预布',
+         'S2 物料款还没结，这批走<b>预提线材</b>通道（只我方 · 只线材 · 用途必填）—— 照样按 S4 结'],
+  btns:[{t:'确认提货', done:'已确认提货 ✓'}]}
+];
+function todayPaint(){
+  const box=document.getElementById('today-list'); if(!box) return;
+  /* ★按地址合并，不按项目编号：同一个地址万一挂了两个项目（双拼 / 楼上楼下），
+     那也还是一趟车 —— 标题就把两个编号都摆出来，绝不许只显示一个。*/
+  const g=[];
+  TODAY_JOBS.forEach(j=>{ let s=g.find(x=>x.addr===j.addr);
+    if(!s){ s={addr:j.addr, pj:[], jobs:[]}; g.push(s); }
+    if(!s.pj.some(p=>p.code===j.code)) s.pj.push({code:j.code, nick:j.nick});
+    s.jobs.push(j); });
+  box.innerHTML=g.map(s=>
+    '<div class="card" data-addr="'+s.addr+'">'+
+      '<div class="row"><h4 style="flex:1">'+
+        s.pj.map(p=>'<span class="mono">'+p.code+'</span> '+p.nick).join(' ＋ ')+
+      '</h4><a style="color:var(--accent);font-size:12px;cursor:pointer">导航 ▸</a></div>'+
+      '<div class="hint">📍 '+s.addr+
+        (s.jobs.length>1?'　·　今天在这儿有 <b>'+s.jobs.length+'</b> 件事':'')+'</div>'+
+      s.jobs.map(j=>
+        '<div class="job">'+
+          '<div class="row"><span class="pill '+j.cls+'">'+j.t+'</span>'+
+            '<span class="when">'+j.when+'</span></div>'+
+          j.lines.map(l=>'<div class="hint">'+l+'</div>').join('')+
+          (j.btns||[]).map(b=>b.go
+            ? '<button class="btn sec" onclick="'+b.go+'">'+b.t+'</button>'
+            : '<button class="btn sec" data-done="'+b.done+'" onclick="jobDone(this)">'+b.t+'</button>'
+          ).join('')+
+        '</div>').join('')+
+    '</div>').join('');
+  const n=document.getElementById('today-n'); if(n) n.textContent=g.length;
+}
+function jobDone(b){ b.textContent=b.dataset.done; b.disabled=true; }
 /* ── 项目物料屏（罗宅 KX-2026-0203 报价原始单）── */
-const MLINES=[{n:'KNX 四联面板（白）',a:'一二层',base:22},
-              {n:'红外感应器（吸顶）',a:'走廊+车库',base:12},
-              {n:'网线 CAT6（305m/箱）',a:'全屋',base:5}];
+/* ★两个入口＝两个真实场景，不是同一份清单换个标签：
+   工程管理排任务那一刻就定死了今天是哪个项目、哪个阶段。
+   派的是 SM2 → 走 SM2 的规矩（可增可减）；派的是安装调试 → 走施工中的规矩（只能增）。*/
+const MJOB={
+  sm2:{ code:'KX-2026-0203', nick:'罗宅', addr:'3 Springdale Rd, Killara NSW',
+        task:'SM2 布线交流', phase:'SM2',
+        rule:'SM2 现场量完尺，方案该改就改 —— <b>可增可减</b>',
+        lines:[{n:'KNX 四联面板（白）',a:'一二层',base:22},
+               {n:'红外感应器（吸顶）',a:'走廊+车库',base:12},
+               {n:'网线 CAT6（305m/箱）',a:'全屋',base:5}]},
+  build:{code:'KX-2026-0188', nick:'林宅', addr:'11 Bond St, Mosman NSW',
+        task:'安装调试', phase:'施工中',
+        rule:'★施工中：<b>只能增不能减</b>（点减号会被当场拦下）—— 料可能已经装上去了',
+        lines:[{n:'KNX 四联面板（白）',a:'客厅+餐厅',base:18},
+               {n:'KNX 调光模块 4 路',a:'弱电箱',base:4},
+               {n:'红外感应器（吸顶）',a:'二楼走廊',base:6}]}};
+let mJob='sm2';
+const MLINES=MJOB.sm2.lines;   // 兼容旧引用；实际清单一律用 mLines()
+const mLines=()=>MJOB[mJob].lines;
 /* 物料库（演示节选 —— 正式系统里是采购维护的整张物料主表，几百条，所以只能搜不能翻） */
 const MLIB=[
  {c:'M-KNX-P4W', n:'KNX 四联面板（白）',   m:'ABB BE-TA5504.G1'},
@@ -467,16 +538,21 @@ const MLIB=[
  {c:'M-NET-AP',  n:'无线 AP（吸顶）',      m:'U6-Lite'},
  {c:'M-RACK-12U',n:'弱电箱 12U',           m:'RK-12U'},
 ];
-let mNow=MLINES.map(x=>x.base), mAdds=[], mStage='SM2', mSaved='', mQ='';
-function matStage(v){ mStage=v; matPaint(); }
+let mNow=mLines().map(x=>x.base), mAdds=[], mStage='SM2', mSaved='', mQ='';
+/* ★从哪个任务点进来的，就锁定哪个阶段 —— App 上没有「选阶段」这回事 */
+function matOpen(job){
+  if(job&&MJOB[job]&&job!==mJob){ mJob=job; mNow=mLines().map(x=>x.base); mAdds=[]; mSaved=''; mQ=''; }
+  mStage=MJOB[mJob].phase;
+  const q=document.getElementById('m-q'); if(q) q.value='';
+  matPaint(); }
 function matInc(i,d){
-  if(d<0&&mStage!=='SM2'&&mNow[i]<=MLINES[i].base){
+  if(d<0&&mStage!=='SM2'&&mNow[i]<=mLines()[i].base){
     say('门禁：现在是「施工中」，<b>只能加不能减</b><br>料可能已经发到工地了，往下减账就对不上。<br>要减请找工程管理走另一条流程'); return; }
   mNow[i]=Math.max(0,mNow[i]+d); mSaved=''; matPaint(); }
-function matReset(i){ mNow[i]=MLINES[i].base; mSaved=''; matPaint(); }
+function matReset(i){ mNow[i]=mLines()[i].base; mSaved=''; matPaint(); }
 function matAdd(code){ const m=MLIB.find(x=>x.c===code); if(!m) return;
   if(mAdds.some(a=>a.n===m.n)){ say('这个料已经在下面了，直接改数量就行'); return; }
-  if(MLINES.some(l=>l.n===m.n)){ say('这个料<b>报价单里本来就有</b>（上面那几行）——<br>'+
+  if(mLines().some(l=>l.n===m.n)){ say('这个料<b>报价单里本来就有</b>（上面那几行）——<br>'+
     '直接在那一行加数量，别在这儿重复加一遍'); return; }
   mAdds.push({n:m.n,c:m.c,q:1,why:''}); mQ=''; mSaved='';
   const q=document.getElementById('m-q'); if(q) q.value='';
@@ -491,7 +567,7 @@ function matRes(){ const box=document.getElementById('m-res'); if(!box) return;
     '没搜到「'+mQ+'」—— 物料库里还没有这个料。<b>找采购建档</b>，别自己写名字：'+
     '写了对不上编码，出库入库全乱</div>'; return; }
   box.innerHTML=hit.slice(0,8).map(m=>{
-    const had=mAdds.some(a=>a.n===m.n)||MLINES.some(l=>l.n===m.n);
+    const had=mAdds.some(a=>a.n===m.n)||mLines().some(l=>l.n===m.n);
     return '<div class="row" style="padding:6px 0;border-bottom:1px solid var(--border)">'+
      '<div style="flex:1;min-width:0"><div style="font-size:13px">'+m.n+'</div>'+
      '<div class="hint" style="font-size:11px">'+m.c+' · '+m.m+'</div></div>'+
@@ -505,7 +581,7 @@ function matWhy(i,v){ mAdds[i].why=v; mSaved=''; }
 function matStash(){ mSaved=new Date().toTimeString().slice(0,5);
   matPaint(); say('已暂存 ✓ 手机关了、明天再打开都还在<br>确认无误之后再点「提交审批」'); }
 function matSubmit(){
-  const ed=MLINES.map((l,i)=>({l,i})).filter(x=>mNow[x.i]!==x.l.base);
+  const ed=mLines().map((l,i)=>({l,i})).filter(x=>mNow[x.i]!==x.l.base);
   if(!ed.length&&!mAdds.length){ say('还没改任何东西 —— 调个数量或加个料再提交'); return; }
   const noWhy=mAdds.filter(a=>a.why.trim().length<2);
   if(noWhy.length){ say('门禁：新加的料要写清楚为什么（'+noWhy.map(a=>a.n).join('、')+
@@ -515,16 +591,16 @@ function matSubmit(){
     (ed.length&&mAdds.length?'<br>':'')+
     mAdds.map(a=>'· ＋'+a.n+' ×'+a.q+'　'+a.why).join('<br>')+
     '<br><br>批了之后：库管先看现货能不能直接出，不够的差额才到采购。');
-  mNow=MLINES.map(x=>x.base); mAdds=[]; mSaved=''; matPaint(); }
+  mNow=mLines().map(x=>x.base); mAdds=[]; mSaved=''; matPaint(); }
 function matPaint(){
-  const sm=mStage==='SM2';
-  document.getElementById('m-hd').textContent='KX-2026-0203 罗宅 · '+mStage;
-  document.getElementById('m-sm2').className='btn '+(sm?'ok':'sec');
-  document.getElementById('m-bld').className='btn '+(sm?'sec':'ok');
-  document.getElementById('m-rule').innerHTML=sm
-    ?'SM2 现场量完尺，方案该改就改 —— <b>可增可减</b>'
-    :'★施工中：<b>只能增不能减</b>（点减号会被当场拦下）';
-  document.getElementById('m-list').innerHTML=MLINES.map((l,i)=>{const c=mNow[i]!==l.base;
+  const J=MJOB[mJob], sm=mStage==='SM2';
+  document.getElementById('m-hd').textContent=J.code+' '+J.nick;
+  const pill=document.getElementById('m-pill');
+  pill.textContent=J.phase;
+  pill.className='pill '+(sm?'p-b':'p-w');
+  document.getElementById('m-from').innerHTML='📍 '+J.addr+'　来自今天派的任务：<b>'+J.task+'</b>';
+  document.getElementById('m-rule').innerHTML=J.rule;
+  document.getElementById('m-list').innerHTML=mLines().map((l,i)=>{const c=mNow[i]!==l.base;
     return '<div class="card"'+(c?' style="border-color:var(--warn)"':'')+'>'+
      '<div class="row"><div style="flex:1;min-width:0"><h4 style="margin:0">'+l.n+'</h4>'+
        '<div class="hint">'+l.a+' · 原始 <b>'+l.base+'</b>'+
@@ -544,7 +620,7 @@ function matPaint(){
     '<input placeholder="为什么加这个？（必填）" value="'+a.why+'" oninput="matWhy('+i+',this.value)"></div>').join('')
     ||'<div class="hint">还没加东西</div>';
   matRes();
-  const n=MLINES.filter((l,i)=>mNow[i]!==l.base).length+mAdds.length;
+  const n=mLines().filter((l,i)=>mNow[i]!==l.base).length+mAdds.length;
   document.getElementById('m-foot').innerHTML=mSaved?('已暂存 '+mSaved+' · 没提交，工程管理还看不到')
     :(n?'<b style="color:var(--warn)">'+n+' 处未提交</b>':'还没改动');}
 function punch(){const b=document.getElementById('pin');
@@ -581,6 +657,7 @@ function clearSig(){cx.clearRect(0,0,cv.width,cv.height);has=false;}
 function mtFinish(){if(!has){const b=document.getElementById('mtdone');const t=b.textContent;
     b.textContent='③ 客户还没签字 —— 三样缺一不可';setTimeout(()=>b.textContent=t,1800);return;}
   const b=document.getElementById('mtdone');b.textContent='已完成 ✓ 已通知财务定价开票';b.disabled=true;}
+todayPaint();
 </script>
 </body>
 </html>

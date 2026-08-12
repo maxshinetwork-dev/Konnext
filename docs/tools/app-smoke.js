@@ -61,6 +61,25 @@ const { chromium } = require('playwright');
   });
   ok(noAddr.length===0, '★提货卡没写地址（人要去哪儿提？）—— '+noAddr.join(' ｜ '));
 
+  /* ★一个地址 = 一个框（用户 2026-08-12：「不要单独一个框图，地址一样的都在一个框图里」）
+     同一个地址被拆成两个框，工人会以为要跑两趟 —— 提货单单独立框就是这个毛病。
+     所以这里不数框、不认标题，只认【地址】：合并没做到，地址就会重复出现。 */
+  const grp=await p.evaluate(()=>{
+    appGo('today');
+    const cards=[...document.querySelectorAll('#s-today .card')];
+    const seen={}, dup=[];
+    cards.forEach(c=>{ const a=c.dataset.addr; if(!a) return;
+      if(seen[a]) dup.push(a); else seen[a]=1; });
+    return {dup,
+      // 带地址却没走分组渲染的卡 = 手写插进来的，它不会参与合并
+      raw:cards.filter(c=>/📍/.test(c.textContent)&&!c.dataset.addr)
+               .map(c=>c.textContent.replace(/\s+/g,' ').trim().slice(0,30)),
+      n:cards.filter(c=>c.dataset.addr).length};
+  });
+  ok(grp.dup.length===0, '★同一个地址被拆成了两个框 —— '+grp.dup.join(' ｜ '));
+  ok(grp.raw.length===0, '★今日任务里有带地址的卡没走分组渲染（手写的卡不会参与合并）—— '+grp.raw.join(' ｜ '));
+  ok(grp.n>=3, '今日任务的地址框太少（'+grp.n+'），演示数据是不是丢了');
+
   // 真点一次箭头，看是不是真回得去
   await p.evaluate(()=>appGo('mat'));
   await p.click('#s-mat .top .back');
