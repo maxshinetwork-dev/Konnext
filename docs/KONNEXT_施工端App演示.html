@@ -29,6 +29,10 @@ body{margin:0;background:var(--bg);color:var(--text);
 .notch i{width:110px;height:20px;background:var(--frame);border-radius:12px}
 .top{padding:8px 16px 10px;background:var(--scr);display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
 .top b{font-size:16px}
+/* ★左上角返回箭头（用户 2026-08-12 提：二级页面回不去主页）—— 手机上就该在这个位置 */
+.top .back{border:0;background:none;font-size:22px;line-height:1;color:var(--accent);
+  padding:0 4px 0 0;margin:0;cursor:pointer;font-family:inherit}
+.top .back:active{opacity:.5}
 .top .who{margin-left:auto;font-size:11px;color:var(--muted)}
 .body{flex:1;overflow-y:auto;padding:12px 14px 8px}
 .tabs{display:flex;border-top:1px solid var(--border);background:var(--panel)}
@@ -170,7 +174,7 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
 
   <!-- 安装清单（从今日任务进入） -->
   <div class="scr" id="s-install">
-    <div class="top"><b>安装清单 · 林宅</b><span class="who">SM4 已过 · 可施工</span></div>
+    <div class="top"><button class="back" onclick="appGo('today')" aria-label="返回今日任务">←</button><b>安装清单 · 林宅</b><span class="who">SM4 已过 · 可施工</span></div>
     <div class="body">
       <div class="card">
         <div class="chk"><input type="checkbox" checked><span>客厅 KNX 四联面板 ×3 安装接线</span><span class="cam">📷 已拍 2</span></div>
@@ -186,7 +190,7 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
       <div class="note">每项拍照留痕。全部清零（做完/取消/挂起/转变更）后，完工确认由<b>负责人</b>在后台做——工人端不做完工判断。</div>
     </div>
     <div class="tabs">
-      <button class="on" onclick="appGo('today')"><span class="ic">📋</span>今日</button>
+      <button onclick="appGo('today')"><span class="ic">📋</span>今日</button>
       <button onclick="appGo('punch')"><span class="ic">📍</span>打卡</button>
       <button onclick="appGo('report')"><span class="ic">✍️</span>上报</button>
       <button onclick="appGo('me')"><span class="ic">👤</span>我的</button>
@@ -227,7 +231,7 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
 
   <!-- Site Meeting 现场提交：★完成定格发生在这里（后台不点完成） -->
   <div class="scr" id="s-sm">
-    <div class="top"><b>SM2 布线交流 · 罗宅</b><span class="who">现场提交即完成</span></div>
+    <div class="top"><button class="back" onclick="appGo('today')" aria-label="返回今日任务">←</button><b>SM2 布线交流 · 罗宅</b><span class="who">现场提交即完成</span></div>
     <div class="body">
       <div class="card">
         <h4>① 出发前清单（到场后再确认一次）</h4>
@@ -264,7 +268,7 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
 
   <!-- 报销：拍收据必填 · 三类 · 项目默认当天派工 -->
   <div class="scr" id="s-exp">
-    <div class="top"><b>报销</b><span class="who">只报项目相关 · 财务审批</span></div>
+    <div class="top"><button class="back" onclick="appGo('today')" aria-label="返回今日任务">←</button><b>报销</b><span class="who">只报项目相关 · 财务审批</span></div>
     <div class="body">
       <div class="card">
         <h4>① 收据照片（必填）</h4>
@@ -306,7 +310,7 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
 
   <!-- 维护单：现场三样 -->
   <div class="scr" id="s-mt">
-    <div class="top"><b>维护单 MT-0180-04</b><span class="who">陈宅 · 已交付项目</span></div>
+    <div class="top"><button class="back" onclick="appGo('today')" aria-label="返回今日任务">←</button><b>维护单 MT-0180-04</b><span class="who">陈宅 · 已交付项目</span></div>
     <div class="body">
       <div class="card">
         <h4>① 故障归因（当着客户面确认）</h4>
@@ -344,7 +348,7 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
 
   <!-- 项目物料：★现场改物料 → 工程管理审「变量」→ 库管先看现货 → 采购买差额 -->
   <div class="scr" id="s-mat">
-    <div class="top"><b>项目物料</b><span class="who" id="m-hd">KX-2026-0203 罗宅 · SM2</span></div>
+    <div class="top"><button class="back" onclick="appGo('today')" aria-label="返回今日任务">←</button><b>项目物料</b><span class="who" id="m-hd">KX-2026-0203 罗宅 · SM2</span></div>
     <div class="body">
       <div class="card">
         <div class="row"><span class="hint" style="flex:1">现在阶段</span>
