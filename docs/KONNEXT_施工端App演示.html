@@ -476,7 +476,7 @@ function todayPaint(){
         s.pj.map(p=>'<span class="mono">'+p.code+'</span> '+p.nick).join(' ＋ ')+
       '</h4><a style="color:var(--accent);font-size:12px;cursor:pointer">导航 ▸</a></div>'+
       '<div class="hint">📍 '+s.addr+
-        (s.jobs.length>1?'　·　今天在这儿有 <b>'+s.jobs.length+'</b> 件事':'')+'</div>'+
+        (s.jobs.length>1?'　·　共 <b>'+s.jobs.length+'</b> 件事':'')+'</div>'+
       s.jobs.map(j=>
         '<div class="job">'+
           '<div class="row"><span class="pill '+j.cls+'">'+j.t+'</span>'+
