@@ -115,7 +115,9 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
         <button class="btn sec" onclick="appGo('mt')">开始维护单 →</button>
       </div>
       <div class="card" style="border-style:dashed">
-        <div class="hint">📦 待确认提货：KNX 四联面板 ×6（出库单 OUT-0188-07）<br>
+        <div class="row"><h4 style="flex:1"><span class="mono">KX-2026-0188</span> 林宅</h4><span class="pill p-b">待确认提货</span></div>
+        <div class="hint">📍 11 Bond St, Mosman NSW</div>
+        <div class="hint">📦 KNX 四联面板 ×6（出库单 OUT-0188-07）<br>
         收到提货短信后回 <b>YES</b>，或在这里确认 —— 物料从这一刻记到你手里</div>
         <button class="btn sec" onclick="this.textContent='已确认提货 ✓';this.disabled=true">确认提货</button>
       </div>
@@ -146,19 +148,20 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
     <div class="body">
       <div class="geo">📍 GPS 定位正常 · 距当前任务围栏圆心 <b>43 米</b>（围栏 100 米内 ✓）</div>
       <div class="card">
-        <div class="row"><h4 style="flex:1">① 安装 · 林宅</h4><span class="pill p-b">在场中</span></div>
+        <div class="row"><h4 style="flex:1">① 安装 · <span class="mono">KX-2026-0188</span> 林宅</h4><span class="pill p-b">在场中</span></div>
         <div class="hint">📍 11 Bond St, Mosman · <b>08:12 入场 ✓</b>（围栏内 43m）· 在场计时中…</div>
         <button class="btn bigpunch" id="pin" onclick="punch()">离场打卡</button>
       </div>
       <div class="card">
-        <div class="row"><h4 style="flex:1">② 维护上门 · 陈宅</h4><span class="pill p-w">未入场</span></div>
+        <div class="row"><h4 style="flex:1">② 维护上门 · <span class="mono">KX-2026-0180</span> 陈宅</h4><span class="pill p-w">未入场</span></div>
         <div class="hint">📍 22 Rosamond St, Hornsby · 预约 14:00 —— 到场后先<b>入场打卡</b>再开维护单；
         离场打卡前维护单三样要齐</div>
         <button class="btn sec" disabled>入场打卡（到围栏内才能点）</button>
       </div>
       <div class="card">
         <h4>今天的轨迹（自动）</h4>
-        <div class="hint" id="plog">07:58 出发（家 → 林宅，路上时间自动算）→ 08:12 入场林宅 ✓ · 在场中</div>
+        <div class="hint" id="plog">07:58 出发（家 → <span class="mono">KX-2026-0188</span> 林宅，路上时间自动算）
+        → 08:12 入场 <span class="mono">KX-2026-0188</span> 林宅 ✓ · 在场中</div>
       </div>
       <div class="note">★入场/离场跟着<b>任务</b>走：SM 会议、安装、维护上门，每个任务各打各的——
       一天跑两个工地就是两组入场离场，运维同学也一样。路上时间、午餐（自动扣 30 分钟）系统自己算。
@@ -397,7 +400,8 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
       <div class="card"><h4>我的工资</h4>
         <div class="hint">月薪制：金额只显示给你自己和财务。日结当夜 0 点定格，补录滚下月。</div></div>
       <div class="card"><h4>提货在手</h4>
-        <div class="hint">KNX 四联面板 ×13（王宅 · 未退）——退料要及时，没退的会进 S4 跟客户结算。</div></div>
+        <div class="hint"><span class="mono">KX-2026-0142</span> 王宅 · 📍 8 Franklin Rd, Cherrybrook NSW<br>
+        KNX 四联面板 ×13（未退）—— 退料要及时，没退的会进 S4 跟客户结算。</div></div>
       <div class="card" style="border-style:dashed"><div class="hint">施工端没有别的了——看不了后台、看不了金额、看不了别人。
         需要什么找负责人。</div></div>
     </div>
@@ -411,7 +415,9 @@ canvas.sig{width:100%;height:120px;background:#fff;border:1.5px dashed var(--bor
 
 </div></div>
 
-<p class="caption">正式版=网页 App（手机浏览器打开即用，无需装应用）。以上界面对应契约里已定的表：
+<p class="caption">★每一张卡都以<b>项目编号 + 地址</b>开头（全系统硬规则）——
+工地上「王宅」「周宅」重名是常事，只写昵称迟早发错货、记错工时。
+正式版=网页 App（手机浏览器打开即用，无需装应用）。以上界面对应契约里已定的表：
 work_log 打卡 · daily_report 每日上报 · site_meeting 现场提交（记录/照片/签字 → 完成定格）· install_item 安装项 ·
 maintenance_case 现场三样 · expense 项目报销（收据图必填）· 出库提货确认 ·
 quote_bom 报价原始单 / bom_change 物料变更（★只能调 0 不能删行 · SM2 之后只能增）。
@@ -543,8 +549,10 @@ function matPaint(){
     :(n?'<b style="color:var(--warn)">'+n+' 处未提交</b>':'还没改动');}
 function punch(){const b=document.getElementById('pin');
   if(b.textContent.includes('离场')){b.textContent='本任务已完成 ✓';b.disabled=true;
-    document.getElementById('plog').innerHTML='07:58 出发 → 08:12 入场林宅 → <b>12:31 离场林宅 ✓</b> 在场 4.3h'+
-      '（午餐自动扣 30 分钟）· 13:40 路上 → 陈宅（维护任务待入场）';}}
+    document.getElementById('plog').innerHTML=
+      '07:58 出发 → 08:12 入场 <span class="mono">KX-2026-0188</span> 林宅 → '+
+      '<b>12:31 离场 ✓</b> 在场 4.3h（午餐自动扣 30 分钟）· '+
+      '13:40 路上 → <span class="mono">KX-2026-0180</span> 陈宅（维护任务待入场）';}}
 function pick(el){[...el.parentNode.children].forEach(x=>x.classList.remove('on'));el.classList.add('on');}
 let expHasShot=false;
 function expShot(){ expHasShot=true;

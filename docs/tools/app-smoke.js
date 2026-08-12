@@ -37,6 +37,30 @@ const { chromium } = require('playwright');
       ok(r.onTabs.length===1, s+'：主屏应恰好有一个 tab 高亮，现在是 '+r.onTabs.length);
     }
   }
+  /* ★项目归属三态（CLAUDE.md 五条硬规则之②）：
+     凡是提到某个项目的卡片，必须带【项目编号】—— 工地上「王宅」「周宅」重名是常事，
+     只写昵称迟早发错货、记错工时。用户 2026-08-12 抓到的就是这个：
+     「今日任务」的提货卡只写了出库单号 OUT-0188-07，一个项目字样都没有。 */
+  const NICK='林宅|陈宅|罗宅|王宅|周宅|吴宅|刘宅|张宅|李宅|黄宅|赵宅';
+  for(const s of screens){
+    const bad=await p.evaluate(([id,nick])=>{
+      appGo(id);
+      const re=new RegExp(nick);
+      return [...document.querySelectorAll('#s-'+id+' .card')]
+        .filter(c=>re.test(c.textContent) && !/KX-\d{4}-\d{4}/.test(c.textContent))
+        .map(c=>c.textContent.replace(/\s+/g,' ').trim().slice(0,34));
+    },[s,NICK]);
+    ok(bad.length===0, '★'+s+'：有卡片提到了项目却没写项目编号 —— '+bad.join(' ｜ '));
+  }
+  /* 提货相关的卡还要带地址（货要送到哪儿，光有编号不够） */
+  const noAddr=await p.evaluate(()=>{
+    appGo('today');
+    return [...document.querySelectorAll('#s-today .card')]
+      .filter(c=>/提货/.test(c.textContent) && !/📍/.test(c.textContent))
+      .map(c=>c.textContent.replace(/\s+/g,' ').trim().slice(0,30));
+  });
+  ok(noAddr.length===0, '★提货卡没写地址（人要去哪儿提？）—— '+noAddr.join(' ｜ '));
+
   // 真点一次箭头，看是不是真回得去
   await p.evaluate(()=>appGo('mat'));
   await p.click('#s-mat .top .back');

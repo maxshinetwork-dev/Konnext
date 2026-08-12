@@ -3338,6 +3338,30 @@ const { chromium } = require('playwright');
   ok(S39.granted,'休假授权没保存');
   ok(S39.restored,'v0.39 测试后演示态未还原');
 
+  /* ★项目归属三态（CLAUDE.md 硬规则②）：卡片/待办提到某个项目就必须带【项目编号】——
+     演示数据里吴宅 0199/0210、周宅 0195/0186 本来就重名，只写昵称分不清是哪一家。
+     用户 2026-08-12 先在施工端 App 抓到（提货卡一个项目字样都没有），
+     照同一条规则扫办公端，又扫出三处：物料变更审批「涉及项目」·
+     交付「等 S4 结清」· 故障分析「出问题最多的项目」。 */
+  const pjMiss=[];
+  for(const r of ['admin']){
+    await page.evaluate(w=>loginAs(w),r);
+    for(const t of Object.keys(await page.evaluate(()=>DEPT))){
+      for(const pg of await page.evaluate(x=>DEPT[x].pages,t)){
+        const bad=await page.evaluate(([tt,pp])=>{
+          go(tt,pp);
+          const re=/林宅|陈宅|罗宅|王宅|周宅|吴宅|刘宅|张宅|李宅|黄宅|赵宅/;
+          return [...document.querySelectorAll('#main .card, #drawer-body .todo')]
+            .filter(c=>re.test(c.textContent)&&!/KX-\d{4}-\d{4}/.test(c.textContent))
+            .map(c=>c.textContent.replace(/\s+/g,' ').trim().slice(0,40));
+        },[t,pg]);
+        if(bad.length) pjMiss.push(`${t}/${pg}: ${bad.join(' ｜ ')}`);
+      }
+    }
+  }
+  ok(pjMiss.length===0,'★有卡片提到项目却没写项目编号（昵称会重名）—— '+pjMiss.join('；'));
+  await page.evaluate(()=>{loginAs('admin');go('decision','决策看板');});
+
   console.log(`渲染页面数: ${rendered}`);
   console.log(`运行时报错: ${errors.length}`); errors.forEach(e=>console.log('  '+e));
   console.log(`断言失败: ${fails.length}`); fails.forEach(f=>console.log('  ✗ '+f));

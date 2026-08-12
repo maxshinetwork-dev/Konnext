@@ -7413,7 +7413,7 @@ ${helpNote(`<b>发送人身份</b>：全公司对外只有<b>一个短信号码<
     <div class="card-foot">施工已结束 + S4 已结清</div></div>
   <div class="card"><div class="card-label">等 S4 结清</div>
     <div class="card-value"${wait.length?' style="color:var(--warning)"':''}>${wait.length}</div>
-    <div class="card-foot">${wait.length?wait.map(p=>p.nick).join('、')+'：钱没到位不能约交付':'没有卡在钱上的'}</div></div>
+    <div class="card-foot">${wait.length?wait.map(p=>p.code+' '+p.nick).join('、')+'：钱没到位不能约交付':'没有卡在钱上的'}</div></div>
   <div class="card"><div class="card-label">已约未交付</div>
     <div class="card-value">${rows.filter(p=>DELIV[p.code].sched).length}</div>
     <div class="card-foot">已排交付班，等当天完成确认</div></div>
@@ -7660,7 +7660,7 @@ ${helpNote(`<b>报价原始单里的行永远不会消失</b>：现场"不要了
    <div class="card-foot">${wait.length?'共 '+wait.reduce((x,c)=>x+nVar(c),0)+' 个变量等你拍板':'都处理完了 ✓'}</div></div>
  <div class="card"><div class="card-label">涉及项目</div>
    <div class="card-value">${new Set(wait.map(c=>c.pj)).size}</div>
-   <div class="card-foot">${wait.length?[...new Set(wait.map(c=>pjNick(c.pj)))].join('、'):'—'}</div></div>
+   <div class="card-foot">${wait.length?[...new Set(wait.map(c=>c.pj+' '+pjNick(c.pj)))].join('、'):'—'}</div></div>
  <div class="card"><div class="card-label">★等最久</div>
    <div class="card-value"${oldest>=2?' style="color:var(--breach)"':''}>${wait.length?oldest+' 天':'—'}</div>
    <div class="card-foot">${oldest>=2?'现场在等这个才敢继续干 —— 拖一天工地停一天':'没有积压 ✓'}</div></div>
@@ -11355,7 +11355,8 @@ ${helpNote(`★<b>没填归因的单不进这张表</b>，但会单独标出来�
    <div class="card-value"${noCause?' style="color:var(--warning)"':''}>${noCause}</div>
    <div class="card-foot">${noCause?'上门完了还没填 —— 财务定不了价，也进不了分析':'都填了 ✓'}</div></div>
  <div class="card"><div class="card-label">出问题最多的项目</div>
-   <div class="card-value" style="font-size:var(--fs-lg)">${byPj.length?pjNick(byPj[0].k):'—'}</div>
+   <div class="card-value" style="font-size:var(--fs-lg)">${byPj.length?
+     '<span class="mono" style="font-size:var(--fs-sm)">'+byPj[0].k+'</span> '+pjNick(byPj[0].k):'—'}</div>
    <div class="card-foot">${byPj.length?byPj[0].n+' 单 —— 同一家反复报修，多半是方案或施工留的尾巴':'—'}</div></div>
 </div>
 <div class="split">
