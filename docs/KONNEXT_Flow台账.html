@@ -1,0 +1,654 @@
+<title>KONNEXT Flow 台账</title>
+<style>
+:root{
+  --bg:#f5f7fa; --panel:#ffffff; --raised:#eef2f6; --line:#d8e0e8;
+  --ink:#1f2933; --muted:#5f6b76; --faint:#8695a4;
+  --accent:#2563eb; --accent-soft:#e8effc;
+  --ok:#047857; --ok-soft:#e6f4ef;
+  --warn:#b45309; --warn-soft:#fdf3e2;
+  --bad:#dc2626; --bad-soft:#fdeaea;
+  --draft:#7c3aed; --draft-soft:#efe9fd;
+  --human:#1f2933; --human-soft:#e3e8ed;
+  --shadow:0 1px 2px rgba(16,24,40,.05); --shadow-lg:0 12px 32px rgba(16,24,40,.16);
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;
+  --mono:ui-monospace,"Cascadia Code",SFMono-Regular,Consolas,"Noto Sans Mono CJK SC",monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1620; --panel:#161f2b; --raised:#1e2937; --line:#2b3846;
+  --ink:#e6ecf2; --muted:#93a1b0; --faint:#6f7f8f;
+  --accent:#5b93f7; --accent-soft:#17293f;
+  --ok:#34a97b; --ok-soft:#122b22; --warn:#d98a2b; --warn-soft:#2e2313;
+  --bad:#f26d6d; --bad-soft:#331a1a; --draft:#a482f5; --draft-soft:#241a3a;
+  --human:#c9d4de; --human-soft:#26313d;
+  --shadow:0 1px 2px rgba(0,0,0,.4); --shadow-lg:0 12px 32px rgba(0,0,0,.55);
+}}
+:root[data-theme="dark"]{
+  --bg:#0f1620; --panel:#161f2b; --raised:#1e2937; --line:#2b3846;
+  --ink:#e6ecf2; --muted:#93a1b0; --faint:#6f7f8f;
+  --accent:#5b93f7; --accent-soft:#17293f;
+  --ok:#34a97b; --ok-soft:#122b22; --warn:#d98a2b; --warn-soft:#2e2313;
+  --bad:#f26d6d; --bad-soft:#331a1a; --draft:#a482f5; --draft-soft:#241a3a;
+  --human:#c9d4de; --human-soft:#26313d;
+  --shadow:0 1px 2px rgba(0,0,0,.4); --shadow-lg:0 12px 32px rgba(0,0,0,.55);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.7 var(--sans);
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1560px;margin:0 auto;padding:34px 22px 70px}
+.eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);
+  font-weight:700;margin-bottom:9px}
+h1{font-size:31px;line-height:1.25;margin:0 0 10px;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+.thesis{font-size:15px;color:var(--muted);max-width:78ch;margin:0}
+.thesis b{color:var(--ink)}
+.tally{display:flex;flex-wrap:wrap;gap:26px;margin-top:19px;padding:15px 20px;background:var(--panel);
+  border:1px solid var(--line);border-radius:9px;box-shadow:var(--shadow)}
+.tally div{display:flex;flex-direction:column;gap:1px}
+.tally .n{font:600 21px/1 var(--mono);font-variant-numeric:tabular-nums}
+.tally .l{font-size:11px;color:var(--muted)}
+
+/* 负荷面板 */
+.load{margin:26px 0 8px;background:var(--panel);border:1px solid var(--line);border-radius:9px;
+  overflow:hidden;box-shadow:var(--shadow)}
+.load-h{padding:13px 18px;border-bottom:1px solid var(--line);background:var(--raised)}
+.load-h b{font-size:14.5px}
+.load-h p{margin:3px 0 0;font-size:12.5px;color:var(--muted);max-width:88ch}
+.load-b{padding:4px 18px 16px;overflow-x:auto}
+table.lt{border-collapse:collapse;width:100%;min-width:660px;font-size:12.5px;margin-top:12px}
+table.lt th{text-align:left;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:.04em;
+  padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.lt td{padding:8px 10px;border-bottom:1px solid var(--line);
+  font-variant-numeric:tabular-nums}
+table.lt tbody tr:last-child td{border-bottom:0}
+table.lt .who{font-weight:600;white-space:nowrap}
+.cell{display:inline-flex;align-items:center;justify-content:center;min-width:25px;height:23px;
+  border-radius:5px;font:600 12px/1 var(--mono);background:var(--raised);color:var(--muted)}
+.cell.hot{background:var(--bad-soft);color:var(--bad)}
+.cell.mid{background:var(--warn-soft);color:var(--warn)}
+.cell.zero{opacity:.3}
+
+/* 过滤条 */
+.bar{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+  padding:11px 14px;background:var(--raised);border:1px solid var(--line);border-radius:9px;
+  margin:22px 0 14px;backdrop-filter:blur(8px)}
+.bar button{border:1px solid var(--line);background:var(--panel);color:var(--muted);
+  border-radius:99px;padding:5px 13px;font:inherit;font-size:12.5px;cursor:pointer}
+.bar button:hover{color:var(--ink);border-color:var(--accent)}
+.bar button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.bar .hint{margin-left:auto;font-size:11.5px;color:var(--muted)}
+
+/* flow 卡 */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(452px,1fr));gap:13px}
+.fc{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px 16px;
+  box-shadow:var(--shadow);display:flex;flex-direction:column;gap:9px}
+.fc.hide{display:none}
+.fc-top{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.fc-id{font:600 11.5px/1 var(--mono);color:var(--accent);background:var(--accent-soft);
+  padding:4px 7px;border-radius:5px;letter-spacing:.03em}
+.fc-nm{font-size:15px;font-weight:700}
+.fc-tags{margin-left:auto;display:flex;gap:5px}
+.tag{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;white-space:nowrap;
+  border:1px solid}
+.tag.freq{background:var(--raised);color:var(--muted);border-color:var(--line)}
+.tag.freq.hot{background:var(--bad-soft);color:var(--bad);border-color:var(--bad)}
+.tag.owner{background:var(--human-soft);color:var(--ink);border-color:var(--line)}
+.fc-trig{font-size:12.5px;color:var(--muted)}
+.fc-trig b{color:var(--ink);font-weight:600}
+.chain{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:9px 0;
+  border-top:1px dashed var(--line);border-bottom:1px dashed var(--line)}
+.nd{display:inline-flex;align-items:center;gap:5px;border-radius:6px;padding:5px 9px;
+  font-size:12px;font-weight:600;border:1px solid;cursor:default;white-space:nowrap;
+  transition:transform .12s,box-shadow .12s}
+.nd:hover,.nd:focus-visible{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.nd:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.d-human{background:var(--human);color:var(--bg);border-color:var(--human)}
+.d-read {background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.d-draft{background:var(--draft-soft);color:var(--draft);border-color:var(--draft)}
+.d-write{background:var(--warn-soft);color:var(--warn);border-color:var(--warn);border-style:dashed}
+.nd .vb{font:600 9.5px/1 var(--mono);padding:2px 3px;border-radius:3px;background:rgba(127,127,127,.2)}
+.arw{color:var(--faint);font-size:12px}
+.fc-out{font-size:11.5px;color:var(--bad);background:var(--bad-soft);border-radius:6px;
+  padding:6px 9px;line-height:1.6}
+.fc-tbl{display:flex;flex-wrap:wrap;gap:4px}
+.tb{font:10.5px/1.4 var(--mono);padding:2px 6px;border-radius:4px;background:var(--raised);color:var(--muted)}
+
+.sec{margin:26px 0 11px;font-size:16px;font-weight:700;display:flex;align-items:center;gap:9px}
+.sec .cnt{font:400 11.5px/1 var(--mono);color:var(--faint)}
+
+#tip{position:fixed;z-index:99;max-width:380px;background:var(--panel);color:var(--ink);
+  border:1px solid var(--line);border-radius:9px;padding:12px 14px;box-shadow:var(--shadow-lg);
+  font-size:12.5px;line-height:1.7;display:none;pointer-events:none}
+#tip .tt{font-weight:700;font-size:13.5px;margin-bottom:7px}
+#tip dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 10px}
+#tip dt{font-size:11px;color:var(--faint);white-space:nowrap;padding-top:2px}
+#tip dd{margin:0}
+#tip .g{margin-top:8px;padding:6px 9px;background:var(--bad-soft);color:var(--bad);
+  border-radius:5px;font-size:11.5px;line-height:1.55}
+footer{margin-top:36px;padding-top:20px;border-top:1px solid var(--line);font-size:12.5px;
+  color:var(--muted);line-height:1.8}
+footer b{color:var(--ink)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:22px;margin-top:12px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (max-width:640px){h1{font-size:24px}.grid{grid-template-columns:1fr}}
+</style>
+
+<div class="wrap">
+<div class="eyebrow">KONNEXT · 业务流分解 · 第二层</div>
+<h1>每条主线切成若干 Flow，一个 Flow 一个闭环</h1>
+<p class="thesis">一个 Flow ＝ <b>人输入 → Agent 按说明查表接力 → 人 check</b>。
+它是<b>交付单位</b>：能单独开发、单独回归、单独上线。
+所以要建的不是「一百多个 Agent」，是<b>一次一个 Flow</b>。
+每个 Agent 只做一次单一输入输出，且必须有一个<b>不是 Agent 的检查者</b>（门／断／人／C）。
+鼠标放节点上看它干什么、吃什么、吐什么、谁验它。</p>
+<div class="tally" id="tally"></div>
+
+<section class="load">
+  <div class="load-h">
+    <b>★ 先看这个：人 check 的负荷落在谁身上</b>
+    <p>你的模型里每个 Flow 都以「人 check」收口 —— 这是对的，但<b>人的时间是有限的</b>。
+    出口太密，人就会开始盲签，那时候监管点还在图上，实际已经失效了，而且不会报错。
+    下表按<b>负责人 × 触发频率</b>数出口。<b style="color:var(--bad)">红格＝高频出口</b>，
+    这些位置建议把出口从「人 check」换成「门禁」——
+    门禁是确定性的，不会累，也不会因为今天单子多就放水。</p>
+  </div>
+  <div class="load-b"><table class="lt" id="loadtable"></table></div>
+</section>
+
+<div class="bar" id="bar"></div>
+<div id="flows"></div>
+
+<footer>
+  <b>这一层新暴露出来的三件事</b>
+  <div class="cols">
+    <div><b style="color:var(--bad)">① 高频出口会变成橡皮图章</b><br>
+    「每天」和「每单」触发的 Flow，出口挂人工 check 是撑不住的。
+    建议这几个出口改成门禁 + 事后抽查：<b>人不看每一单，只看断言报出来的异常单</b>。</div>
+    <div><b style="color:var(--warn)">② Flow 之间也有交接</b><br>
+    上一个 Flow 的出口就是下一个的入口（受理→排查→派工→完结→定价）。
+    这是部门<b>内部</b>的交接，v1 那张图只画了部门<b>之间</b>的。
+    同样的坑会在这里重演 —— 谁负责把状态推过去，要写死。</div>
+    <div><b style="color:var(--accent)">③ Flow 的状态存在哪</b><br>
+    必须存在数据库既有的状态列里，<b>不要在 Agent 编排层再存一份</b>。
+    存两份 = 同一件事两个数字，迟早对不上，而且不报错 ——
+    和「项目料需求只存一份」是同一条规矩。</div>
+  </div>
+</footer>
+</div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const LINES={
+ presales:{nm:'① 售前',ic:'📞',who:'小林'},
+ eng     :{nm:'② 工程管理',ic:'🏗',who:'陈工'},
+ proc    :{nm:'③ 采购',ic:'📦',who:'老张'},
+ wh      :{nm:'④ 库管',ic:'🏬',who:'老张'},
+ fin     :{nm:'⑤ 财务',ic:'💰',who:'王姐'},
+ mt      :{nm:'⑥ 运维',ic:'🔧',who:'小周'},
+ dec     :{nm:'⑦ 决策',ic:'⚖',who:'陈总'},
+ sup     :{nm:'⑧ 监管',ic:'🛡',who:'陈总'},
+};
+const HOT=['每天','每单'];   /* 高频＝出口容易变橡皮图章 */
+const VER={'门':'数据库门禁（拒绝并给中文原句）','断':'SQL 不变量断言（自动扫全库）',
+           '人':'人工确认后才生效','C':'CHECK 约束 / 唯一键'};
+const KI={human:{ic:'🛡',lb:'人',cls:'d-human'},read:{ic:'📖',lb:'读类 Agent',cls:'d-read'},
+          draft:{ic:'✍',lb:'拟稿类 Agent',cls:'d-draft'},write:{ic:'💾',lb:'落库类 Agent',cls:'d-write'}};
+
+/* ══ 三十八个 Flow ══ */
+const F=[
+/* ── 售前 ── */
+{id:'PS-01',l:'presales',nm:'客户接洽建档',f:'每单',trig:'新客户来电 / 邮件 / 微信',
+ in:{n:'录入客户与房屋',does:'业主 / Builder / 电工三方联系人、地址、房屋类型、施工阶段'},
+ ag:[{k:'read',n:'来件要点提取',i:'客户原文（非结构化）',o:'结构化需求条目',v:'人',
+      d:'只抽取，不猜预算也不猜工期'},
+     {k:'read',n:'手机号归一查重',i:'三种写法的号码',o:'+61 4xx xxx xxx',v:'门',
+      d:'要收短信的必须是澳洲手机号（座机收不到）；同一个号不许两个人共用'}],
+ out:{n:'售前确认建档',g:'门禁：手机号格式 + 同号不许两人共用'},
+ t:['project','project_party','household_member']},
+
+{id:'PS-02',l:'presales',nm:'方案与预测报价',f:'每项目',trig:'需求确认完毕',
+ in:{n:'售前指定方案方向',does:'选定走哪套系统、大致点位规模'},
+ ag:[{k:'read',n:'历史同类造价区间',i:'房屋类型 + 点位规模',o:'历史成交区间',v:'断',
+      d:'只给区间参考，不代替报价'},
+     {k:'draft',n:'方案选项草稿',i:'需求条目',o:'2~3 个 solution_option',v:'人',d:'起草不定价'},
+     {k:'draft',n:'预测报价范围草稿',i:'方案 + 区间',o:'est_quote_low / high',v:'人',
+      d:'★正式报价始终手填 quote_source=manual —— 明确不做报价系统对接'}],
+ out:{n:'售前审核后发出',g:'定格：发出的版本要留档，双注释写清前提'},
+ t:['solution_option','project']},
+
+{id:'PS-03',l:'presales',nm:'跟进与状态推进',f:'每天',trig:'6+1 状态勾变动 / 每日提醒',
+ in:{n:'售前勾状态',does:'接洽→设计→报价→修订→待签约→已签约，第⑦红勾＝已流失'},
+ ag:[{k:'read',n:'停留超期扫描',i:'各阶段停留天数 + 阈值',o:'该催谁的清单',v:'断',
+      d:'阈值售前自己在设置里改，Agent 不许改阈值'},
+     {k:'draft',n:'跟进提醒文案',i:'超期项目',o:'提醒草稿',v:'人',d:'状态一变重新计时，不累积'}],
+ out:{n:'售前决定继续跟进或勾已流失',g:'勾了已流失＝终态归档整行变灰，点错可再点一次取消'},
+ t:['project','status_stall_threshold','todo_action_log']},
+
+{id:'PS-04',l:'presales',nm:'立项签约',f:'每项目',trig:'客户签署报价 / 定金到账',
+ in:{n:'售前走五步立项引导',does:'五步走完即真建档'},
+ ag:[{k:'read',n:'立项前完整性检查',i:'三方联系人 / 地址 / 房屋类型',o:'缺哪几项',v:'门',
+      d:'缺项直接拦，不许先建了再补'},
+     {k:'write',n:'project 草稿落提议区',i:'五步表单',o:'未生效的 project 草稿',v:'门',
+      d:'★不直接建档 —— 建档即落当天日期，改不回来'}],
+ out:{n:'售前确认立项',g:'★立项时间当场冻结（定格落库，之后只读）+ 自动通知工程'},
+ t:['project','dept_handoff','notification']},
+
+/* ── 工程管理 ── */
+{id:'EN-01',l:'eng',nm:'项目建档与分级',f:'每项目',trig:'售前交接到达',
+ in:{n:'工程负责人接收交接',does:'指定业主 / Builder / 电工（候选＝售前采集的）'},
+ ag:[{k:'read',n:'售前资料完整性核对',i:'交接单',o:'缺什么',v:'门',d:'缺关键联系人不许开工'},
+     {k:'draft',n:'项目分级建议 A/B/C',i:'合同额 / 复杂度 / 客户类型',o:'建议档 + 理由',v:'人',
+      d:'分级会影响巡检频率，原因必填'}],
+ out:{n:'工程负责人确认分级与三方',g:'保存即 📌 标注并通知下游（库管 / 采购 / 财务）'},
+ t:['project','project_party','project_note']},
+
+{id:'EN-02',l:'eng',nm:'SM 排期',f:'每阶段',trig:'上一场 SM 完成 / 工地进度到位',
+ in:{n:'工程负责人选场次与参会人',does:'SM1 进场 / SM2 布线交流 / SM3 检查布线 / SM4 封板核对'},
+ ag:[{k:'read',n:'参会人档期与路程',i:'当天排班 + 项目地址',o:'谁有空、路上多久',v:'门',
+      d:'Google 路程预估当天定格'},
+     {k:'draft',n:'出发前清单生成',i:'方案条件项',o:'带什么的清单（◇条件项自动增减）',v:'人',
+      d:'只影响之后的场次，不改已完成的'},
+     {k:'write',n:'排班落提议区',i:'场次 + 参会人',o:'eng_schedule 草稿',v:'门',
+      d:'15 分钟一档 · 同人同天不许重叠 · 不许排过去的日期'}],
+ out:{n:'确认排期',g:'自动写进派工排班表 + 短信通知参会人（红绿点确认，日程无论如何已同步 App）'},
+ t:['site_meeting','sm_template','eng_schedule','travel_estimate']},
+
+{id:'EN-03',l:'eng',nm:'SM 现场提交',f:'每阶段',trig:'工程师到场',
+ in:{n:'工程师在 App 现场填',does:'现场记录 + 照片 + 到场打卡；SM3 还要电工现场签字'},
+ ag:[{k:'read',n:'出发前清单完成度核对',i:'勾选状态',o:'漏了什么',v:'门',d:'没勾完提示但不拦（现场情况优先）'},
+     {k:'draft',n:'现场变更条目整理',i:'现场口述变更',o:'加 / 减 / 移位条目',v:'人',
+      d:'★金额和工时现场都不谈，办公室估价；移位不计费'}],
+ out:{n:'工程师提交＝完成定格',g:'★SM3 提交 → 财务可开 S2 物料款；SM4 提交 → 可开 S3 人工款（同源联动，办公室不用再点）'},
+ t:['site_meeting','work_log','bom_change','bom_change_line']},
+
+{id:'EN-04',l:'eng',nm:'每周派工排班',f:'每周',trig:'周五排下周',
+ in:{n:'工程负责人排班',does:'五类任务：SM / 安装 / 交付 / 维护 / 倒休'},
+ ag:[{k:'read',n:'各项目剩余工作汇总',i:'每个项目最近一次上报',o:'还剩什么',v:'门',
+      d:'★上次没填剩余工作，这次派工直接被拦'},
+     {k:'read',n:'倒休余额与法定假核对',i:'toil_ledger + 假期表',o:'谁能排、谁不能',v:'门',
+      d:'★余额不足直接拦 —— 别查带薪酬遮罩的视图，否则判断取决于「谁在看」'},
+     {k:'draft',n:'排班时段草稿',i:'任务 + 人 + 地址',o:'起止时间（15 分钟档）',v:'门',d:'≥60 分钟自动显示为小时'}],
+ out:{n:'确认并按天／整周锁定',g:'★只能改此刻之后的；过去的不许改删；锁定要先解锁'},
+ t:['eng_schedule','daily_report_line','toil_ledger','public_holiday','sched_task_type']},
+
+{id:'EN-05',l:'eng',nm:'安装调试推进',f:'每天',trig:'工程师当天收工',
+ in:{n:'工程师 App 每日上报',does:'两栏：今天做了什么 + 还剩什么'},
+ ag:[{k:'read',n:'剩余工作提取入库',i:'上报原文',o:'daily_report_line 分段',v:'门',
+      d:'下一班的人接着干，靠的就是这一段'},
+     {k:'read',n:'工时占比四档',i:'已投入 / 预计总工时',o:'充裕 / 正常 / 接近超支 / 已超支',v:'断',
+      d:'数字是 SQL 现算的，Agent 只解释'},
+     {k:'draft',n:'超支预警说明',i:'四档结果',o:'为什么超、差多少',v:'人',d:'预警线在设置里可改'}],
+ out:{n:'工程负责人确认是否加派人手',g:'列表行资源用量超支标红'},
+ t:['daily_report','daily_report_line','install_job','install_item','work_log']},
+
+{id:'EN-06',l:'eng',nm:'交付',f:'每项目',trig:'施工结束 + S4 结清',
+ in:{n:'工程负责人发起交付',does:'约客户时间、准备交付文档'},
+ ag:[{k:'read',n:'交付前置条件核对',i:'施工状态 + 收款状态',o:'能不能约',v:'门',
+      d:'两条门禁：施工结束、S4 结清，缺一不可'},
+     {k:'read',n:'计划工时 vs 实际打卡',i:'排班 + work_log',o:'超标多少（标红）',v:'断',
+      d:'★过去派了工没打卡＝红字；未来排班不算异常'},
+     {k:'draft',n:'客户交付通知拟稿',i:'交付日期 + 联络方式',o:'双语通知草稿',v:'人',
+      d:'发件身份 admin@（工程管理），署名是经办人'}],
+ out:{n:'确认交付',g:'★确认交付＝工程利润率就地定格 + 移交运维；定格后 UI 只读并写明定格时间'},
+ t:['delivery_review','project','work_log','document_issue','variation']},
+
+/* ── 采购 ── */
+{id:'PC-01',l:'proc',nm:'需求受理',f:'每单',trig:'工程 / 库管 / 运维提需求',
+ in:{n:'采购打开需求单',does:'五档来源：quote / sm2_change / build_add / warehouse_restock / maintenance'},
+ ag:[{k:'read',n:'现货 vs 需求差额',i:'项目物料账 + 当前库存（现算）',o:'真正要买的数量',v:'断',
+      d:'★需求只存一份，全部现算 —— 同一件事两个数字迟早对不上'},
+     {k:'read',n:'历史价与供应商对比',i:'material_price_log + supplier',o:'找谁买、上次多少钱',v:'断',
+      d:'★买多了要标红：已下单 18、工程改成 0，绿油油写着「齐了」那笔钱就没了'}],
+ out:{n:'采购审核',g:'★采购不能自己决定要不要买 —— 只能通过或退回并写明原因；改数量必须写原因'},
+ t:['purchase_req','quote_bom_line','bom_reserve','material_price_log']},
+
+{id:'PC-02',l:'proc',nm:'下单',f:'每单',trig:'需求审核通过',
+ in:{n:'采购选供应商与数量',does:'C1 / C2 两种买法；可分批下单'},
+ ag:[{k:'read',n:'当日汇率取值',i:'币种',o:'今天的汇率',v:'C',d:'下单即定格，之后汇率变动不影响这一单'},
+     {k:'draft',n:'采购单草稿',i:'供应商 + 数量 + 运费 + 汇率',o:'含落地成本的采购单',v:'门',
+      d:'落地成本 =（单价 + 运费）× 定格汇率；★交期填 0 天直接拦'}],
+ out:{n:'采购确认下单',g:'★汇率下单即定格；真正的采购在线下做，这里做指令留痕 + 到货跟踪'},
+ t:['purchase_order','purchase_order_line','supplier','fx_rate']},
+
+{id:'PC-03',l:'proc',nm:'在途跟踪',f:'每周',trig:'每周扫在途单',
+ in:{n:'采购查看在途',does:'看哪些快到、哪些超期'},
+ ag:[{k:'read',n:'ETA 超期扫描',i:'在途单 + 今天',o:'该催的单 + 催过几次',v:'断',d:'准时率靠 ETA 算'},
+     {k:'draft',n:'催单文案',i:'超期单',o:'催单草稿',v:'人',d:'供应商可以是境外号'}],
+ out:{n:'采购确认催单',g:'★超期不许乱改 ETA —— 改了准时率就是假的，而且不报错'},
+ t:['purchase_order','purchase_order_chase']},
+
+{id:'PC-04',l:'proc',nm:'退换跟踪 RMA',f:'每单',trig:'发现坏件 / 错件',
+ in:{n:'采购登记退换',does:'四步：已退回 → 对方已收 → 已发货 → 已接收'},
+ ag:[{k:'read',n:'卡点扫描',i:'各步停留天数',o:'停超 rmaChaseDays 的单',v:'断',d:'默认 5 天，设置里可改'},
+     {k:'draft',n:'催确认短信',i:'卡住的单',o:'催确认草稿',v:'人',d:'定期催，不是催一次就算'}],
+ out:{n:'采购推进状态',g:'★只能往前推、每步必填凭据 ≥4 字；「已接收」＝采购跟踪结束 + 自动通知库管办入库'},
+ t:['rma_case','rma_track','rma_chase']},
+
+{id:'PC-05',l:'proc',nm:'物料建档与调价',f:'每月',trig:'供应商涨价 / 工程说搜不到料',
+ in:{n:'采购发起建档或调价',does:'物料主表由采购管理：增删改停用'},
+ ag:[{k:'read',n:'该物料最近 10 次调价',i:'material_price_log',o:'历史摆在眼前',v:'断',
+      d:'★调价弹窗必须把这个料自己的历史摆出来，不然凭感觉改'},
+     {k:'read',n:'距今多久预警',i:'全部物料的最后调价日',o:'太久没调的清单',v:'断',
+      d:'★越久越危险：供应商早涨了我们还按老价算成本，毛利率是假的且不报错'}],
+ out:{n:'采购确认新价',g:'★不能重码（重码＝出入库全对不上）· C1 必须有红线 · 有库存不许停用 · 同价拦 · 原因必填 ≥4 字'},
+ t:['material','material_price_log']},
+
+/* ── 库管 ── */
+{id:'WH-01',l:'wh',nm:'入库',f:'每单',trig:'货到仓库',
+ in:{n:'库管点数',does:'对着采购单点实收'},
+ ag:[{k:'read',n:'应收 vs 实收比对',i:'采购单 + 实点数',o:'差多少',v:'门',d:'差异不许抹平'},
+     {k:'write',n:'到货差异单落提议区',i:'差异明细',o:'交采购的差异单',v:'门',d:'按实收入库，差异另开单'}],
+ out:{n:'库管确认入库',g:'★差异必填备注 + 自动开到货差异单交采购'},
+ t:['goods_receipt_diff','stock_out','material']},
+
+{id:'WH-02',l:'wh',nm:'项目备料',f:'每项目',trig:'工程出货单到达',
+ in:{n:'库管收到出货单',does:'看这个项目要什么、现货够不够'},
+ ag:[{k:'read',n:'库存现算',i:'期初 WH_OPEN + 全部流水',o:'当前库存（不落库）',v:'断',
+      d:'★库存永远不写死 —— 出库忘扣、退库忘加，写死的数会永远错下去'},
+     {k:'draft',n:'缺口清单',i:'需求 - 现货',o:'差多少、要不要采购',v:'人',
+      d:'★不够就同时提醒采购与工程；工程问到 lead time 回填'},
+     {k:'write',n:'备料占用落库',i:'够的部分',o:'bom_reserve',v:'门',d:'★占住但不扣库存 —— 扣是出库那一刻的事'}],
+ out:{n:'库管确认备料',g:'占用不等于出库，S4 结算看的是出库和退库'},
+ t:['bom_reserve','mat_req','mat_req_line','stocktake']},
+
+{id:'WH-03',l:'wh',nm:'通知来提货',f:'每单',trig:'备料齐了',
+ in:{n:'库管发起通知',does:'手工发起 —— 这不是自动的'},
+ ag:[{k:'read',n:'提货人与号码校验',i:'提货人类型 + 手机号',o:'能不能通知',v:'门',
+      d:'两类：第三方／工地（双语短信）· 我方／办公室（App 推送 + 短信）'},
+     {k:'draft',n:'双语短信拟稿',i:'提货人 + 物料 + 仓库',o:'中英双语 + 地址 + 营业时间',v:'人',d:'工地那边看不懂中文'}],
+ out:{n:'库管点发送',g:'★没手机号不许通知，也不许出库。注意「通知来提货」≠「催提货确认」，中间隔着开出库单那一下'},
+ t:['wh_call','party_pickup']},
+
+{id:'WH-04',l:'wh',nm:'出库',f:'每单',trig:'提货人到仓库',
+ in:{n:'库管开单',does:'一张单据一个项目 —— 项目在单据里选，不在页顶挂'},
+ ag:[{k:'read',n:'S2 结清与库存余量核对',i:'收款状态 + 现算库存',o:'放不放货',v:'门',
+      d:'★SM2 预提线材是例外，走四道锁的窄通道（只我方 · 只线材 · 用途必填 · 照样按 S4 结）'},
+     {k:'read',n:'出库单价取值',i:'当时的成本单价',o:'定格单价',v:'门',d:'定格落库，之后成本变了也不动这一单'}],
+ out:{n:'库管开出库单',g:'★这一刻才真正扣库存。S2 未结清不放货 · 超库存直接拒 · 手机号与出库单价当场定格🔒'},
+ t:['stock_out','stock_out_line','party_pickup','bom_reserve']},
+
+{id:'WH-05',l:'wh',nm:'退库与拒收',f:'每单',trig:'工地退回 / 到货拒收',
+ in:{n:'库管登记退回',does:'到货拒收多属集中采购，根本不属于任何项目'},
+ ag:[{k:'read',n:'好坏料分类核对',i:'退回明细',o:'哪些能重新发、哪些不能',v:'门',
+      d:'★好坏料混退＝拿坏件当好货再发出去'}],
+ out:{n:'库管确认退库',g:'★退库状态必填。财务「结算掉」(stl) 与「真退回来了」(back) 分开记 —— 结算掉不等于货退回来了'},
+ t:['stock_return','stock_return_line','stock_out']},
+
+{id:'WH-06',l:'wh',nm:'盘点',f:'每月',trig:'月度盘点',
+ in:{n:'库管实盘',does:'一次性期初移库也并在这一页'},
+ ag:[{k:'read',n:'账面 vs 实盘差异',i:'现算账面 + 实点数',o:'差异清单',v:'门',d:'账面数是现算的，不是存的'},
+     {k:'read',n:'物料在谁手里',i:'出库 / 提货 / 退库全流水',o:'按项目 + 按提货人两个视角',v:'断',
+      d:'★两个视角必须相等，断言钉住'}],
+ out:{n:'库管确认差异',g:'★差异必填原因 + 账面数当场定格'},
+ t:['stocktake','stocktake_line','party_pickup']},
+
+/* ── 财务 ── */
+{id:'FN-01',l:'fin',nm:'请款',f:'每阶段',trig:'到了 S1 / S2 / S3 / S4 节点',
+ in:{n:'财务发起某一期',does:'S1 定金 10% · S2 物料 40% · S3 人工 40% · S4 尾款 10%'},
+ ag:[{k:'read',n:'前置门禁核对',i:'SM 状态',o:'能不能开',v:'门',
+      d:'★「SM3 未完成，不能发起 S2 物料款」—— 原句原样透传，不许包装成「操作失败请重试」'},
+     {k:'draft',n:'Invoice 与告知拟稿',i:'金额 + 客户',o:'邮件草稿',v:'人',d:'发件身份 accounts@'}],
+ out:{n:'财务确认发出',g:'★应收金额与账龄起点在 Invoice 发出时定格，之后只读'},
+ t:['payment_milestone','notification']},
+
+{id:'FN-02',l:'fin',nm:'收款登记',f:'每单',trig:'银行到账',
+ in:{n:'财务登记到账',does:'登记金额与日期'},
+ ag:[{k:'read',n:'已收 / 还差现算',i:'应收 - 已收流水',o:'还差多少',v:'断',d:'现算不落库'},
+     {k:'read',n:'结清差额核对',i:'到账 vs 应收',o:'差额',v:'门',d:'差额要定格'}],
+ out:{n:'财务确认',g:'★结清差额定格落库，之后不可改'},
+ t:['payment_receipt','payment_milestone']},
+
+{id:'FN-03',l:'fin',nm:'催账与停服',f:'每周',trig:'每周扫超期',
+ in:{n:'财务查看超期',does:'超期天数 / 账龄两个口径'},
+ ag:[{k:'read',n:'双口径计算',i:'Invoice 日 + 今天',o:'超期天数、账龄',v:'断',d:'现算'},
+     {k:'read',n:'烂尾项目剔除',i:'项目状态',o:'该催的名单',v:'门',d:'★烂尾不催款'},
+     {k:'draft',n:'分级双语文案',i:'欠款档位',o:'催款短信 / 邮件草稿',v:'人',d:'无昵称模版，避免叫错人'}],
+ out:{n:'财务选渠道点发',g:'拒付可触发停服 —— 停服会连带让工程派不出任务'},
+ t:['payment_remind_log','payment_milestone','notification']},
+
+{id:'FN-04',l:'fin',nm:'日结工资',f:'每天',trig:'当夜 0 点',
+ in:{n:'系统触发 + 人补录',does:'挂起的由工程负责人补录'},
+ ag:[{k:'read',n:'打卡与上报比对',i:'work_log + daily_report',o:'谁没记录、谁挂起',v:'断',
+      d:'★不写上报当天工资挂起不发（不扣钱），补录才放行'},
+     {k:'draft',n:'补录提醒待办',i:'挂起名单',o:'待办条目',v:'人',d:'入口＝工程端「每日工时管理」'}],
+ out:{n:'工程负责人补录',g:'★补录必填：项目 + 时长 + 原因类别 + 详说 ≥10 字；滚下月补发并进 KPI；挂起不卡封账'},
+ t:['daily_payroll','work_log','staff_daily_commitment','payroll_month']},
+
+{id:'FN-05',l:'fin',nm:'报销审批',f:'每单',trig:'工人 App 提交',
+ in:{n:'工人拍收据提交',does:'三类：材料补购 / 交通递送 / 工具采购'},
+ ag:[{k:'read',n:'类别与项目校验',i:'提交单',o:'归属对不对',v:'门',
+      d:'★项目归属三态：具体项目 / 公司级 / 无从追溯（要人工确认）'},
+     {k:'read',n:'重复提交扫描',i:'同人同日同金额',o:'疑似重复',v:'断',d:'收据图必填，没图提交不进来'}],
+ out:{n:'财务批准或驳回',g:'★付款不走本系统 —— 没有「已付」状态，怎么给钱线下安排'},
+ t:['expense_claim','project']},
+
+{id:'FN-06',l:'fin',nm:'S4 尾款结算',f:'每项目',trig:'交付完成',
+ in:{n:'财务发起尾款结算',does:'尾款 + 变量 + 未退料一起结'},
+ ag:[{k:'read',n:'未退料台账核对',i:'库管出库台账',o:'还有多少没退',v:'断',
+      d:'★与库管台账必须一致 —— v0.36 之前财务结算不动库管台账，两页各说各话且不报错'},
+     {k:'read',n:'变量汇总',i:'variation 全部条目',o:'工程追加合计',v:'断',d:'工时只进成本，物料传库管'},
+     {k:'draft',n:'结算单草稿',i:'尾款 + 变量 + 未退料',o:'结算单',v:'人',d:'财务改价必须留痕'}],
+ out:{n:'财务确认结算',g:'定格：结清差额与账龄之后不可改'},
+ t:['payment_milestone','variation','stock_out','termination_settlement']},
+
+/* ── 运维（试点） ── */
+{id:'MT-01',l:'mt',nm:'报修受理 ★试点第一个',f:'每单',trig:'客户来电 / 微信报修',
+ in:{n:'运维接报修',does:'★报修时间必填，允许填【未知】'},
+ ag:[{k:'read',n:'口述 → 结构化',i:'客户原话（最非结构化的输入）',o:'故障现象 + 位置 + 设备型号',v:'人',
+      d:'★整个系统里 Agent 最该干的活：把人话变成字段，判断留给人'},
+     {k:'read',n:'同型号历史故障',i:'型号',o:'这个型号在别的项目坏过几次',v:'断',
+      d:'★按型号不按项目：同型号到处坏 → 停用它、找供应商'},
+     {k:'draft',n:'P0~P3 分级建议',i:'结构化故障 + 历史',o:'建议档位 + 理由',v:'人',d:'只建议，人拍板'}],
+ out:{n:'运维确认分级',g:'★绝不拿建单时间顶替报修时间，否则响应时长永远是漂亮的 0；SLA 从确认那一刻起算，超了自动进待办'},
+ t:['maintenance_case','material','eng_setting']},
+
+{id:'MT-02',l:'mt',nm:'远程排查',f:'每单',trig:'受理完成',
+ in:{n:'研发 / 运维开始排查',does:'远程能不能解决先试'},
+ ag:[{k:'read',n:'查项目配置与保修',i:'项目 + 交付日 + S2 结清日',o:'两套钟的状态',v:'断',
+      d:'★免责维保＝交付起（决定收不收客户钱）· 物料保修＝S2 结清起（决定能不能找供应商换）'},
+     {k:'draft',n:'排查清单',i:'故障类型',o:'该试哪几步',v:'人',d:'远程排查工时也进成本'}],
+ out:{n:'人给出排查结论',g:'★没有排查结论不许派上门（M4 门禁）'},
+ t:['maintenance_case','maintenance_job','work_log','subscription']},
+
+{id:'MT-03',l:'mt',nm:'上门派工',f:'每单',trig:'远程解决不了',
+ in:{n:'运维提出上门需求',does:'派人在工程「派工排班」里排 —— 运维不自己排'},
+ ag:[{k:'read',n:'排班余量与路程',i:'工程排班 + 地址',o:'谁哪天能去',v:'门',d:'工作类型选维护 → 第二个框列维护单'},
+     {k:'write',n:'排班落提议区',i:'维护单 + 人 + 时段',o:'eng_schedule 草稿',v:'门',
+      d:'地址与内容自动带出，不用重填'}],
+ out:{n:'工程管理确认排班',g:'★运维作废维护单会连带删掉工程排班，并短信 + App 通知本人'},
+ t:['eng_schedule','maintenance_job','maintenance_case','travel_estimate']},
+
+{id:'MT-04',l:'mt',nm:'现场完结',f:'每单',trig:'工程师到场',
+ in:{n:'工程师现场填三样',does:'归因 + 当日服务内容 + 客户签字'},
+ ag:[{k:'read',n:'保修期判断',i:'两套钟 + 归因',o:'免费还是收费',v:'断',d:'现场只给判断依据，不谈钱'},
+     {k:'draft',n:'归因草稿',i:'现场记录',o:'人为损坏 / 产品缺陷 / 自然老化 / 远程可解',v:'人',
+      d:'★当着客户面确认，避免事后扯皮'}],
+ out:{n:'工程师提交三样',g:'★三样缺一样：任务点不了完成、人不能走、财务定不了价'},
+ t:['maintenance_case','job_checklist','work_log']},
+
+{id:'MT-05',l:'mt',nm:'交财务定价',f:'每单',trig:'三样齐',
+ in:{n:'运维交单给财务',does:'★运维管事不管钱 —— 到这儿运维就结束了'},
+ ag:[{k:'read',n:'工时与物料归集',i:'在场时长 + 换件出库',o:'成本合计',v:'断',
+      d:'人工现算 + 物料走库管出库归集'}],
+ out:{n:'财务定价开票',g:'★三样齐 ≠ 关单 —— 交财务定价开票收款才算真结案；默认只看未关闭的单'},
+ t:['maintenance_case','payment_milestone','stock_out']},
+
+{id:'MT-06',l:'mt',nm:'订阅续费',f:'每月',trig:'订阅到期前',
+ in:{n:'运维查看到期',does:'五档订阅'},
+ ag:[{k:'read',n:'到期扫描',i:'subscription',o:'该续的名单',v:'断',d:'逾期进决策风险看板'},
+     {k:'draft',n:'续费通知拟稿',i:'到期客户',o:'通知草稿',v:'人',d:'发件身份 info@'}],
+ out:{n:'运维确认续费档位',g:'★只在续费时改档；第 5 档改档即清空年费与期间、不能续费'},
+ t:['subscription','notification','maintenance_case']},
+
+/* ── 决策 ── */
+{id:'DC-01',l:'dec',nm:'部门授权',f:'每单',trig:'负责人休假 / 联系不上',
+ in:{n:'负责人本人申请，或管理员发起接管',does:'两条路：休假授权（本人点）/ 强制接管'},
+ ag:[{k:'read',n:'现有授权冲突检查',i:'dept_delegation',o:'该部门有没有已生效的',v:'门',
+      d:'★一个部门同时只能有一条生效'}],
+ out:{n:'决策管理员批准',g:'★休假授权到期日必填、上限 90 天；强制接管原因 ≥10 字 + 短信通知本人；记录只增不删'},
+ t:['dept_delegation','account_department','app_account']},
+
+{id:'DC-02',l:'dec',nm:'全局参数变更',f:'每月',trig:'要改发件身份 / 阈值 / 红线',
+ in:{n:'决策管理员发起',does:'发件身份三邮箱 + 短信号 · 安全三阈值 · 红线百分比'},
+ ag:[{k:'read',n:'格式与影响面检查',i:'新值',o:'格式对不对、影响哪些流程',v:'门',
+      d:'★号码填错＝所有短信发不出去，而且不报错，只是没人收到'}],
+ out:{n:'决策管理员确认',g:'★只有决策管理员能改 + 全部留痕；改了只影响以后，已发出的记录保留当时身份'},
+ t:['eng_setting','money_visibility','status_stall_threshold','audit_log']},
+
+{id:'DC-03',l:'dec',nm:'决策复盘',f:'每月',trig:'月度看板',
+ in:{n:'决策管理员看板',does:'在手合同额 / 已收应收 / 加权利润率 / 订阅年化'},
+ ag:[{k:'read',n:'看板汇总',i:'全公司项目 + 收款 + 成本',o:'四个大数',v:'断',
+      d:'★未开工与已流失项目不显示利润率 —— 没花钱算出 100% 会误导决策'},
+     {k:'read',n:'风险摘要',i:'停留超阈值 + 账龄 + 订阅逾期',o:'一屏卡点表',v:'断',d:'全部现算派生'}],
+ out:{n:'决策管理员判断要不要动',g:'看板只摆事实，不替人做决定'},
+ t:['project','payment_milestone','money_visibility','subscription']},
+
+/* ── 监管 ── */
+{id:'SP-01',l:'sup',nm:'断言巡检',f:'每天',trig:'每日自动跑',
+ in:{n:'系统触发（不需要人起头）',does:'100 条不变量断言全库扫一遍'},
+ ag:[{k:'read',n:'违规解读',i:'INV-XXX 代码 + 证据行',o:'人话解释 + 该找谁',v:'断',
+      d:'★断言本身是确定性 SQL，Agent 只翻译，不参与判定'}],
+ out:{n:'决策管理员复核严重违规',g:'★严重违规＝不可上线／发版。空库唯一例外是 INV-SEC-03（还没建核心管理员，建号即过）'},
+ t:['assertion_def','audit_log']},
+
+{id:'SP-02',l:'sup',nm:'Agent 行为审计',f:'每天',trig:'每日自动跑',
+ in:{n:'系统触发',does:'扫全部 Agent 落库记录'},
+ ag:[{k:'read',n:'授权链核对',i:'Agent 写入的每条记录',o:'追不到授权人的清单',v:'断',
+      d:'★新增断言：Agent 落库的记录 100% 必须能追到一个授权它的人。audit_log.who 不许只写 Agent-17'},
+     {k:'read',n:'越权写入扫描',i:'写入表 × 部门归属',o:'写了不该写的表',v:'断',
+      d:'★决策级 13 张表 Agent 一律不许写'}],
+ out:{n:'决策管理员处置',g:'发现越权立即停用该 Agent —— 和停用账号一个道理'},
+ t:['audit_log','handoff_log','table_ownership','app_account']},
+
+{id:'SP-03',l:'sup',nm:'交接卡点巡检',f:'每天',trig:'每日自动跑',
+ in:{n:'系统触发',does:'扫六个交接点有没有卡住的'},
+ ag:[{k:'read',n:'交接停留扫描',i:'dept_handoff + 各线状态',o:'卡在谁那里、卡了几天',v:'断',
+      d:'★所有真 bug 都在交接处，所以这里要单独扫'}],
+ out:{n:'相关部门负责人确认接收或催办',g:'超期交接进各部门总览的卡点表'},
+ t:['dept_handoff','dept_handoff_rule','handoff_log','todo_action_log']},
+];
+
+/* ══ 渲染 ══ */
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+
+function ndEl(nd,kind){
+  const K=KI[kind];
+  const b=el('div','nd '+K.cls); b.tabIndex=0;
+  b.innerHTML='<span>'+K.ic+'</span>'+esc(nd.n)+(nd.v?'<span class="vb">验·'+nd.v+'</span>':'');
+  b._nd=Object.assign({},nd,{_k:kind}); return b;
+}
+/* 卡片 */
+(function(){
+  const box=document.getElementById('flows');
+  Object.keys(LINES).forEach(lid=>{
+    const list=F.filter(x=>x.l===lid); if(!list.length) return;
+    const L=LINES[lid];
+    const sec=el('div','sec','<span>'+L.ic+' '+esc(L.nm)+'</span>'+
+      '<span class="cnt">'+list.length+' 个 Flow · 负责人 '+esc(L.who)+'</span>');
+    sec.dataset.line=lid; box.appendChild(sec);
+    const g=el('div','grid'); g.dataset.line=lid;
+    list.forEach(fl=>{
+      const c=el('div','fc'); c.dataset.line=lid;
+      const hot=HOT.includes(fl.f);
+      c.appendChild(el('div','fc-top',
+        '<span class="fc-id">'+esc(fl.id)+'</span><span class="fc-nm">'+esc(fl.nm)+'</span>'+
+        '<span class="fc-tags"><span class="tag freq'+(hot?' hot':'')+'">'+esc(fl.f)+'</span>'+
+        '<span class="tag owner">'+esc(L.who)+'</span></span>'));
+      c.appendChild(el('div','fc-trig','<b>触发：</b>'+esc(fl.trig)));
+      const ch=el('div','chain');
+      ch.appendChild(ndEl({n:fl.in.n,d:fl.in.does},'human'));
+      fl.ag.forEach(a=>{ ch.appendChild(el('span','arw','→')); ch.appendChild(ndEl(a,a.k)); });
+      ch.appendChild(el('span','arw','→'));
+      ch.appendChild(ndEl({n:fl.out.n,d:fl.out.g},'human'));
+      c.appendChild(ch);
+      c.appendChild(el('div','fc-out','<b>出口：</b>'+fl.out.g));
+      const tb=el('div','fc-tbl');
+      fl.t.forEach(t=>tb.appendChild(el('span','tb',esc(t))));
+      c.appendChild(tb);
+      g.appendChild(c);
+    });
+    box.appendChild(g);
+  });
+})();
+
+/* 过滤条 */
+(function(){
+  const bar=document.getElementById('bar');
+  const mk=(lb,id)=>{const b=el('button',id==='all'?'on':'',lb);b.dataset.f=id;
+    b.onclick=()=>{
+      bar.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+      document.querySelectorAll('[data-line]').forEach(n=>{
+        n.style.display=(id==='all'||n.dataset.line===id)?'':'none';});
+    }; return b;};
+  bar.appendChild(mk('全部 '+F.length+' 个','all'));
+  Object.keys(LINES).forEach(k=>bar.appendChild(mk(LINES[k].ic+' '+LINES[k].nm.slice(1)+
+    ' '+F.filter(x=>x.l===k).length,k)));
+  bar.appendChild(el('span','hint','🛡人 · 📖读 · ✍拟稿 · 💾落库　｜　验·门/断/人/C'));
+})();
+
+/* 统计 */
+(function(){
+  const ags=F.flatMap(f=>f.ag);
+  const withV=ags.filter(a=>a.v).length;
+  const chain=(F.reduce((s,f)=>s+f.ag.length,0)/F.length).toFixed(1);
+  [[String(F.length),'个 Flow（八条主线切出来的）'],
+   [String(F.length*2),'个人工节点（每 Flow 入口+出口各一）'],
+   [String(ags.length),'个 Agent'],
+   [withV+'/'+ags.length,'★有非 Agent 检查者'],
+   [chain,'平均每 Flow 的 Agent 数'],
+   [String(F.filter(f=>HOT.includes(f.f)).length),'个高频 Flow（出口有盲签风险）']
+  ].forEach(([n,l])=>{
+    const d=el('div'); d.innerHTML='<span class="n">'+n+'</span><span class="l">'+l+'</span>';
+    document.getElementById('tally').appendChild(d);
+  });
+})();
+
+/* 负荷表：负责人 × 频率 */
+(function(){
+  const FR=['每天','每单','每周','每阶段','每项目','每月'];
+  const who=[...new Set(Object.values(LINES).map(l=>l.who))];
+  let h='<thead><tr><th>出口落在谁身上</th>'+FR.map(f=>'<th>'+f+
+    (HOT.includes(f)?' <span style="color:var(--bad)">▲</span>':'')+'</th>').join('')+
+    '<th>合计</th></tr></thead><tbody>';
+  who.forEach(w=>{
+    const mine=F.filter(f=>LINES[f.l].who===w);
+    h+='<tr><td class="who">'+esc(w)+'</td>';
+    FR.forEach(fr=>{
+      const n=mine.filter(f=>f.f===fr).length;
+      const cls=n===0?'cell zero':(HOT.includes(fr)&&n>=3?'cell hot':(HOT.includes(fr)&&n>0?'cell mid':'cell'));
+      h+='<td><span class="'+cls+'">'+n+'</span></td>';
+    });
+    h+='<td><b>'+mine.length+'</b></td></tr>';
+  });
+  h+='</tbody>';
+  document.getElementById('loadtable').innerHTML=h;
+})();
+
+/* 提示浮窗 */
+const tip=document.getElementById('tip');
+function show(e,html){
+  tip.innerHTML=html; tip.style.display='block';
+  const r=tip.getBoundingClientRect();
+  let x=e.clientX+16,y=e.clientY+16;
+  if(x+r.width>innerWidth-12) x=Math.max(12,e.clientX-r.width-16);
+  if(y+r.height>innerHeight-12) y=Math.max(12,innerHeight-r.height-12);
+  tip.style.left=x+'px'; tip.style.top=y+'px';
+}
+function tipHtml(nd){
+  const K=KI[nd._k];
+  let h='<div class="tt">'+K.ic+' '+esc(nd.n)+'　<span style="font-weight:400;color:var(--faint);font-size:11px">'+K.lb+'</span></div><dl>';
+  if(nd.d&&nd._k==='human') h+='<dt>做什么</dt><dd>'+nd.d+'</dd>';
+  if(nd.d&&nd._k!=='human') h+='<dt>干什么</dt><dd>'+nd.d+'</dd>';
+  if(nd.i) h+='<dt>输入</dt><dd>'+esc(nd.i)+'</dd>';
+  if(nd.o) h+='<dt>输出</dt><dd>'+esc(nd.o)+'</dd>';
+  if(nd.v) h+='<dt>谁验它</dt><dd><b>'+VER[nd.v]+'</b></dd>';
+  h+='</dl>';
+  if(!nd.v&&nd._k!=='human') h+='<div class="g">★这个 Agent 没有检查者 —— 违反铁律①，不许上线</div>';
+  return h;
+}
+document.addEventListener('mouseover',e=>{const n=e.target.closest('.nd');
+  if(n&&n._nd) show(e,tipHtml(n._nd));});
+document.addEventListener('mouseout',e=>{if(e.target.closest('.nd')) tip.style.display='none';});
+document.addEventListener('focusin',e=>{const n=e.target.closest('.nd');
+  if(n&&n._nd){const r=n.getBoundingClientRect();show({clientX:r.left,clientY:r.bottom},tipHtml(n._nd));}});
+document.addEventListener('focusout',e=>{if(e.target.closest('.nd')) tip.style.display='none';});
+</script>
