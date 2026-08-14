@@ -73,8 +73,9 @@ const F=process.argv[2]||'/home/user/Konnext/docs/KONNEXT_八条主线框图.htm
   const ov=await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
   ok(!ov,theme+' 页面横向溢出了');
 
-  if(theme==='light') await p.screenshot({path:'flow_light.png',fullPage:false});
-  else { await p.screenshot({path:'flow_dark.png',fullPage:false}); }
+  // 截图落在脚本自己旁边，用 shot_ 前缀 —— docs/tools/.gitignore 已经盖住这类文件，
+  // 免得像上一版那样把 png 丢在仓库根目录
+  await p.screenshot({path:require('path').join(__dirname,'shot_框图_'+theme+'.png')});
   await p.close();
  }
  console.log('运行时报错: '+errs.length); errs.slice(0,6).forEach(e=>console.log('  ! '+e));
