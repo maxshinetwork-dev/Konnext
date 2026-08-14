@@ -1,0 +1,660 @@
+<title>KONNEXT 八条主线</title>
+<style>
+:root{
+  /* KONNEXT 经典办公蓝（沿用原型 2026-07-30 定的那套，不另起炉灶） */
+  --bg:#f5f7fa; --panel:#ffffff; --raised:#eef2f6; --line:#d8e0e8; --line-soft:#e6ecf2;
+  --ink:#1f2933; --muted:#5f6b76; --faint:#8695a4;
+  --accent:#2563eb; --accent-soft:#e8effc;
+  --ok:#047857; --ok-soft:#e6f4ef;
+  --warn:#b45309; --warn-soft:#fdf3e2;
+  --bad:#dc2626; --bad-soft:#fdeaea;
+  --draft:#7c3aed; --draft-soft:#efe9fd;
+  --human:#1f2933; --human-soft:#e3e8ed;
+  --shadow:0 1px 2px rgba(16,24,40,.05); --shadow-lg:0 12px 32px rgba(16,24,40,.16);
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;
+  --mono:ui-monospace,"Cascadia Code",SFMono-Regular,Consolas,"Noto Sans Mono CJK SC",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1620; --panel:#161f2b; --raised:#1e2937; --line:#2b3846; --line-soft:#232f3d;
+    --ink:#e6ecf2; --muted:#93a1b0; --faint:#6f7f8f;
+    --accent:#5b93f7; --accent-soft:#17293f;
+    --ok:#34a97b; --ok-soft:#122b22;
+    --warn:#d98a2b; --warn-soft:#2e2313;
+    --bad:#f26d6d; --bad-soft:#331a1a;
+    --draft:#a482f5; --draft-soft:#241a3a;
+    --human:#c9d4de; --human-soft:#26313d;
+    --shadow:0 1px 2px rgba(0,0,0,.4); --shadow-lg:0 12px 32px rgba(0,0,0,.55);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1620; --panel:#161f2b; --raised:#1e2937; --line:#2b3846; --line-soft:#232f3d;
+  --ink:#e6ecf2; --muted:#93a1b0; --faint:#6f7f8f;
+  --accent:#5b93f7; --accent-soft:#17293f;
+  --ok:#34a97b; --ok-soft:#122b22;
+  --warn:#d98a2b; --warn-soft:#2e2313;
+  --bad:#f26d6d; --bad-soft:#331a1a;
+  --draft:#a482f5; --draft-soft:#241a3a;
+  --human:#c9d4de; --human-soft:#26313d;
+  --shadow:0 1px 2px rgba(0,0,0,.4); --shadow-lg:0 12px 32px rgba(0,0,0,.55);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.7 var(--sans);
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1520px;margin:0 auto;padding:34px 22px 70px}
+
+/* ── 抬头 ── */
+header{margin-bottom:26px}
+.eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);
+  font-weight:700;margin-bottom:9px}
+h1{font-size:32px;line-height:1.25;margin:0 0 10px;font-weight:700;letter-spacing:-.01em;
+  text-wrap:balance}
+.thesis{font-size:15.5px;color:var(--muted);max-width:74ch;margin:0}
+.thesis b{color:var(--ink)}
+.tally{display:flex;flex-wrap:wrap;gap:26px;margin-top:20px;padding:15px 20px;
+  background:var(--panel);border:1px solid var(--line);border-radius:9px;box-shadow:var(--shadow)}
+.tally div{display:flex;flex-direction:column;gap:1px}
+.tally .n{font:600 21px/1 var(--mono);font-variant-numeric:tabular-nums}
+.tally .l{font-size:11px;color:var(--muted);letter-spacing:.04em}
+
+/* ── 三条铁律 ── */
+.laws{display:grid;grid-template-columns:repeat(auto-fit,minmax(288px,1fr));gap:13px;margin:24px 0 30px}
+.law{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:0 8px 8px 0;padding:13px 16px;box-shadow:var(--shadow)}
+.law h3{margin:0 0 4px;font-size:13.5px;font-weight:700}
+.law p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.65}
+.law.w{border-left-color:var(--warn)} .law.b{border-left-color:var(--bad)}
+
+/* ── 图例 ── */
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:9px;padding:12px 16px;
+  background:var(--raised);border:1px solid var(--line);border-radius:9px;margin-bottom:9px;
+  font-size:12px}
+.legend .sep{width:1px;height:17px;background:var(--line)}
+.legend .hint{color:var(--muted);margin-left:auto;font-size:11.5px}
+
+/* ── 节点通用 ── */
+.node{display:inline-flex;align-items:center;gap:6px;border-radius:7px;padding:6px 11px;
+  font-size:12.5px;font-weight:600;border:1px solid;cursor:default;white-space:nowrap;
+  transition:transform .12s,box-shadow .12s;position:relative}
+.node:hover,.node:focus-visible{transform:translateY(-2px);box-shadow:var(--shadow-lg);z-index:5}
+.node:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.n-human{background:var(--human);color:var(--bg);border-color:var(--human);
+  padding:9px 14px;font-size:13px;border-radius:8px}
+.n-read {background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.n-draft{background:var(--draft-soft);color:var(--draft);border-color:var(--draft)}
+.n-write{background:var(--warn-soft);color:var(--warn);border-color:var(--warn);
+  border-style:dashed}
+.n-block{background:var(--bad-soft);color:var(--bad);border-color:var(--bad)}
+.node .ic{font-size:13px}
+.node .vb{font:600 10px/1 var(--mono);padding:2px 4px;border-radius:3px;
+  background:rgba(127,127,127,.18);letter-spacing:.02em}
+
+/* ── 泳道 ── */
+.lanes{display:flex;flex-direction:column;gap:9px}
+.lane{background:var(--panel);border:1px solid var(--line);border-radius:9px;
+  display:grid;grid-template-columns:186px 1fr;box-shadow:var(--shadow);overflow:hidden;
+  transition:box-shadow .15s,border-color .15s}
+.lane.lit{border-color:var(--bad);box-shadow:0 0 0 2px var(--bad-soft),var(--shadow-lg)}
+.lane.dim{opacity:.34}
+.lhead{padding:14px 16px;border-right:1px solid var(--line);background:var(--raised);
+  display:flex;flex-direction:column;gap:3px;justify-content:center}
+.lhead .nm{font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:7px}
+.lhead .sub{font-size:11px;color:var(--muted);line-height:1.5}
+.lhead .pilot{display:inline-block;margin-top:4px;font-size:10.5px;font-weight:700;
+  color:var(--ok);background:var(--ok-soft);border:1px solid var(--ok);
+  border-radius:99px;padding:1px 8px;width:fit-content}
+.track{overflow-x:auto;padding:27px 16px 15px}
+.rail{display:flex;align-items:center;gap:0;min-width:max-content}
+.gap{display:flex;align-items:center;gap:7px;padding:0 13px;margin:0 3px;position:relative}
+.gap::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;
+  background:repeating-linear-gradient(90deg,var(--line) 0 5px,transparent 5px 10px);z-index:0}
+.gap>*{position:relative;z-index:1}
+.gapcap{position:absolute;top:-19px;left:50%;transform:translateX(-50%);font-size:9.5px;
+  color:var(--faint);background:var(--panel);padding:0 6px;white-space:nowrap;letter-spacing:.03em}
+.arrow{color:var(--faint);font-size:13px;position:relative;z-index:1}
+
+/* ── 交接带 ── */
+.band{margin:30px 0 0}
+.band h2{font-size:17px;margin:0 0 5px;font-weight:700}
+.band .lede{font-size:13px;color:var(--muted);margin:0 0 15px;max-width:78ch}
+.hos{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:12px}
+.ho{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--bad);
+  border-radius:0 0 8px 8px;padding:13px 15px;box-shadow:var(--shadow);cursor:default;
+  transition:transform .12s,box-shadow .12s}
+.ho:hover,.ho:focus-visible{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.ho:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ho .path{font:600 12px/1.5 var(--mono);color:var(--bad);margin-bottom:5px}
+.ho .trg{font-size:12.5px;font-weight:600;margin-bottom:5px}
+.ho .gate{font-size:11.5px;color:var(--muted);line-height:1.6}
+.ho .gate b{color:var(--ink)}
+.ho .scar{margin-top:7px;padding-top:7px;border-top:1px dashed var(--line);
+  font-size:11px;color:var(--warn);line-height:1.6}
+
+/* ── 监管层 ── */
+.sup{margin-top:30px;background:var(--panel);border:1px solid var(--ok);border-radius:9px;
+  overflow:hidden;box-shadow:var(--shadow)}
+.sup-head{background:var(--ok-soft);padding:13px 18px;border-bottom:1px solid var(--ok);
+  display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.sup-head b{font-size:14.5px;color:var(--ok)}
+.sup-head span{font-size:12px;color:var(--muted)}
+.sup-body{padding:15px 18px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.spans{padding:9px 18px 14px;font-size:11.5px;color:var(--muted);border-top:1px dashed var(--line)}
+
+/* ── 库层 ── */
+.db{margin-top:30px}
+.dbgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:12px}
+.dbg{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;
+  box-shadow:var(--shadow)}
+.dbg h4{margin:0 0 3px;font-size:12.5px;font-weight:700;display:flex;align-items:baseline;gap:7px}
+.dbg h4 em{font:400 10.5px/1 var(--mono);color:var(--faint);font-style:normal}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.chip{font:11px/1.45 var(--mono);padding:2px 7px;border-radius:4px;background:var(--raised);
+  color:var(--muted);border:1px solid transparent;transition:all .12s}
+.chip.lit{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+
+/* ── 提示浮窗 ── */
+#tip{position:fixed;z-index:99;max-width:392px;background:var(--panel);color:var(--ink);
+  border:1px solid var(--line);border-radius:9px;padding:13px 15px;box-shadow:var(--shadow-lg);
+  font-size:12.5px;line-height:1.72;display:none;pointer-events:none}
+#tip .tt{font-weight:700;font-size:13.5px;margin-bottom:2px;display:flex;align-items:center;gap:7px}
+#tip .kind{font:600 10px/1 var(--mono);padding:3px 6px;border-radius:4px;letter-spacing:.04em}
+#tip dl{margin:9px 0 0;display:grid;grid-template-columns:auto 1fr;gap:4px 11px}
+#tip dt{font-size:11px;color:var(--faint);white-space:nowrap;padding-top:2px}
+#tip dd{margin:0;font-size:12.5px}
+#tip .gatebox{margin-top:9px;padding:7px 10px;background:var(--bad-soft);color:var(--bad);
+  border-radius:6px;font-size:11.5px;line-height:1.6}
+#tip .tbl{margin-top:9px;padding-top:8px;border-top:1px dashed var(--line);
+  font:11px/1.7 var(--mono);color:var(--muted)}
+
+footer{margin-top:34px;padding-top:20px;border-top:1px solid var(--line);
+  font-size:12.5px;color:var(--muted);line-height:1.8}
+footer b{color:var(--ink)}
+footer .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:22px;margin-top:12px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (max-width:860px){
+  .lane{grid-template-columns:1fr}
+  .lhead{border-right:0;border-bottom:1px solid var(--line)}
+  h1{font-size:25px}
+}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">KONNEXT · 业务流架构提案</div>
+  <h1>八条主线：人定关口，Agent 跑腿，数据库裁决</h1>
+  <p class="thesis">六个部门 + 决策 + 监管，共八条主线。原本由人判断的节点<b>仍然由人判断</b>；
+  两个监管点之间由 Agent 接力，每个 Agent 只做一次单一输入输出。
+  关键约束：<b>Agent 只能提议，不能裁决</b> —— 所有"能不能"的判断留在数据库的 279 条策略和门禁里。
+  把鼠标放在任何一个节点上，看它干什么、谁验它、动了哪些表。</p>
+  <div class="tally" id="tally"></div>
+</header>
+
+<div class="laws">
+  <div class="law">
+    <h3>① 每个 Agent 的输出，必须有一个不是 Agent 的检查者</h3>
+    <p>门禁 / 断言 / CHECK 约束 / 人，四选一。没有检查者的 Agent 不许上线 ——
+    幻觉不是靠任务变小消除的，是靠验出来的。</p>
+  </div>
+  <div class="law w">
+    <h3>② 一条链上「连续没有检查者的 Agent」不许超过 1 个</h3>
+    <p>串 8 个可以，只要中间有验的。真正该管的不是 Agent 的<b>数量</b>，
+    是<b>多大比例的输出是机器可验的</b>。</p>
+  </div>
+  <div class="law b">
+    <h3>③ Agent 里绝对不能重写业务规则</h3>
+    <p>提示词里只要出现一句「SM3 完成后才能开 S2」，这条规则就有了第二个副本 ——
+    然后它会和数据库里那条慢慢漂移，而且漂移那天不会报错。</p>
+  </div>
+</div>
+
+<div class="legend" id="legend"></div>
+<div class="lanes" id="lanes"></div>
+
+<section class="band">
+  <h2>交接点 · 一等公民</h2>
+  <p class="lede">按部门切八条流，交接就变成了「线与线之间的边」—— 而边最容易没人负责。
+  KONNEXT 至今踩过的真 bug <b>一个都不在部门内部，全在交接处</b>。
+  所以交接点单独建模，不许掉进两条流的缝里。鼠标放上去，看它连的是哪两条线。</p>
+  <div class="hos" id="hos"></div>
+</section>
+
+<section class="sup">
+  <div class="sup-head">
+    <b>⑧ 监管流</b>
+    <span>横跨全部七条线 · <b style="color:var(--ok)">内核必须是确定性的</b></span>
+  </div>
+  <div class="sup-body" id="supbody"></div>
+  <div class="spans">
+    ★ 为什么监管流的内核不能是 Agent：v0.38 的倒休门禁静默失效，是 <b>SQL 断言</b>抓出来的 ——
+    <b>门禁自己查不出自己没生效</b>。同理 Agent 也查不出 Agent 的错，它们共享同一种失效方式。
+    用 Agent 监管 Agent，等于让两个近视眼互相验光。Agent 在这一层只能做「把 INV-XXX 翻译成人话」。
+  </div>
+</section>
+
+<section class="db">
+  <h2 style="font-size:17px;margin:0 0 5px;font-weight:700">调用库 · 84 张表</h2>
+  <p class="lede" style="font-size:13px;color:var(--muted);margin:0 0 15px">
+  按<b>写入归属部门</b>分组（`table_ownership` 登记的真实归属，不是我编的）——
+  决定了哪条流有权写哪张表。把鼠标放在上面任何一个节点上，它动的表会在这里亮起来。</p>
+  <div class="dbgrid" id="dbgrid"></div>
+</section>
+
+<footer>
+  <b>这张图没有替你决定的事</b>
+  <div class="cols">
+    <div>
+      <b style="color:var(--ok)">建议先做一条线：运维「报修受理 → 派工」</b><br>
+      输入是真正非结构化的（客户口述故障），输出是结构化的（P0–P3、归因、SLA），
+      门禁已经建好（M1 报修时间必填 / M3 SLA / M4 上门前排查结论），
+      而且<b>判错了当天上门就发现，不涉及钱</b>。别拿财务或采购开刀。
+    </div>
+    <div>
+      <b style="color:var(--warn)">「每两个监管点之间 5–8 个 Agent」这个数没有画进去</b><br>
+      八条线 × 每线 4 对监管点 × 5 个 = 160 个 Agent；按 6 对 × 8 个算是 384 个。
+      每个都要有提示词、输出格式、重试、日志、版本、成本监控和负责人 ——
+      <b>比 84 张表那套还大</b>，正对着「架构过载」那条恐惧。
+      图上每段画的是 2–3 个，按「够用」而不是「凑数」排的。
+    </div>
+    <div>
+      <b style="color:var(--bad)">责任归属还没解</b><br>
+      <span class="chip" style="display:inline">audit_log.who</span> 如果变成 <b>Agent-17</b>，
+      和 Builder 扯皮时就没有责任人了。每个 Agent 动作必须记「代表谁做的」，
+      建议配一条新断言自动扫：<b>Agent 落库的记录，100% 必须能追到一个授权它的人</b>。
+    </div>
+  </div>
+</footer>
+</div>
+
+<div id="tip" role="tooltip"></div>
+
+<script>
+/* ══ 节点类型 ══ */
+const KIND={
+  human:{ic:'🛡',lb:'人工监管点',cls:'n-human'},
+  read :{ic:'📖',lb:'读类 Agent',cls:'n-read'},
+  draft:{ic:'✍',lb:'拟稿类 Agent',cls:'n-draft'},
+  write:{ic:'💾',lb:'落库类 Agent',cls:'n-write'},
+  block:{ic:'🚫',lb:'明令禁止',cls:'n-block'},
+};
+/* 检查者：门=数据库门禁 断=SQL断言 人=人工确认 C=CHECK约束 */
+const VER={'门':'数据库门禁（拒绝并给中文原句）','断':'SQL 不变量断言（自动扫全库）',
+           '人':'人工确认后才生效','C':'CHECK 约束 / 唯一键'};
+
+/* ══ 七条部门线 ══ */
+const FLOWS=[
+{id:'presales',nm:'① 售前',ic:'📞',sub:'接洽 → 报价 → 立项签约',nodes:[
+ {k:'human',n:'客户接洽确认',who:'售前负责人',does:'确认业主 / Builder / 电工三方联系人，房屋类型与施工阶段',
+  gate:'手机号必须是澳洲手机号（座机收不到短信），一律归一成 +61 4xx xxx xxx；同一个号不许两个人共用',
+  t:['project','project_party','household_member']},
+ {k:'read',n:'来件要点提取',in:'客户邮件 / 微信原文（非结构化）',out:'结构化需求条目',
+  does:'只做抽取，不做判断 —— 不猜预算、不猜工期',v:'人',t:['project_note']},
+ {k:'draft',n:'方案选项草稿',in:'需求条目 + 历史同类方案',out:'solution_option 候选（2~3 个）',
+  does:'起草，不定价。报价范围由售前自己填',v:'人',t:['solution_option']},
+ {k:'human',n:'报价发出前审核',who:'售前负责人',does:'确认预测报价范围 est_quote_low / high，双注释写清前提',
+  gate:'报价来源保持手填 quote_source=manual —— 明确不做报价系统 API 对接',
+  t:['project','solution_option']},
+ {k:'read',n:'停留超期扫描',in:'project.status + 各阶段阈值',out:'该提醒谁的清单',
+  does:'阈值售前自己在设置里改，Agent 不许改阈值',v:'断',t:['project','status_stall_threshold']},
+ {k:'write',n:'立项草稿落提议区',in:'五步立项表单',out:'project 草稿（未生效）',
+  does:'写进提议区等人确认，不直接建档 —— 建档即落当天日期，改不回来',
+  gate:'项目归属三态：具体项目 / company 公司级 / untraceable 无从追溯，绝不许留空',
+  v:'门',t:['project','todo_action_log']},
+ {k:'human',n:'签约立项',who:'售前负责人',does:'五步引导走完，确认即真建档，立项时间当场冻结',
+  gate:'定格落库：立项日期一旦写下不可改',t:['project','dept_handoff']},
+]},
+{id:'eng',nm:'② 工程管理',ic:'🏗',sub:'SM1~SM4 → 安装调试 → 交付',nodes:[
+ {k:'human',n:'SM 现场提交',who:'工程师（App 上）',does:'现场记录 + 照片 + 到场打卡；SM3 还要电工现场签字',
+  gate:'提交即完成定格，办公室不用再点一次；SM3 提交 → 财务可开 S2，SM4 提交 → 可开 S3',
+  t:['site_meeting','work_log']},
+ {k:'read',n:'剩余工作提取',in:'当天每日上报原文',out:'daily_report_line 分段（做了什么 / 还剩什么）',
+  does:'下一班的人接着干，靠的就是这段',
+  gate:'上次没填剩余工作，下次派工会被系统拦下',v:'门',t:['daily_report','daily_report_line']},
+ {k:'draft',n:'排班时段草稿',in:'剩余工作 + 人员倒休余额 + 项目地址',out:'eng_schedule 候选时段',
+  does:'只提议时段，八条门禁一条都不由 Agent 判',
+  gate:'15 分钟一档 · 同人同天不许重叠 · 非倒休必须有项目 · 倒休余额不足直接拦 · 不许给过去的日期排班',
+  v:'门',t:['eng_schedule','sched_task_type','toil_ledger']},
+ {k:'human',n:'派工排班确认',who:'工程负责人',does:'确认周排班，按天 / 整周锁定；取消要回 Yes',
+  gate:'只能改此刻之后的；过去的不许改删',t:['eng_schedule','public_holiday']},
+ {k:'read',n:'工时占比解释',in:'已投入工时 / 预计总工时',out:'四档（充裕 / 正常 / 接近超支 / 已超支）+ 为什么',
+  does:'数字本身是 SQL 现算的，Agent 只负责把它讲成人话',v:'断',t:['install_job','work_log']},
+ {k:'write',n:'出货单落提议区',in:'排班里勾的「去仓库办提货」',out:'mat_req 出货单草稿',
+  does:'交库管核对现货：够→安排出货；不够→同时提醒采购与工程',v:'门',t:['mat_req','mat_req_line']},
+ {k:'draft',n:'交付通知拟稿',in:'交付日期 + 客户联络方式',out:'中英双语通知草稿',
+  does:'发件身份是公司的（admin@），署名是经办人的',v:'人',t:['notification','document_issue']},
+ {k:'human',n:'确认交付',who:'工程负责人',does:'交付当天确认 —— 工程利润率就地定格，项目移交运维',
+  gate:'两条门禁：施工结束 + S4 结清才能约交付；确认交付＝利润率定格，之后不可改',
+  t:['delivery_review','project','variation']},
+]},
+{id:'proc',nm:'③ 采购',ic:'📦',sub:'需求 → 下单 → ETA → 到货',nodes:[
+ {k:'human',n:'采购需求审核',who:'采购负责人',does:'审来自工程 / 库管 / 运维的需求单',
+  gate:'★采购不能自己决定要不要买 —— 需求页没有「新建」按钮，只能退回并写明原因；改数量必须写原因',
+  t:['purchase_req']},
+ {k:'read',n:'现货 vs 需求差额',in:'项目物料账 + 当前库存（现算）',out:'真正要买的差额',
+  does:'需求只存一份，全部现算 —— 同一件事两个数字迟早对不上且不报错',v:'断',
+  t:['quote_bom','quote_bom_line','bom_reserve']},
+ {k:'read',n:'调价「距今多久」预警',in:'material_price_log 全量',out:'太久没调价的物料清单',
+  does:'★越久越危险：供应商早涨了我们还按老价算成本，毛利率是假的且不报错',v:'断',
+  t:['material','material_price_log']},
+ {k:'draft',n:'采购单草稿',in:'差额清单 + 供应商 + 当日汇率',out:'purchase_order 草稿（含落地成本）',
+  does:'落地成本 =（单价 + 运费）× 下单定格汇率',
+  gate:'交期填 0 天直接拦（ETA 全算当天＝从此没有超期）',v:'门',
+  t:['purchase_order','purchase_order_line','supplier','fx_rate']},
+ {k:'human',n:'下单确认',who:'采购负责人',does:'真正的采购在线下做，这里做指令留痕 + 到货跟踪',
+  gate:'汇率下单即定格；超期不许乱改 ETA（准时率靠它算）',t:['purchase_order','fx_rate']},
+ {k:'read',n:'ETA 超期扫描',in:'在途订单 + 今天',out:'该催的单 + 催了几次',
+  does:'催单话术可以拟，但 ETA 这个数只有人能改',v:'断',t:['purchase_order_chase','rma_chase']},
+ {k:'human',n:'到货确认',who:'采购 + 库管',does:'点数、核对、差异处理',
+  gate:'★集中采购要标 scope=company，否则到货标不了（v0.36 修过的真 bug）',
+  t:['goods_receipt_diff','rma_case']},
+]},
+{id:'wh',nm:'④ 库管',ic:'🏬',sub:'入库 → 备料 → 出库 → 退库',nodes:[
+ {k:'human',n:'入库点数',who:'库管',does:'按实收入库，不许抹平差异',
+  gate:'差异必填备注 + 自动开到货差异单交采购',t:['goods_receipt_diff','stock_out']},
+ {k:'read',n:'库存现算核对',in:'期初 WH_OPEN + 全部流水 WHMOVE',out:'当前库存（不落库）',
+  does:'★库存永远不写死 —— 出库忘扣、退库忘加，写死的数会永远错下去且不报错',v:'断',
+  t:['stocktake','stocktake_line']},
+ {k:'read',n:'货在谁手里',in:'出库 / 提货 / 退库全流水',out:'按项目 + 按提货人两个视角',
+  does:'两个视角必须相等，断言钉住。★施工期已过、货还在人手里的进尾巴表 —— 不列出来等于把 S4 的钱悄悄丢了',
+  v:'断',t:['party_pickup','stock_out','stock_return']},
+ {k:'draft',n:'提货通知拟稿',in:'提货人类型 + 仓库地址 + 营业时间',out:'中英双语短信草稿',
+  does:'第三方 / 工地发双语短信；我方发 App 推送 + 短信',
+  gate:'★没手机号不许通知，也不许出库',v:'人',t:['wh_call','party_pickup']},
+ {k:'human',n:'开出库单',who:'库管',does:'★这一刻才真正扣库存 —— 「通知来提货」和「催提货确认」中间隔着的就是这一下',
+  gate:'S2 未结清不放货 · 超库存直接拒 · 手机号与出库单价当场定格🔒',
+  t:['stock_out','stock_out_line']},
+ {k:'write',n:'退库单落提议区',in:'退回物料 + 好坏状态',out:'stock_return 草稿',
+  does:'★好料坏料必须分开记，混退＝拿坏件当好货再发出去',
+  gate:'退库状态必填',v:'门',t:['stock_return','stock_return_line']},
+ {k:'human',n:'盘点差异确认',who:'库管',does:'逐条确认差异原因',
+  gate:'差异必填原因 + 账面数定格',t:['stocktake','stocktake_line']},
+]},
+{id:'fin',nm:'⑤ 财务',ic:'💰',sub:'S1 定金 → S2 物料 → S3 人工 → S4 尾款',nodes:[
+ {k:'human',n:'请款确认',who:'财务',does:'发起某一期收款',
+  gate:'★「SM3 未完成，不能发起 S2 物料款」—— 门禁原句原样透传给用户，不许包装成「操作失败请重试」',
+  t:['payment_milestone']},
+ {k:'read',n:'账龄双口径计算',in:'Invoice 发出日 + 收款流水',out:'超期天数 / 账龄两个口径',
+  does:'现算不落库；应收金额则在 Invoice 发出时定格',v:'断',t:['payment_milestone','payment_receipt']},
+ {k:'draft',n:'催款文案拟稿',in:'欠款分级 + 客户语言偏好',out:'分级催款短信 / 邮件草稿',
+  does:'双语、无昵称模版；发件身份 accounts@，署名是经办人',
+  gate:'★烂尾项目不催款',v:'人',t:['payment_remind_log','notification']},
+ {k:'human',n:'收款登记',who:'财务',does:'登记到账，应收金额与账龄起点当场定格',
+  gate:'定格落库：结清差额、账龄起点之后不可改',t:['payment_receipt','payment_milestone']},
+ {k:'read',n:'未退料台账核对',in:'库管出库台账 + 财务结算台账',out:'两边对不上的清单',
+  does:'★财务「结算掉」不等于「货退回来了」—— stl 与 back 必须分开记（v0.36 修过的真 bug）',
+  v:'断',t:['stock_out','payment_milestone']},
+ {k:'write',n:'工资挂起提醒落库',in:'当天没上报的人',out:'待办 + 补录提醒',
+  does:'挂起不发但不扣钱，工程负责人补录才放行',
+  gate:'补录必填：项目 + 时长 + 原因类别 + 详说 ≥10 字',v:'门',
+  t:['daily_payroll','payroll_month','staff_daily_commitment']},
+ {k:'human',n:'S4 结算',who:'财务',does:'尾款 + 变量积累 + 未退料一起结',
+  gate:'工程追加 variation 并入 S4；财务改价必须留痕',t:['payment_milestone','variation','termination_settlement']},
+]},
+{id:'mt',nm:'⑥ 运维',ic:'🔧',sub:'报修 → 分级 → 上门 → 三样齐',pilot:'建议先从这条线试',nodes:[
+ {k:'human',n:'报修受理确认',who:'运维',does:'确认报修渠道与报修时间',
+  gate:'★报修时间必填，允许填【未知】—— 但绝不拿建单时间顶替，否则响应时长永远是漂亮的 0',
+  t:['maintenance_case']},
+ {k:'read',n:'口述 → 结构化',in:'客户电话 / 微信原话（最非结构化的输入）',out:'故障现象 + 位置 + 设备型号',
+  does:'★这是整个系统里 Agent 最该干的活：把人话变成字段，判断留给人',v:'人',t:['maintenance_case']},
+ {k:'draft',n:'P0~P3 分级建议',in:'结构化故障描述 + 历史同类',out:'建议档位 + 理由',
+  does:'只建议，人拍板。SLA 从确认的那一刻起算',
+  gate:'各档 SLA 超了自动进待办',v:'人',t:['maintenance_case','eng_setting']},
+ {k:'read',n:'同型号故障扫描',in:'全部维护单',out:'按【型号】聚合的故障率',
+  does:'★按型号不按项目：同一型号在不同项目都坏 → 停用它、找供应商',v:'断',
+  t:['maintenance_case','material']},
+ {k:'human',n:'上门前排查结论',who:'研发 / 运维',does:'远程能不能解决先给结论，工时进成本',
+  gate:'★没有排查结论不许派上门（M4 门禁）',t:['maintenance_job','work_log']},
+ {k:'draft',n:'归因草稿',in:'现场记录 + 保修期判断',out:'人为损坏 / 产品缺陷 / 自然老化 / 远程可解',
+  does:'现场不谈钱，定价是财务的事',v:'人',t:['maintenance_case','job_checklist']},
+ {k:'human',n:'三样齐完结',who:'工程师（现场）',does:'归因 + 服务内容 + 客户签字，当着客户面确认',
+  gate:'★三样缺一样，财务定不了价 —— 任务点不了完成、人不能走',t:['maintenance_case','maintenance_job']},
+]},
+{id:'dec',nm:'⑦ 决策',ic:'⚖',sub:'授权 · 全局参数 · 红线',nodes:[
+ {k:'read',n:'决策看板汇总',in:'全公司项目 + 收款 + 成本',out:'在手合同额 / 已收应收 / 加权利润率',
+  does:'★未开工与已流失项目不显示利润率 —— 没花钱算出 100% 会误导决策',v:'断',
+  t:['project','payment_milestone','money_visibility']},
+ {k:'read',n:'风险摘要',in:'停留超阈值 + 账龄 + 订阅逾期',out:'一屏卡点表',
+  does:'全部现算派生，不落库',v:'断',t:['status_stall_threshold','audit_log']},
+ {k:'human',n:'部门授权批准',who:'决策管理员',does:'休假授权（负责人本人点）/ 强制接管（联系不上时的出口）',
+  gate:'★最高管理者默认对别的部门只读。休假授权到期日必填、上限 90 天；强制接管原因 ≥10 字 + 短信通知本人；一个部门同时只能有一条生效',
+  t:['dept_delegation','account_department']},
+ {k:'human',n:'全局参数变更',who:'决策管理员',does:'发件身份 · 安全三阈值 · 红线百分比',
+  gate:'只有决策管理员能改 + 号码/邮箱格式两条门禁 + 全部留痕',t:['eng_setting','app_account']},
+ {k:'block',n:'落库类 Agent：禁止',does:'★决策级的 13 张表，Agent 一律不许写 —— 授权、账号、全局参数、断言定义、审计日志',
+  gate:'这不是技术限制，是设计判断：能改「谁有权改什么」的东西，只能是人',
+  t:['dept_delegation','app_account','eng_setting','assertion_def','audit_log','table_ownership']},
+]},
+];
+
+/* ══ 交接点 ══ */
+const HOS=[
+ {a:'eng',b:'fin',path:'工程 → 财务',trg:'SM3 / SM4 现场提交完成',
+  gate:'同源联动：SM3 完成即解锁 S2 物料款，SM4 完成即解锁 S3 人工款。财务侧自动收到通知，不用工程再说一声。',
+  t:['site_meeting','payment_milestone']},
+ {a:'proc',b:'wh',path:'采购 → 库管',trg:'到货 → 点数上架',
+  gate:'到货差异由采购处理，点数上架记成本是库管的动作。RMA「已接收」＝采购跟踪结束 + 自动通知库管办入库。',
+  scar:'★踩过：集中采购到货标不了 —— 交接时没标 scope=company，库存永远是 0，后面出库退库连环报错，全被回归记成「拦截成功」。三个测试文件其实什么都没测到，测试却一直是绿的。',
+  t:['purchase_order','goods_receipt_diff','rma_case']},
+ {a:'wh',b:'fin',path:'库管 → 财务',trg:'施工期结束，货还在提货人手里',
+  gate:'未退料进 S4 跟客户结算。★「结算掉」(stl) 与「真退回来了」(back) 必须分开记。',
+  scar:'★踩过：财务「结算未退料」原来不动库管台账 → 两页各说各话，而且不报错。',
+  t:['stock_out','party_pickup','payment_milestone']},
+ {a:'mt',b:'fin',path:'运维 → 财务',trg:'三样齐（归因 + 服务内容 + 客户签字）',
+  gate:'运维管事不管钱：定价、开票、收款全在财务。缺一样财务定不了价，红色卡点说清缺哪样。',
+  t:['maintenance_case','payment_milestone']},
+ {a:'presales',b:'eng',path:'售前 → 工程',trg:'签约立项完成',
+  gate:'业主 / Builder / 电工由工程负责人指定（候选＝售前采集），保存即📌标注并通知下游。',
+  t:['project','project_party','dept_handoff']},
+ {a:'wh',b:'proc',path:'库管 · 工程 · 运维 → 采购',trg:'缺料',
+  gate:'purchase_req.source 五档：quote / sm2_change / build_add（工程人员提）· warehouse_restock（库管补货）· maintenance（运维缺料）。',
+  scar:'★v0.37 推翻了 v0.36 的「项目料由库管下达」—— 提单人是工程人员，不是库管。',
+  t:['purchase_req']},
+];
+
+/* ══ 监管流节点 ══ */
+const SUP=[
+ {k:'read',n:'断言违规解读',in:'fn_assertion_summary() 的 INV-XXX 代码',out:'人话解释 + 该找谁',
+  does:'断言本身是确定性 SQL，Agent 只负责翻译，不参与判定',v:'断',t:['assertion_def','audit_log']},
+ {k:'read',n:'Agent 行为审计',in:'全部 Agent 落库记录',out:'追不到授权人的记录清单',
+  does:'★新增断言：Agent 落库的记录，100% 必须能追到一个授权它的人',v:'断',
+  t:['audit_log','handoff_log','app_account']},
+ {k:'human',n:'违规复核',who:'决策管理员',does:'严重违规＝不可上线／发版，必须人看过',
+  gate:'100 条断言 · 空库唯一例外是 INV-SEC-03（还没建核心管理员，建号即过）',
+  t:['assertion_def','audit_log']},
+];
+
+/* ══ 库层（table_ownership 真实归属） ══ */
+const DB=[
+ {g:'售前',d:'presales',ts:['project','project_party','household_member','solution_option']},
+ {g:'工程管理',d:'eng_mgmt',ts:['site_meeting','sm_template','eng_schedule','sched_task_type','daily_report','daily_report_line','daily_issue','install_job','install_item','job_checklist','work_log','handover_job','delivery_review','variation','document','document_version','document_binding','document_issue','travel_estimate','project_note','public_holiday','eng_staff','bom_change','bom_change_line','mat_req','mat_req_line']},
+ {g:'采购',d:'procurement',ts:['purchase_req','purchase_order','purchase_order_line','purchase_order_chase','supplier','material','material_price_log','quote_bom','quote_bom_line','fx_rate','rma_case','rma_track','rma_chase','procurement']},
+ {g:'库管',d:'warehouse',ts:['stock_out','stock_out_line','stock_return','stock_return_line','stocktake','stocktake_line','bom_reserve','party_pickup','wh_call','goods_receipt_diff']},
+ {g:'财务',d:'finance',ts:['payment_milestone','payment_receipt','payment_remind_log','expense_claim','daily_payroll','payroll_month','leave_request','toil_ledger','staff_daily_commitment','termination_settlement']},
+ {g:'运维',d:'maintenance',ts:['maintenance_case','maintenance_job','subscription']},
+ {g:'跨部门共用',d:'shared',ts:['dept_handoff','notification','todo_action_log']},
+ {g:'决策级 · Agent 不许写',d:'decision',ts:['app_account','account_department','account_reset_log','dept_delegation','dept_handoff_rule','eng_setting','money_visibility','status_stall_threshold','project_scope_registry','table_ownership','assertion_def','audit_log','handoff_log','auth_otp']},
+];
+
+/* ══ 渲染 ══ */
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+
+function nodeEl(nd,plain){
+  const K=KIND[nd.k];
+  const b=el('div','node '+K.cls+(plain?' lgd':''));
+  b.innerHTML='<span class="ic">'+K.ic+'</span>'+esc(nd.n||K.lb)+
+    (nd.v?'<span class="vb" title="检查者">验·'+nd.v+'</span>':'');
+  /* ★图例里的是样例，不挂提示也不可聚焦 —— 否则鼠标放上去弹一个空浮窗 */
+  if(!plain){ b.tabIndex=0; b.dataset.t=(nd.t||[]).join(','); b._nd=nd; }
+  return b;
+}
+/* 图例 */
+(function(){
+  const L=document.getElementById('legend');
+  Object.keys(KIND).forEach(k=>{
+    L.appendChild(nodeEl({k:k,n:KIND[k].lb},true));
+  });
+  L.appendChild(el('div','sep'));
+  L.appendChild(el('span',null,'<span class="vb" style="font:600 10px/1 var(--mono);padding:2px 4px;border-radius:3px;background:rgba(127,127,127,.18)">验·门</span>'));
+  L.appendChild(el('span',null,'<span style="font-size:11.5px;color:var(--muted)">谁验它：门＝数据库门禁 · 断＝SQL 断言 · 人＝人工确认 · C＝CHECK 约束</span>'));
+  L.appendChild(el('span','hint','鼠标放在节点上看详情 · 下方库层会亮起它动的表'));
+})();
+
+/* 泳道 */
+(function(){
+  const box=document.getElementById('lanes');
+  FLOWS.forEach(f=>{
+    const lane=el('div','lane'); lane.id='lane-'+f.id;
+    const h=el('div','lhead');
+    h.innerHTML='<div class="nm">'+f.ic+' '+esc(f.nm)+'</div><div class="sub">'+esc(f.sub)+'</div>'+
+      (f.pilot?'<span class="pilot">★ '+esc(f.pilot)+'</span>':'');
+    lane.appendChild(h);
+    const track=el('div','track'), rail=el('div','rail');
+    let gap=null;
+    f.nodes.forEach((nd,i)=>{
+      if(nd.k==='human'||nd.k==='block'){
+        if(gap){rail.appendChild(gap);gap=null;}
+        rail.appendChild(nodeEl(nd));
+      }else{
+        if(!gap){
+          gap=el('div','gap');
+          gap.appendChild(el('div','gapcap','Agent 段'));
+        } else {
+          gap.appendChild(el('span','arrow','›'));
+        }
+        gap.appendChild(nodeEl(nd));
+      }
+      if(i===f.nodes.length-1&&gap){rail.appendChild(gap);gap=null;}
+    });
+    track.appendChild(rail); lane.appendChild(track); box.appendChild(lane);
+  });
+})();
+
+/* 交接带 */
+(function(){
+  const box=document.getElementById('hos');
+  HOS.forEach(h=>{
+    const c=el('div','ho'); c.tabIndex=0;
+    c.innerHTML='<div class="path">'+esc(h.path)+'</div>'+
+      '<div class="trg">触发：'+esc(h.trg)+'</div>'+
+      '<div class="gate">'+h.gate+'</div>'+
+      (h.scar?'<div class="scar">'+h.scar+'</div>':'');
+    c.dataset.t=h.t.join(',');
+    c.dataset.lanes=h.a+','+h.b;
+    box.appendChild(c);
+  });
+})();
+
+/* 监管层 */
+(function(){
+  const box=document.getElementById('supbody');
+  SUP.forEach((nd,i)=>{
+    if(i) box.appendChild(el('span','arrow','›'));
+    box.appendChild(nodeEl(nd));
+  });
+})();
+
+/* 库层 */
+(function(){
+  const box=document.getElementById('dbgrid');
+  DB.forEach(g=>{
+    const c=el('div','dbg');
+    c.innerHTML='<h4>'+esc(g.g)+' <em>'+g.ts.length+' 张</em></h4>';
+    const ch=el('div','chips');
+    g.ts.forEach(t=>{const x=el('span','chip',esc(t));x.dataset.tbl=t;ch.appendChild(x);});
+    c.appendChild(ch); box.appendChild(c);
+  });
+})();
+
+/* 统计 —— 现算，不手写死 */
+(function(){
+  const all=FLOWS.flatMap(f=>f.nodes).concat(SUP);
+  const cnt=k=>all.filter(n=>n.k===k).length;
+  const agents=cnt('read')+cnt('draft')+cnt('write');
+  const verified=all.filter(n=>['read','draft','write'].includes(n.k)&&n.v).length;
+  [['8','主线（6 部门 + 决策 + 监管）'],
+   [String(cnt('human')),'人工监管点'],
+   [String(agents),'Agent 节点'],
+   [verified+'/'+agents,'★有非 Agent 检查者'],
+   [String(HOS.length),'交接点（一等公民）'],
+   ['84','张表 · 279 条 RLS · 100 条断言']
+  ].forEach(([n,l])=>{
+    const d=el('div');
+    d.innerHTML='<span class="n">'+n+'</span><span class="l">'+l+'</span>';
+    document.getElementById('tally').appendChild(d);
+  });
+})();
+
+/* ══ 交互：提示浮窗 + 库层点亮 + 交接点高亮两条线 ══ */
+const tip=document.getElementById('tip');
+function lightTables(list,on){
+  (list||[]).forEach(t=>{
+    document.querySelectorAll('[data-tbl="'+t+'"]').forEach(c=>c.classList.toggle('lit',on));
+  });
+}
+function showTip(e,html){
+  tip.innerHTML=html; tip.style.display='block';
+  const r=tip.getBoundingClientRect();
+  let x=e.clientX+16, y=e.clientY+16;
+  if(x+r.width>innerWidth-12) x=Math.max(12,e.clientX-r.width-16);
+  if(y+r.height>innerHeight-12) y=Math.max(12,innerHeight-r.height-12);
+  tip.style.left=x+'px'; tip.style.top=y+'px';
+}
+function nodeTip(nd){
+  const K=KIND[nd.k];
+  const tone={human:'var(--human-soft);color:var(--ink)',read:'var(--accent-soft);color:var(--accent)',
+    draft:'var(--draft-soft);color:var(--draft)',write:'var(--warn-soft);color:var(--warn)',
+    block:'var(--bad-soft);color:var(--bad)'}[nd.k];
+  let h='<div class="tt">'+K.ic+' '+esc(nd.n||K.lb)+
+    '<span class="kind" style="background:'+tone+'">'+K.lb+'</span></div><dl>';
+  if(nd.who)  h+='<dt>谁做</dt><dd>'+esc(nd.who)+'</dd>';
+  if(nd.does) h+='<dt>干什么</dt><dd>'+nd.does+'</dd>';
+  if(nd.in)   h+='<dt>输入</dt><dd>'+esc(nd.in)+'</dd>';
+  if(nd.out)  h+='<dt>输出</dt><dd>'+esc(nd.out)+'</dd>';
+  if(nd.v)    h+='<dt>谁验它</dt><dd><b>'+VER[nd.v]+'</b></dd>';
+  h+='</dl>';
+  if(nd.gate) h+='<div class="gatebox">'+(nd.k==='human'||nd.k==='block'?'':'门禁：')+nd.gate+'</div>';
+  if(nd.t&&nd.t.length) h+='<div class="tbl">动到的表：'+nd.t.join(' · ')+'</div>';
+  return h;
+}
+document.addEventListener('mouseover',e=>{
+  const n=e.target.closest('.node');
+  if(n&&n._nd){ showTip(e,nodeTip(n._nd)); lightTables(n.dataset.t.split(','),true); return; }
+  const h=e.target.closest('.ho');
+  if(h){
+    lightTables(h.dataset.t.split(','),true);
+    const ids=h.dataset.lanes.split(',');
+    document.querySelectorAll('.lane').forEach(L=>{
+      L.classList.toggle('lit',ids.includes(L.id.slice(5)));
+      L.classList.toggle('dim',!ids.includes(L.id.slice(5)));
+    });
+  }
+});
+document.addEventListener('mousemove',e=>{
+  if(tip.style.display==='block'){
+    const n=e.target.closest('.node');
+    if(n&&n._nd) showTip(e,tip.innerHTML);
+  }
+});
+document.addEventListener('mouseout',e=>{
+  const n=e.target.closest('.node');
+  if(n&&n._nd){ tip.style.display='none'; lightTables(n.dataset.t.split(','),false); }
+  const h=e.target.closest('.ho');
+  if(h){
+    lightTables(h.dataset.t.split(','),false);
+    document.querySelectorAll('.lane').forEach(L=>L.classList.remove('lit','dim'));
+  }
+});
+/* 键盘可达：Tab 到节点也出提示 */
+document.addEventListener('focusin',e=>{
+  const n=e.target.closest('.node');
+  if(n&&n._nd){
+    const r=n.getBoundingClientRect();
+    showTip({clientX:r.left,clientY:r.bottom},nodeTip(n._nd));
+    lightTables(n.dataset.t.split(','),true);
+  }
+});
+document.addEventListener('focusout',e=>{
+  const n=e.target.closest('.node');
+  if(n&&n._nd){ tip.style.display='none'; lightTables(n.dataset.t.split(','),false); }
+});
+</script>
